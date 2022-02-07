@@ -10,6 +10,10 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS get
       RETURNING VALUE(rv_hex) TYPE xstring.
 
+    METHODS take
+      IMPORTING iv_length     TYPE i
+      RETURNING VALUE(rv_hex) TYPE xstring.
+
     METHODS name_list_encode
       IMPORTING
         !it_list TYPE string_table.
@@ -55,7 +59,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     lv_hex = mv_hex(lv_length).
     lv_text = cl_abap_codepage=>convert_from( lv_hex ).
     SPLIT lv_text AT ',' INTO TABLE rt_list.
-    mv_hex = mv_hex+lv_length.
+    take( lv_length ).
 
   ENDMETHOD.
 
@@ -72,10 +76,15 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD take.
+    rv_hex = mv_hex(iv_length).
+    mv_hex = mv_hex+iv_length.
+  ENDMETHOD.
+
+
   METHOD uint32_decode.
 
-    rv_int = mv_hex(4).
-    mv_hex = mv_hex+4.
+    rv_int = take( 4 ).
 
   ENDMETHOD.
 
