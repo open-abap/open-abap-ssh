@@ -61,6 +61,10 @@ CLASS ZCL_OASSH IMPLEMENTATION.
   METHOD handle.
 
     DATA lv_remote_version TYPE string.
+    DATA lo_stream         TYPE REF TO zcl_oassh_stream.
+    DATA lv_padding_length TYPE i.
+    DATA lv_length         TYPE i.
+    DATA ls_kexinit        TYPE zcl_oassh_message_20=>ty_data.
 
     CASE mv_state.
       WHEN gc_state-protocol_version_exchange.
@@ -72,7 +76,19 @@ CLASS ZCL_OASSH IMPLEMENTATION.
       WHEN gc_state-key_exchange.
 * todo, check buffer contains a full packet, and return the packet payload
 * https://datatracker.ietf.org/doc/html/rfc4253#section-7
-* name-lists of supported algorithms
+
+        IF xstrlen( mv_buffer ) > 4.
+          CREATE OBJECT lo_stream EXPORTING iv_hex = mv_buffer.
+          lv_length = lo_stream->uint32_decode( ).
+          IF lo_stream->get_length( ) = lv_length.
+* there is no MAC negotiated at this point in time
+            lv_padding_length = lo_stream->take( 1 ).
+            ls_kexinit = zcl_oassh_message_20=>parse( lo_stream ).
+            lo_stream->take( lv_padding_length ).
+            BREAK-POINT.
+          ENDIF.
+        ENDIF.
+
     ENDCASE.
 
   ENDMETHOD.

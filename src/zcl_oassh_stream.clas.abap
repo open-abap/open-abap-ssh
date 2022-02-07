@@ -4,30 +4,42 @@ CLASS zcl_oassh_stream DEFINITION
   CREATE PUBLIC .
 
   PUBLIC SECTION.
+
     METHODS constructor
-      IMPORTING iv_hex TYPE xstring OPTIONAL.
-
+      IMPORTING
+        !iv_hex TYPE xstring OPTIONAL .
     METHODS get
-      RETURNING VALUE(rv_hex) TYPE xstring.
-
+      RETURNING
+        VALUE(rv_hex) TYPE xstring .
     METHODS take
-      IMPORTING iv_length     TYPE i
-      RETURNING VALUE(rv_hex) TYPE xstring.
-
+      IMPORTING
+        !iv_length    TYPE i
+      RETURNING
+        VALUE(rv_hex) TYPE xstring .
+    METHODS append
+      IMPORTING
+        !iv_hex TYPE xsequence .
     METHODS name_list_encode
       IMPORTING
-        !it_list TYPE string_table.
-
+        !it_list TYPE string_table .
+    METHODS boolean_encode
+      IMPORTING
+        !iv_boolean TYPE abap_bool .
+    METHODS boolean_decode
+      RETURNING
+        VALUE(rv_boolean) TYPE abap_bool .
     METHODS name_list_decode
       RETURNING
-        VALUE(rt_list) TYPE string_table.
-
+        VALUE(rt_list) TYPE string_table .
     METHODS uint32_encode
-      IMPORTING iv_int TYPE i.
-
+      IMPORTING
+        !iv_int TYPE i .
     METHODS uint32_decode
-      RETURNING VALUE(rv_int) TYPE i.
-
+      RETURNING
+        VALUE(rv_int) TYPE i .
+    METHODS get_length
+      RETURNING
+        VALUE(rv_length) TYPE i .
   PROTECTED SECTION.
   PRIVATE SECTION.
     DATA mv_hex TYPE xstring.
@@ -38,6 +50,28 @@ ENDCLASS.
 CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
+  METHOD append.
+    mv_hex = mv_hex && iv_hex.
+  ENDMETHOD.
+
+
+  METHOD boolean_decode.
+    rv_boolean = boolc( take( 1 ) = '00' ) .
+  ENDMETHOD.
+
+
+  METHOD boolean_encode.
+    CASE iv_boolean.
+      WHEN abap_true.
+        append( '01' ).
+      WHEN abap_false.
+        append( '00' ).
+      WHEN OTHERS.
+        ASSERT 1 = 2.
+    ENDCASE.
+  ENDMETHOD.
+
+
   METHOD constructor.
     mv_hex = iv_hex.
   ENDMETHOD.
@@ -45,6 +79,11 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
   METHOD get.
     rv_hex = mv_hex.
+  ENDMETHOD.
+
+
+  METHOD get_length.
+    rv_length = xstrlen( mv_hex ).
   ENDMETHOD.
 
 
@@ -71,7 +110,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     CONCATENATE LINES OF it_list INTO lv_text SEPARATED BY ','.
 
     uint32_encode( strlen( lv_text ) ).
-    mv_hex = mv_hex && cl_abap_codepage=>convert_to( lv_text ).
+    append( cl_abap_codepage=>convert_to( lv_text ) ).
 
   ENDMETHOD.
 
@@ -93,7 +132,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
     DATA lv_hex TYPE x LENGTH 4.
     lv_hex = iv_int.
-    mv_hex = mv_hex && lv_hex.
+    append( lv_hex ).
 
   ENDMETHOD.
 ENDCLASS.
