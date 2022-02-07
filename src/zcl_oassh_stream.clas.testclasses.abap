@@ -1,0 +1,25 @@
+CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
+
+  PRIVATE SECTION.
+    DATA mo_stream TYPE REF TO zcl_oassh_stream.
+    METHODS setup.
+    METHODS name_list FOR TESTING RAISING cx_static_check.
+    METHODS unit32 FOR TESTING RAISING cx_static_check.
+ENDCLASS.
+
+
+CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD setup.
+    CREATE OBJECT mo_stream.
+  ENDMETHOD.
+
+  METHOD name_list.
+
+  ENDMETHOD.
+
+  METHOD unit32.
+
+  ENDMETHOD.
+
+ENDCLASS.
