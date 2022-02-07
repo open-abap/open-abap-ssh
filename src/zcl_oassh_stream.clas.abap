@@ -56,7 +56,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD boolean_decode.
-    rv_boolean = boolc( take( 1 ) = '00' ) .
+    rv_boolean = boolc( take( 1 ) = '00' ).
   ENDMETHOD.
 
 
