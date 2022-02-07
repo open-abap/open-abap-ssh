@@ -1,36 +1,35 @@
-class ZCL_OASSH definition
-  public
-  create private .
+CLASS zcl_oassh DEFINITION
+  PUBLIC
+  CREATE PRIVATE .
 
-public section.
+  PUBLIC SECTION.
 
-  interfaces IF_APC_WSP_EVENT_HANDLER .
-  interfaces IF_APC_WSP_EVENT_HANDLER_BASE .
+    INTERFACES if_apc_wsp_event_handler .
 
-  class-methods CONNECT
-    importing
-      !IV_HOST type STRING
-      !IV_PORT type STRING
-    raising
-      CX_STATIC_CHECK .
+    CLASS-METHODS connect
+      IMPORTING
+        !iv_host TYPE string
+        !iv_port TYPE string
+      RAISING
+        cx_static_check .
   PROTECTED SECTION.
-PRIVATE SECTION.
+  PRIVATE SECTION.
 
-  CONSTANTS:
-    BEGIN OF gc_state,
-      protocol_version_exchange TYPE i VALUE 1,
-      key_exchange              TYPE i VALUE 2,
-    END OF gc_state .
-  DATA mi_client TYPE REF TO if_apc_wsp_client .
-  DATA mv_buffer TYPE xstring .
-  DATA mv_state TYPE i .
+    CONSTANTS:
+      BEGIN OF gc_state,
+        protocol_version_exchange TYPE i VALUE 1,
+        key_exchange              TYPE i VALUE 2,
+      END OF gc_state .
+    DATA mi_client TYPE REF TO if_apc_wsp_client .
+    DATA mv_buffer TYPE xstring .
+    DATA mv_state TYPE i .
 
-  METHODS handle .
-  METHODS send
-    IMPORTING
-      !iv_message TYPE xstring
-    RAISING
-      cx_apc_error .
+    METHODS handle .
+    METHODS send
+      IMPORTING
+        !iv_message TYPE xstring
+      RAISING
+        cx_apc_error .
 ENDCLASS.
 
 
@@ -57,7 +56,7 @@ CLASS ZCL_OASSH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD HANDLE.
+  METHOD handle.
 
     DATA lv_remote_version TYPE string.
 
@@ -77,19 +76,19 @@ CLASS ZCL_OASSH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD IF_APC_WSP_EVENT_HANDLER~ON_CLOSE.
+  METHOD if_apc_wsp_event_handler~on_close.
     BREAK-POINT.
     WRITE / 'on_close'.
   ENDMETHOD.
 
 
-  METHOD IF_APC_WSP_EVENT_HANDLER~ON_ERROR.
+  METHOD if_apc_wsp_event_handler~on_error.
     BREAK-POINT.
     WRITE / 'on_error'.
   ENDMETHOD.
 
 
-  METHOD IF_APC_WSP_EVENT_HANDLER~ON_MESSAGE.
+  METHOD if_apc_wsp_event_handler~on_message.
     DATA lv_message TYPE xstring.
 
     TRY.
@@ -103,7 +102,7 @@ CLASS ZCL_OASSH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD IF_APC_WSP_EVENT_HANDLER~ON_OPEN.
+  METHOD if_apc_wsp_event_handler~on_open.
     DATA lv_xstr TYPE xstring.
 
     WRITE / 'on_open'.
@@ -119,7 +118,7 @@ CLASS ZCL_OASSH IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD SEND.
+  METHOD send.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
