@@ -53,7 +53,7 @@ CLASS ZCL_OASSH_MESSAGE_20 IMPLEMENTATION.
     rs_data-cookie = io_stream->take( 16 ).
     rs_data-kex_algorithms = io_stream->name_list_decode( ).
     rs_data-server_host_key_algorithms = io_stream->name_list_decode( ).
-    rs_data-encryption_algorithms_c_to_s = io_stream->name_list_decode(  ).
+    rs_data-encryption_algorithms_c_to_s = io_stream->name_list_decode( ).
     rs_data-encryption_algorithms_s_to_c = io_stream->name_list_decode( ).
     rs_data-mac_algorithms_c_to_s = io_stream->name_list_decode( ).
     rs_data-mac_algorithms_s_to_c = io_stream->name_list_decode( ).
