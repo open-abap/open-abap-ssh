@@ -39,11 +39,13 @@ CLASS ZCL_OASSH IMPLEMENTATION.
 
   METHOD connect.
 
-    DATA(lo_ssh) = NEW zcl_oassh( ).
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA ls_frame TYPE apc_tcp_frame.
 
-    DATA(ls_frame) = VALUE apc_tcp_frame(
-      frame_type   = if_apc_tcp_frame_types=>co_frame_type_fixed_length
-      fixed_length = 1 ).
+    CREATE OBJECT lo_ssh.
+
+    ls_frame-frame_type   = if_apc_tcp_frame_types=>co_frame_type_fixed_length.
+    ls_frame-fixed_length = 1.
 
     lo_ssh->mi_client = cl_apc_tcp_client_manager=>create(
       i_host          = iv_host
