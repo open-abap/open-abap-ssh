@@ -126,7 +126,11 @@ CLASS zcl_oassh IMPLEMENTATION.
 
     lv_xstr = cl_abap_codepage=>convert_to( 'SSH-2.0-abap' && cl_abap_char_utilities=>cr_lf ).
 
-    send( lv_xstr ).
+    TRY.
+        send( lv_xstr ).
+      CATCH cx_apc_error.
+        ASSERT 1 = 2.
+    ENDTRY.
 
     mv_state = gc_state-protocol_version_exchange.
 
