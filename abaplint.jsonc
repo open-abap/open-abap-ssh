@@ -5,13 +5,12 @@
   "dependencies": [
     {
       "url": "https://github.com/open-abap/open-abap",
-      "folder": "/open",
       "files": "/src/**/*.*"
     }
   ],
   "syntax": {
     "version": "open-abap",
-    "errorNamespace": "^(Z|Y|LCL_|TY_|LIF_)"
+    "errorNamespace": "."
   },
   "rules": {
     "7bit_ascii": true,
