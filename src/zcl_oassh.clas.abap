@@ -40,7 +40,7 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD connect.
 
     DATA lo_ssh TYPE REF TO zcl_oassh.
-    DATA ls_frame TYPE apc_tcp_frame.
+    DATA ls_frame TYPE if_abap_channel_types=>ty_apc_tcp_frame.
 
     CREATE OBJECT lo_ssh.
 
