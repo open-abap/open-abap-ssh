@@ -34,7 +34,7 @@ ENDCLASS.
 
 
 
-CLASS ZCL_OASSH IMPLEMENTATION.
+CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD connect.
@@ -147,7 +147,7 @@ CLASS ZCL_OASSH IMPLEMENTATION.
 
     li_message = li_message_manager->create_message( ).
 
-    ASSERT NOT iv_message IS INITIAL.
+    ASSERT iv_message IS NOT INITIAL.
 
     DO xstrlen( iv_message ) TIMES.
       lv_index = sy-index - 1.
