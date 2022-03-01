@@ -1,0 +1,25 @@
+{
+  "name": "open-abap-ssh",
+  "version": "1.0.0",
+  "private": true,
+  "description": "open-abap-ssh",
+  "scripts": {
+    "test": "npx abaplint && npm run unit",
+    "unit": "rm -rf output && abap_transpile test/abap_transpile.json && echo RUNNING && node output/index.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-abap/open-abap-ssh.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/open-abap/open-abap-ssh/issues"
+  },
+  "homepage": "https://github.com/open-abap/open-abap-ssh#readme",
+  "dependencies": {
+    "@abaplint/cli": "^2.85.32",
+    "@abaplint/runtime": "^1.8.11",
+    "@abaplint/transpiler-cli": "^1.8.11"
+  }
+}
