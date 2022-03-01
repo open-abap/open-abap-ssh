@@ -85,7 +85,6 @@ CLASS zcl_oassh IMPLEMENTATION.
             lv_padding_length = lo_stream->take( 1 ).
             ls_kexinit = zcl_oassh_message_20=>parse( lo_stream ).
             lo_stream->take( lv_padding_length ).
-            BREAK-POINT.
           ENDIF.
         ENDIF.
 
@@ -95,13 +94,11 @@ CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD if_apc_wsp_event_handler~on_close.
-    BREAK-POINT.
     WRITE / 'on_close'.
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_error.
-    BREAK-POINT.
     WRITE / 'on_error'.
   ENDMETHOD.
 
