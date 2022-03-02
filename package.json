@@ -18,7 +18,7 @@
   },
   "homepage": "https://github.com/open-abap/open-abap-ssh#readme",
   "dependencies": {
-    "@abaplint/cli": "^2.85.32",
+    "@abaplint/cli": "^2.85.34",
     "@abaplint/runtime": "^1.8.11",
     "@abaplint/transpiler-cli": "^1.8.11"
   }
