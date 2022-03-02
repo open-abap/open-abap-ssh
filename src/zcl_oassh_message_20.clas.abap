@@ -43,10 +43,12 @@ ENDCLASS.
 
 
 
-CLASS ZCL_OASSH_MESSAGE_20 IMPLEMENTATION.
+CLASS zcl_oassh_message_20 IMPLEMENTATION.
 
 
   METHOD parse.
+* https://datatracker.ietf.org/doc/html/rfc4253#section-7.1
+* SSH_MSG_KEXINIT
 
     rs_data-message_id = io_stream->take( 1 ).
     ASSERT rs_data-message_id = gc_message_id.
