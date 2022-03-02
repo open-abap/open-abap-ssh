@@ -1,53 +1,59 @@
-class ZCL_OASSH_STREAM definition
-  public
-  final
-  create public .
+CLASS zcl_oassh_stream DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
 
-public section.
+  PUBLIC SECTION.
 
-  methods CONSTRUCTOR
-    importing
-      !IV_HEX type XSTRING optional .
-  methods GET
-    returning
-      value(RV_HEX) type XSTRING .
-  methods TAKE
-    importing
-      !IV_LENGTH type I
-    returning
-      value(RV_HEX) type XSTRING .
-  methods APPEND
-    importing
-      !IV_HEX type XSEQUENCE .
-  methods NAME_LIST_ENCODE
-    importing
-      !IT_LIST type STRING_TABLE .
-  methods BOOLEAN_ENCODE
-    importing
-      !IV_BOOLEAN type ABAP_BOOL .
-  methods BOOLEAN_DECODE
-    returning
-      value(RV_BOOLEAN) type ABAP_BOOL .
-  methods NAME_LIST_DECODE
-    returning
-      value(RT_LIST) type STRING_TABLE .
-  methods UINT32_ENCODE
-    importing
-      !IV_INT type I .
-  methods UINT32_DECODE
-    returning
-      value(RV_INT) type I .
-  methods UINT32_DECODE_PEEK
-    returning
-      value(RV_INT) type I .
-  methods GET_LENGTH
-    returning
-      value(RV_LENGTH) type I .
-  methods CLEAR .
+    METHODS constructor
+      IMPORTING
+        !iv_hex TYPE xstring OPTIONAL .
+    METHODS get
+      RETURNING
+        VALUE(rv_hex) TYPE xstring .
+    METHODS take
+      IMPORTING
+        !iv_length    TYPE i
+      RETURNING
+        VALUE(rv_hex) TYPE xstring .
+    METHODS append
+      IMPORTING
+        !iv_hex TYPE xsequence .
+    METHODS name_list_encode
+      IMPORTING
+        !it_list TYPE string_table .
+    METHODS boolean_encode
+      IMPORTING
+        !iv_boolean TYPE abap_bool .
+    METHODS boolean_decode
+      RETURNING
+        VALUE(rv_boolean) TYPE abap_bool .
+    METHODS name_list_decode
+      RETURNING
+        VALUE(rt_list) TYPE string_table .
+    METHODS uint32_encode
+      IMPORTING
+        !iv_int TYPE i .
+    METHODS uint32_decode
+      RETURNING
+        VALUE(rv_int) TYPE i .
+    METHODS uint32_decode_peek
+      RETURNING
+        VALUE(rv_int) TYPE i .
+    METHODS get_length
+      RETURNING
+        VALUE(rv_length) TYPE i .
+    METHODS clear .
+    METHODS string_encode
+      IMPORTING
+        !iv_string TYPE xstring .
+    METHODS string_decode
+      RETURNING
+        VALUE(rv_string) TYPE xstring .
   PROTECTED SECTION.
-private section.
+  PRIVATE SECTION.
 
-  data MV_HEX type XSTRING .
+    DATA mv_hex TYPE xstring .
 ENDCLASS.
 
 
@@ -121,6 +127,26 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
     uint32_encode( strlen( lv_text ) ).
     append( cl_abap_codepage=>convert_to( lv_text ) ).
+
+  ENDMETHOD.
+
+
+  METHOD string_decode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+
+    DATA lv_len TYPE i.
+
+    lv_len = uint32_decode( ).
+    rv_string = take( lv_len ).
+
+  ENDMETHOD.
+
+
+  METHOD string_encode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+
+    uint32_encode( xstrlen( iv_string ) ).
+    append( iv_string ).
 
   ENDMETHOD.
 

@@ -3,9 +3,9 @@
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
    <VSEOCLASS>
-    <CLSNAME>ZCL_OASSH</CLSNAME>
+    <CLSNAME>ZCL_OASSH_MESSAGE_ECDH_31</CLSNAME>
     <LANGU>E</LANGU>
-    <DESCRIPT>open-abap-ssh</DESCRIPT>
+    <DESCRIPT>SSH_MSG_KEX_ECDH_REPLY</DESCRIPT>
     <STATE>1</STATE>
     <CLSCCINCL>X</CLSCCINCL>
     <FIXPT>X</FIXPT>
