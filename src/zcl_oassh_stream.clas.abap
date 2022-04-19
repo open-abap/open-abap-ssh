@@ -37,12 +37,23 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS uint32_decode
       RETURNING
         VALUE(rv_int) TYPE i .
+    METHODS uint32_decode_peek
+      RETURNING
+        VALUE(rv_int) TYPE i .
     METHODS get_length
       RETURNING
         VALUE(rv_length) TYPE i .
+    METHODS clear .
+    METHODS string_encode
+      IMPORTING
+        !iv_string TYPE xstring .
+    METHODS string_decode
+      RETURNING
+        VALUE(rv_string) TYPE xstring .
   PROTECTED SECTION.
   PRIVATE SECTION.
-    DATA mv_hex TYPE xstring.
+
+    DATA mv_hex TYPE xstring .
 ENDCLASS.
 
 
@@ -69,6 +80,11 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
       WHEN OTHERS.
         ASSERT 1 = 2.
     ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD clear.
+    CLEAR mv_hex.
   ENDMETHOD.
 
 
@@ -115,6 +131,26 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD string_decode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+
+    DATA lv_len TYPE i.
+
+    lv_len = uint32_decode( ).
+    rv_string = take( lv_len ).
+
+  ENDMETHOD.
+
+
+  METHOD string_encode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+
+    uint32_encode( xstrlen( iv_string ) ).
+    append( iv_string ).
+
+  ENDMETHOD.
+
+
   METHOD take.
     rv_hex = mv_hex(iv_length).
     mv_hex = mv_hex+iv_length.
@@ -124,6 +160,13 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
   METHOD uint32_decode.
 
     rv_int = take( 4 ).
+
+  ENDMETHOD.
+
+
+  METHOD uint32_decode_peek.
+
+    rv_int = mv_hex(4).
 
   ENDMETHOD.
 

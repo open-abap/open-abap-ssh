@@ -21,10 +21,12 @@ CLASS zcl_oassh DEFINITION
         key_exchange              TYPE i VALUE 2,
       END OF gc_state .
     DATA mi_client TYPE REF TO if_apc_wsp_client .
-    DATA mv_buffer TYPE xstring .
+    DATA mo_stream TYPE REF TO zcl_oassh_stream .
     DATA mv_state TYPE i .
 
-    METHODS handle .
+    METHODS handle
+      RAISING
+        cx_apc_error .
     METHODS send
       IMPORTING
         !iv_message TYPE xstring
@@ -34,7 +36,7 @@ ENDCLASS.
 
 
 
-CLASS zcl_oassh IMPLEMENTATION.
+CLASS ZCL_OASSH IMPLEMENTATION.
 
 
   METHOD connect.
@@ -43,6 +45,8 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA ls_frame TYPE if_abap_channel_types=>ty_apc_tcp_frame.
 
     CREATE OBJECT lo_ssh.
+
+    CREATE OBJECT lo_ssh->mo_stream.
 
     ls_frame-frame_type   = if_apc_tcp_frame_types=>co_frame_type_fixed_length.
     ls_frame-fixed_length = 1.
@@ -61,30 +65,31 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD handle.
 
     DATA lv_remote_version TYPE string.
-    DATA lo_stream         TYPE REF TO zcl_oassh_stream.
     DATA lv_padding_length TYPE i.
     DATA lv_length         TYPE i.
     DATA ls_kexinit        TYPE zcl_oassh_message_20=>ty_data.
 
     CASE mv_state.
       WHEN gc_state-protocol_version_exchange.
-        IF mv_buffer CP |*{ cl_abap_codepage=>convert_to( |{ cl_abap_char_utilities=>cr_lf }| ) }|.
-          lv_remote_version = cl_abap_codepage=>convert_from( mv_buffer ).
-          CLEAR mv_buffer.
+        IF mo_stream->get( ) CP |*{ cl_abap_codepage=>convert_to( |{ cl_abap_char_utilities=>cr_lf }| ) }|.
+          lv_remote_version = cl_abap_codepage=>convert_from( mo_stream->get( ) ).
+          mo_stream->clear( ).
           mv_state = gc_state-key_exchange.
         ENDIF.
       WHEN gc_state-key_exchange.
-* todo, check buffer contains a full packet, and return the packet payload
 * https://datatracker.ietf.org/doc/html/rfc4253#section-7
 
-        IF xstrlen( mv_buffer ) > 4.
-          CREATE OBJECT lo_stream EXPORTING iv_hex = mv_buffer.
-          lv_length = lo_stream->uint32_decode( ).
-          IF lo_stream->get_length( ) = lv_length.
+        IF mo_stream->get_length( ) > 4.
+          lv_length = mo_stream->uint32_decode_peek( ).
+          IF mo_stream->get_length( ) = lv_length.
+            mo_stream->uint32_decode( ).
 * there is no MAC negotiated at this point in time
-            lv_padding_length = lo_stream->take( 1 ).
-            ls_kexinit = zcl_oassh_message_20=>parse( lo_stream ).
-            lo_stream->take( lv_padding_length ).
+            lv_padding_length = mo_stream->take( 1 ).
+            ls_kexinit = zcl_oassh_message_20=>parse( mo_stream ).
+            mo_stream->take( lv_padding_length / 2 ).
+
+            ls_kexinit-cookie = '11223344556677881122334455667788'. " todo, this should value should be random
+            send( zcl_oassh_message_20=>serialize( ls_kexinit )->get( ) ).
           ENDIF.
         ENDIF.
 
@@ -94,11 +99,13 @@ CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD if_apc_wsp_event_handler~on_close.
+    BREAK-POINT.
     WRITE / 'on_close'.
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_error.
+    BREAK-POINT.
     WRITE / 'on_error'.
   ENDMETHOD.
 
@@ -108,17 +115,17 @@ CLASS zcl_oassh IMPLEMENTATION.
 
     TRY.
         lv_message = i_message->get_binary( ).
-      CATCH cx_root.
+        mo_stream->append( lv_message ).
+        handle( ).
+      CATCH cx_root INTO DATA(lx_error).
+        BREAK-POINT.
     ENDTRY.
-    mv_buffer = mv_buffer && lv_message.
-
-    handle( ).
-
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_open.
     DATA lv_xstr TYPE xstring.
+    BREAK-POINT.
 
     WRITE / 'on_open'.
 
@@ -141,8 +148,8 @@ CLASS zcl_oassh IMPLEMENTATION.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
-    DATA lv_index TYPE i.
-    DATA lv_hex TYPE xstring.
+    DATA lv_index           TYPE i.
+    DATA lv_hex             TYPE xstring.
 
     li_message_manager ?= mi_client->get_message_manager( ).
 
