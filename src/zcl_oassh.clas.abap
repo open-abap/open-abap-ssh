@@ -5,7 +5,6 @@ CLASS zcl_oassh DEFINITION
   PUBLIC SECTION.
 
     INTERFACES if_apc_wsp_event_handler .
-    INTERFACES if_apc_wsp_event_handler_base .
 
     CLASS-METHODS connect
       IMPORTING
