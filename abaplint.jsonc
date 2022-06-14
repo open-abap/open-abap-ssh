@@ -13,6 +13,17 @@
     "errorNamespace": "."
   },
   "rules": {
+    "cds_legacy_view": true,
+    "classic_exceptions_overlap": true,
+    "local_testclass_consistency": true,
+    "no_external_form_calls": true,
+    "no_inline_in_optional_branches": true,
+    "no_public_attributes": true,
+    "nrob_consistency": true,
+    "pragma_style": true,
+    "slow_parameter_passing": true,
+    "superfluous_value": true,
+    "unnecessary_pragma": true,
     "7bit_ascii": true,
     "abapdoc": false,
     "align_parameters": true,
@@ -29,7 +40,6 @@
     "check_comments": false,
     "check_ddic": true,
     "check_include": true,
-    "check_no_handler_pragma": true,
     "check_subrc": true,
     "check_syntax": true,
     "check_text_elements": true,
@@ -49,16 +59,8 @@
       "severity": "Error",
       "spaces": 1
     },
-    "cyclic_oo": {
-      "exclude": [],
-      "severity": "Error",
-      "skip": []
-    },
-    "cyclomatic_complexity": {
-      "exclude": [],
-      "severity": "Error",
-      "max": 20
-    },
+    "cyclic_oo": true,
+    "cyclomatic_complexity": true,
     "dangerous_statement": {
       "exclude": [],
       "severity": "Error",
@@ -71,8 +73,8 @@
       "generateSubroutine": true,
       "deleteReport": true,
       "deleteTextpool": true,
+      "exportDynpro": true,
       "deleteDynpro": true,
-      "importDynpro": true,
       "dynamicSQL": true
     },
     "db_operation_in_loop": true,
@@ -94,10 +96,9 @@
     },
     "empty_statement": true,
     "empty_structure": {
-      "exclude": [],
-      "severity": "Error",
       "loop": true,
       "if": true,
+      "when": true,
       "while": true,
       "case": true,
       "select": true,
@@ -105,18 +106,9 @@
       "at": true,
       "try": true
     },
-    "exit_or_check": {
-      "exclude": [],
-      "severity": "Error",
-      "allowExit": false,
-      "allowCheck": false
-    },
+    "exit_or_check": true,
     "exporting": true,
-    "forbidden_identifier": {
-      "exclude": [],
-      "severity": "Error",
-      "check": []
-    },
+    "forbidden_identifier": true,
     "forbidden_pseudo_and_pragma": {
       "exclude": [],
       "severity": "Error",
@@ -210,7 +202,6 @@
       "exception": "^LCX_.+$",
       "test": "^LTCL_.+$"
     },
-    "local_testclass_location": true,
     "local_variable_names": {
       "exclude": [],
       "severity": "Error",
@@ -245,11 +236,6 @@
     "newline_between_methods": true,
     "no_aliases": true,
     "no_chained_assignment": true,
-    "no_public_attributes": {
-      "exclude": [],
-      "severity": "Error",
-      "allowReadOnly": false
-    },
     "no_yoda_conditions": {
       "exclude": [],
       "severity": "Error",
@@ -287,7 +273,6 @@
     "parser_702_chaining": true,
     "parser_error": true,
     "parser_missing_space": true,
-    "pragma_placement": true,
     "prefer_corresponding": true,
     "prefer_inline": true,
     "prefer_is_not": true,
