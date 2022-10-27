@@ -5,7 +5,8 @@
   "description": "open-abap-ssh",
   "scripts": {
     "test": "npx abaplint && npm run unit",
-    "unit": "rm -rf output && abap_transpile test/abap_transpile.json && echo RUNNING && node output/index.mjs"
+    "build": "rm -rf output && abap_transpile test/abap_transpile.json",
+    "unit": "npm run build && echo RUNNING && node output/index.mjs"
   },
   "repository": {
     "type": "git",

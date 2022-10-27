@@ -13,6 +13,7 @@
         "${workspaceFolder}/output/index.mjs",
         "${workspaceFolder}/node_modules/@abaplint/runtime/**"
       ],
+      "preLaunchTask": "npm: build",
       "program": "${workspaceFolder}/output/index.mjs",
     }
   ]
