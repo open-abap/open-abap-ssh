@@ -35,11 +35,21 @@ CLASS ZCL_OASSH_MESSAGE_ECDH_30 IMPLEMENTATION.
 
 
   METHOD parse.
-    BREAK-POINT.
+* https://datatracker.ietf.org/doc/html/rfc5656#section-7.1
+* https://datatracker.ietf.org/doc/html/rfc5656#section-4
+
+    rs_data-message_id = io_stream->take( 1 ).
+    ASSERT rs_data-message_id = gc_message_id.
+    rs_data-q_c = io_stream->string_decode( ).
+
   ENDMETHOD.
 
 
   METHOD serialize.
-    BREAK-POINT.
+
+    CREATE OBJECT ro_stream.
+    ro_stream->append( gc_message_id ).
+    ro_stream->string_encode( is_data-q_c ).
+
   ENDMETHOD.
 ENDCLASS.
