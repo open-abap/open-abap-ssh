@@ -30,7 +30,14 @@
     "allowed_object_naming": true,
     "allowed_object_types": false,
     "ambiguous_statement": true,
-    "avoid_use": true,
+    "avoid_use": {
+      "define": true,
+      "statics": true,
+      "defaultKey": true,
+      "break": false,   // todo
+      "testSeams": true,
+      "describeLines": true
+    },
     "begin_end_names": true,
     "begin_single_include": true,
     "call_transaction_authority_check": true,
@@ -54,58 +61,18 @@
       "mapping": []
     },
     "constructor_visibility_public": true,
-    "contains_tab": {
-      "exclude": [],
-      "severity": "Error",
-      "spaces": 1
-    },
+    "contains_tab": true,
     "cyclic_oo": true,
     "cyclomatic_complexity": true,
-    "dangerous_statement": {
-      "exclude": [],
-      "severity": "Error",
-      "execSQL": true,
-      "kernelCall": true,
-      "systemCall": true,
-      "insertReport": true,
-      "generateDynpro": true,
-      "generateReport": true,
-      "generateSubroutine": true,
-      "deleteReport": true,
-      "deleteTextpool": true,
-      "exportDynpro": true,
-      "deleteDynpro": true,
-      "dynamicSQL": true
-    },
+    "dangerous_statement": true,
     "db_operation_in_loop": true,
     "definitions_top": true,
     "description_empty": true,
-    "double_space": {
-      "exclude": [],
-      "severity": "Error",
-      "keywords": true,
-      "startParen": true,
-      "endParen": true,
-      "afterColon": true
-    },
+    "double_space": true,
     "downport": true,
-    "empty_line_in_statement": {
-      "exclude": [],
-      "severity": "Error",
-      "allowChained": false
-    },
+    "empty_line_in_statement": true,
     "empty_statement": true,
-    "empty_structure": {
-      "loop": true,
-      "if": true,
-      "when": true,
-      "while": true,
-      "case": true,
-      "select": true,
-      "do": true,
-      "at": true,
-      "try": true
-    },
+    "empty_structure": true,
     "exit_or_check": true,
     "exporting": true,
     "forbidden_identifier": true,
