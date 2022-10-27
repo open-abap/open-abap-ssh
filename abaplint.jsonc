@@ -13,6 +13,8 @@
     "errorNamespace": "."
   },
   "rules": {
+    "cds_comment_style": true,
+    "change_if_to_case": true,
     "cds_legacy_view": true,
     "classic_exceptions_overlap": true,
     "local_testclass_consistency": true,
@@ -104,50 +106,13 @@
     "identical_form_names": true,
     "if_in_if": true,
     "implement_methods": true,
-    "in_statement_indentation": {
-      "exclude": [],
-      "severity": "Error",
-      "blockStatements": 2,
-      "ignoreExceptions": true
-    },
-    "indentation": {
-      "exclude": [],
-      "severity": "Error",
-      "ignoreExceptions": true,
-      "alignTryCatch": false,
-      "selectionScreenBlockIndentation": false,
-      "globalClassSkipFirst": false,
-      "ignoreGlobalClassDefinition": false,
-      "ignoreGlobalInterface": false
-    },
+    "in_statement_indentation": true,
+    "indentation": true,
     "inline_data_old_versions": true,
-    "intf_referencing_clas": {
-      "exclude": [],
-      "severity": "Error",
-      "allow": []
-    },
-    "keep_single_parameter_on_one_line": {
-      "exclude": [],
-      "severity": "Error",
-      "length": 120
-    },
-    "keyword_case": {
-      "exclude": [],
-      "severity": "Error",
-      "style": "upper",
-      "ignoreExceptions": true,
-      "ignoreLowerClassImplmentationStatement": true,
-      "ignoreGlobalClassDefinition": false,
-      "ignoreGlobalInterface": false,
-      "ignoreFunctionModuleName": false,
-      "ignoreGlobalClassBoundaries": false,
-      "ignoreKeywords": []
-    },
-    "line_break_multiple_parameters": {
-      "exclude": [],
-      "severity": "Error",
-      "count": 1
-    },
+    "intf_referencing_clas": true,
+    "keep_single_parameter_on_one_line": true,
+    "keyword_case": true,
+    "line_break_multiple_parameters": true,
     "line_break_style": false,
     "line_length": {
       "exclude": [],
