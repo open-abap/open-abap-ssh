@@ -13,13 +13,33 @@
     "errorNamespace": "."
   },
   "rules": {
+    "cds_comment_style": true,
+    "change_if_to_case": true,
+    "cds_legacy_view": true,
+    "classic_exceptions_overlap": true,
+    "local_testclass_consistency": true,
+    "no_external_form_calls": true,
+    "no_inline_in_optional_branches": true,
+    "no_public_attributes": true,
+    "nrob_consistency": true,
+    "pragma_style": true,
+    "slow_parameter_passing": true,
+    "superfluous_value": true,
+    "unnecessary_pragma": true,
     "7bit_ascii": true,
     "abapdoc": false,
     "align_parameters": true,
     "allowed_object_naming": true,
     "allowed_object_types": false,
     "ambiguous_statement": true,
-    "avoid_use": true,
+    "avoid_use": {
+      "define": true,
+      "statics": true,
+      "defaultKey": true,
+      "break": false,   // todo
+      "testSeams": true,
+      "describeLines": true
+    },
     "begin_end_names": true,
     "begin_single_include": true,
     "call_transaction_authority_check": true,
@@ -29,7 +49,6 @@
     "check_comments": false,
     "check_ddic": true,
     "check_include": true,
-    "check_no_handler_pragma": true,
     "check_subrc": true,
     "check_syntax": true,
     "check_text_elements": true,
@@ -44,79 +63,21 @@
       "mapping": []
     },
     "constructor_visibility_public": true,
-    "contains_tab": {
-      "exclude": [],
-      "severity": "Error",
-      "spaces": 1
-    },
-    "cyclic_oo": {
-      "exclude": [],
-      "severity": "Error",
-      "skip": []
-    },
-    "cyclomatic_complexity": {
-      "exclude": [],
-      "severity": "Error",
-      "max": 20
-    },
-    "dangerous_statement": {
-      "exclude": [],
-      "severity": "Error",
-      "execSQL": true,
-      "kernelCall": true,
-      "systemCall": true,
-      "insertReport": true,
-      "generateDynpro": true,
-      "generateReport": true,
-      "generateSubroutine": true,
-      "deleteReport": true,
-      "deleteTextpool": true,
-      "deleteDynpro": true,
-      "importDynpro": true,
-      "dynamicSQL": true
-    },
+    "contains_tab": true,
+    "cyclic_oo": true,
+    "cyclomatic_complexity": true,
+    "dangerous_statement": true,
     "db_operation_in_loop": true,
     "definitions_top": true,
     "description_empty": true,
-    "double_space": {
-      "exclude": [],
-      "severity": "Error",
-      "keywords": true,
-      "startParen": true,
-      "endParen": true,
-      "afterColon": true
-    },
+    "double_space": true,
     "downport": true,
-    "empty_line_in_statement": {
-      "exclude": [],
-      "severity": "Error",
-      "allowChained": false
-    },
+    "empty_line_in_statement": true,
     "empty_statement": true,
-    "empty_structure": {
-      "exclude": [],
-      "severity": "Error",
-      "loop": true,
-      "if": true,
-      "while": true,
-      "case": true,
-      "select": true,
-      "do": true,
-      "at": true,
-      "try": true
-    },
-    "exit_or_check": {
-      "exclude": [],
-      "severity": "Error",
-      "allowExit": false,
-      "allowCheck": false
-    },
+    "empty_structure": true,
+    "exit_or_check": true,
     "exporting": true,
-    "forbidden_identifier": {
-      "exclude": [],
-      "severity": "Error",
-      "check": []
-    },
+    "forbidden_identifier": true,
     "forbidden_pseudo_and_pragma": {
       "exclude": [],
       "severity": "Error",
@@ -145,50 +106,13 @@
     "identical_form_names": true,
     "if_in_if": true,
     "implement_methods": true,
-    "in_statement_indentation": {
-      "exclude": [],
-      "severity": "Error",
-      "blockStatements": 2,
-      "ignoreExceptions": true
-    },
-    "indentation": {
-      "exclude": [],
-      "severity": "Error",
-      "ignoreExceptions": true,
-      "alignTryCatch": false,
-      "selectionScreenBlockIndentation": false,
-      "globalClassSkipFirst": false,
-      "ignoreGlobalClassDefinition": false,
-      "ignoreGlobalInterface": false
-    },
+    "in_statement_indentation": true,
+    "indentation": true,
     "inline_data_old_versions": true,
-    "intf_referencing_clas": {
-      "exclude": [],
-      "severity": "Error",
-      "allow": []
-    },
-    "keep_single_parameter_on_one_line": {
-      "exclude": [],
-      "severity": "Error",
-      "length": 120
-    },
-    "keyword_case": {
-      "exclude": [],
-      "severity": "Error",
-      "style": "upper",
-      "ignoreExceptions": true,
-      "ignoreLowerClassImplmentationStatement": true,
-      "ignoreGlobalClassDefinition": false,
-      "ignoreGlobalInterface": false,
-      "ignoreFunctionModuleName": false,
-      "ignoreGlobalClassBoundaries": false,
-      "ignoreKeywords": []
-    },
-    "line_break_multiple_parameters": {
-      "exclude": [],
-      "severity": "Error",
-      "count": 1
-    },
+    "intf_referencing_clas": true,
+    "keep_single_parameter_on_one_line": true,
+    "keyword_case": true,
+    "line_break_multiple_parameters": true,
     "line_break_style": false,
     "line_length": {
       "exclude": [],
@@ -210,7 +134,6 @@
       "exception": "^LCX_.+$",
       "test": "^LTCL_.+$"
     },
-    "local_testclass_location": true,
     "local_variable_names": {
       "exclude": [],
       "severity": "Error",
@@ -245,11 +168,6 @@
     "newline_between_methods": true,
     "no_aliases": true,
     "no_chained_assignment": true,
-    "no_public_attributes": {
-      "exclude": [],
-      "severity": "Error",
-      "allowReadOnly": false
-    },
     "no_yoda_conditions": {
       "exclude": [],
       "severity": "Error",
@@ -287,7 +205,6 @@
     "parser_702_chaining": true,
     "parser_error": true,
     "parser_missing_space": true,
-    "pragma_placement": true,
     "prefer_corresponding": true,
     "prefer_inline": true,
     "prefer_is_not": true,

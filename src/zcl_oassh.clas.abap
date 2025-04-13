@@ -112,12 +112,13 @@ CLASS ZCL_OASSH IMPLEMENTATION.
 
   METHOD if_apc_wsp_event_handler~on_message.
     DATA lv_message TYPE xstring.
+    DATA lx_error   TYPE REF TO cx_root.
 
     TRY.
         lv_message = i_message->get_binary( ).
         mo_stream->append( lv_message ).
         handle( ).
-      CATCH cx_root INTO DATA(lx_error).
+      CATCH cx_root INTO lx_error.
         BREAK-POINT.
     ENDTRY.
   ENDMETHOD.
