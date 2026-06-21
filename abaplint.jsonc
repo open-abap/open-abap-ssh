@@ -1,6 +1,7 @@
 {
   "global": {
-    "files": "/src/**/*.*"
+    "files": "/src/**/*.*",
+    "errorOnDuplicateFilenames": true
   },
   "dependencies": [
     {
@@ -35,6 +36,8 @@
     "avoid_use": {
       "define": true,
       "statics": true,
+      "exportToDatabase": true,
+      "exportToMemory": true,
       "defaultKey": true,
       "break": false,   // todo
       "testSeams": true,
