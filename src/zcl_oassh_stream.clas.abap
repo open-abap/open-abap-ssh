@@ -7,36 +7,36 @@ CLASS zcl_oassh_stream DEFINITION
 
     METHODS constructor
       IMPORTING
-        !iv_hex TYPE xstring OPTIONAL .
+        iv_hex TYPE xstring OPTIONAL .
     METHODS get
       RETURNING
         VALUE(rv_hex) TYPE xstring .
     METHODS take
       IMPORTING
-        !iv_length    TYPE i
+        iv_length    TYPE i
       RETURNING
         VALUE(rv_hex) TYPE xstring .
     METHODS append
       IMPORTING
-        !iv_hex TYPE xsequence .
+        iv_hex TYPE xsequence .
     METHODS name_list_encode
       IMPORTING
-        !it_list TYPE string_table .
+        it_list TYPE string_table .
     METHODS boolean_encode
       IMPORTING
-        !iv_boolean TYPE abap_bool .
+        iv_boolean TYPE abap_bool .
     METHODS boolean_decode
       RETURNING
         VALUE(rv_boolean) TYPE abap_bool .
     METHODS byte_encode
       IMPORTING
-        !iv_byte TYPE x .
+        iv_byte TYPE x .
     METHODS byte_decode
       RETURNING
         VALUE(rv_byte) TYPE x .
     METHODS mpint_encode
       IMPORTING
-        !iv_int TYPE xsequence .
+        iv_int TYPE xsequence .
     METHODS mpint_decode
       RETURNING
         VALUE(rv_int) TYPE xstring .
@@ -45,7 +45,7 @@ CLASS zcl_oassh_stream DEFINITION
         VALUE(rt_list) TYPE string_table .
     METHODS uint32_encode
       IMPORTING
-        !iv_int TYPE i .
+        iv_int TYPE i .
     METHODS uint32_decode
       RETURNING
         VALUE(rv_int) TYPE i .
@@ -58,7 +58,7 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS clear .
     METHODS string_encode
       IMPORTING
-        !iv_string TYPE xstring .
+        iv_string TYPE xstring .
     METHODS string_decode
       RETURNING
         VALUE(rv_string) TYPE xstring .

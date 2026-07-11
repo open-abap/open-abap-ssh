@@ -153,14 +153,8 @@
     "max_one_statement": true,
     "message_exists": true,
     "method_implemented_twice": true,
-    "method_length": {
-      "exclude": [],
-      "severity": "Error",
-      "statements": 100,
-      "errorWhenEmpty": true,
-      "ignoreTestClasses": false,
-      "checkForms": true
-    },
+    "no_exclamation_escape": true,
+    "method_length": true,
     "method_overwrites_builtin": true,
     "method_parameter_names": true,
     "mix_returning": true,
@@ -227,12 +221,7 @@
     "short_case": true,
     "sicf_consistency": true,
     "space_before_colon": true,
-    "space_before_dot": {
-      "exclude": [],
-      "severity": "Error",
-      "ignoreGlobalDefinition": true,
-      "ignoreExceptions": true
-    },
+    "space_before_dot": true,
     "sql_escape_host_variables": true,
     "start_at_tab": true,
     "static_call_via_instance": true,

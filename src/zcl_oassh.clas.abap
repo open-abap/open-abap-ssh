@@ -8,8 +8,8 @@ CLASS zcl_oassh DEFINITION
 
     CLASS-METHODS connect
       IMPORTING
-        !iv_host TYPE string
-        !iv_port TYPE string
+        iv_host TYPE string
+        iv_port TYPE string
       RAISING
         cx_static_check .
   PROTECTED SECTION.
@@ -29,7 +29,7 @@ CLASS zcl_oassh DEFINITION
         cx_apc_error .
     METHODS send
       IMPORTING
-        !iv_message TYPE xstring
+        iv_message TYPE xstring
       RAISING
         cx_apc_error .
 ENDCLASS.
