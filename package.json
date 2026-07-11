@@ -5,7 +5,7 @@
   "description": "open-abap-ssh",
   "scripts": {
     "test": "npx abaplint && npm run unit",
-    "build": "rm -rf output && abap_transpile test/abap_transpile.json",
+    "build": "rimraf output && abap_transpile test/abap_transpile.json",
     "unit": "npm run build && echo RUNNING && node output/index.mjs"
   },
   "repository": {
@@ -22,5 +22,8 @@
     "@abaplint/cli": "^2.119.63",
     "@abaplint/runtime": "^2.13.38",
     "@abaplint/transpiler-cli": "^2.13.38"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3"
   }
 }
