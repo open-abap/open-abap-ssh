@@ -18,16 +18,16 @@
 
 ## M3 — Symmetric crypto
 - [x] `zcl_oassh_aes` + FIPS 197 vectors
-- [ ] `zcl_oassh_ctr` + SP 800-38A vectors
+- [x] `zcl_oassh_ctr` + SP 800-38A vectors
 
 ## M4 — Packet protocol & full kex ⭐
-- [ ] `zcl_oassh_packet`: framing, padding, MAC, sequence numbers
-- [ ] messages 20/21/30/31 complete; own algorithm proposal + random cookie
-- [ ] `zcl_oassh_transport` state machine through NEWKEYS
-- [ ] demo: encrypted transport against real OpenSSH (tier 3)
+- [x] `zcl_oassh_packet`: framing, padding, MAC, sequence numbers
+- [x] messages 20/21/30/31 complete; own algorithm proposal + random cookie
+- [x] `zcl_oassh_transport` state machine through NEWKEYS
+- [x] demo: encrypted transport against real OpenSSH (tier 3)
 
 ## M5 — Host key verification
-- [ ] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
+- [x] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
 - [ ] verify server signature over `H`; known-hosts callback
 
 ## M6 — Authentication

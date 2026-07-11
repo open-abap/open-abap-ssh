@@ -64,3 +64,16 @@ Note this contrasts with `x`-to-`i` assignment, which is unsigned (`0xFF` -> 255
 
 **Workaround:** rebuild the string with `CONCATENATE ... IN BYTE MODE` around
 the byte being changed.
+
+## Runtime `XString.set()` does not normalize lowercase hexadecimal text
+
+**Found in:** M4 — Node TCP integration adapter
+
+Passing Node's default lowercase `Buffer.toString('hex')` result to
+`new abap.types.XString().set(...)` preserves the lowercase representation.
+Byte comparisons against ABAP hexadecimal literals are then case-sensitive, so
+the incoming `0d0a` SSH version terminator did not compare equal to the ABAP
+constant `0D0A` even though both represent the same bytes.
+
+**Workaround:** uppercase hexadecimal strings at every handwritten JavaScript
+boundary before assigning them to an open-abap `XString`.

@@ -10,12 +10,16 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_host TYPE string
         iv_port TYPE string
+        ii_random TYPE REF TO zif_oassh_random
+        ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RAISING
         cx_static_check.
 
     METHODS constructor
       IMPORTING
-        ii_socket TYPE REF TO zif_oassh_socket.
+        ii_socket TYPE REF TO zif_oassh_socket
+        ii_random TYPE REF TO zif_oassh_random
+        ii_host_verifier TYPE REF TO zif_oassh_host_verifier.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -23,10 +27,15 @@ CLASS zcl_oassh DEFINITION
       BEGIN OF gc_state,
         protocol_version_exchange TYPE i VALUE 1,
         key_exchange              TYPE i VALUE 2,
+        encrypted                 TYPE i VALUE 3,
       END OF gc_state.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
+    DATA mi_random TYPE REF TO zif_oassh_random.
     DATA mo_stream TYPE REF TO zcl_oassh_stream.
+    DATA mo_plain_packet TYPE REF TO zcl_oassh_packet.
+    DATA mo_transport TYPE REF TO zcl_oassh_transport.
     DATA mv_state  TYPE i.
+    DATA mv_client_version TYPE xstring.
 
     METHODS handle
       RAISING
@@ -49,7 +58,9 @@ CLASS zcl_oassh IMPLEMENTATION.
 
     CREATE OBJECT lo_ssh
       EXPORTING
-        ii_socket = li_socket.
+        ii_socket        = li_socket
+        ii_random        = ii_random
+        ii_host_verifier = ii_host_verifier.
 
     li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
@@ -59,38 +70,72 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD constructor.
     mi_socket = ii_socket.
+    mi_random = ii_random.
     CREATE OBJECT mo_stream.
+    mo_plain_packet = NEW #( ii_random = mi_random ).
+    mo_transport = NEW #(
+      ii_random        = mi_random
+      ii_host_verifier = ii_host_verifier ).
   ENDMETHOD.
 
 
   METHOD handle.
 
-    DATA lv_padding_length TYPE i.
-    DATA lv_length         TYPE i.
-    DATA ls_kexinit        TYPE zcl_oassh_message_20=>ty_data.
+    DATA lv_length TYPE i.
+    DATA lv_total_length TYPE i.
+    DATA lv_wire TYPE xstring.
+    DATA lv_payload TYPE xstring.
+    DATA lv_reply TYPE xstring.
+    DATA lv_server_version TYPE xstring.
+    DATA lv_version_length TYPE i.
+    DATA lv_version_data TYPE xstring.
+    DATA lv_offset TYPE i.
 
     CASE mv_state.
       WHEN gc_state-protocol_version_exchange.
-        IF mo_stream->get( ) CP |*{ zcl_oassh_ascii=>c_cr_lf }|.
-          mo_stream->clear( ).
-          mv_state = gc_state-key_exchange.
-        ENDIF.
+        lv_version_data = mo_stream->get( ).
+        lv_version_length = xstrlen( lv_version_data ).
+        WHILE lv_offset + 1 < lv_version_length.
+          IF lv_version_data+lv_offset(2) = zcl_oassh_ascii=>c_cr_lf.
+            lv_server_version = mo_stream->take( lv_offset ).
+            mo_stream->take( 2 ).
+            ASSERT lv_server_version(4) = '5353482D'.
+            lv_payload = mo_transport->start_kex(
+              iv_client_version = mv_client_version
+              iv_server_version = lv_server_version ).
+            mi_socket->send( mo_plain_packet->encode( lv_payload ) ).
+            mv_state = gc_state-key_exchange.
+            IF mo_stream->get_length( ) > 0.
+              handle( ).
+            ENDIF.
+            RETURN.
+          ENDIF.
+          lv_offset = lv_offset + 1.
+        ENDWHILE.
       WHEN gc_state-key_exchange.
 * https://datatracker.ietf.org/doc/html/rfc4253#section-7
-
-        IF mo_stream->get_length( ) > 4.
+        WHILE mo_stream->get_length( ) >= 8.
           lv_length = mo_stream->uint32_decode_peek( ).
-          IF mo_stream->get_length( ) = lv_length.
-            mo_stream->uint32_decode( ).
-* there is no MAC negotiated at this point in time
-            lv_padding_length = mo_stream->take( 1 ).
-            ls_kexinit = zcl_oassh_message_20=>parse( mo_stream ).
-            mo_stream->take( lv_padding_length / 2 ).
-
-            ls_kexinit-cookie = '11223344556677881122334455667788'. " todo, this should value should be random
-            mi_socket->send( zcl_oassh_message_20=>serialize( ls_kexinit )->get( ) ).
+          lv_total_length = lv_length + 4.
+          IF mo_stream->get_length( ) < lv_total_length.
+            RETURN.
           ENDIF.
-        ENDIF.
+          lv_wire = mo_stream->take( lv_total_length ).
+          lv_payload = mo_plain_packet->decode( lv_wire ).
+          CASE mo_transport->get_state( ).
+            WHEN zcl_oassh_transport=>c_state-kexinit_sent.
+              lv_reply = mo_transport->receive_kexinit( lv_payload ).
+              mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
+            WHEN zcl_oassh_transport=>c_state-ecdh_sent.
+              lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
+              mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
+            WHEN zcl_oassh_transport=>c_state-newkeys_sent.
+              mo_transport->receive_newkeys( lv_payload ).
+              mv_state = gc_state-encrypted.
+            WHEN OTHERS.
+              ASSERT 1 = 2.
+          ENDCASE.
+        ENDWHILE.
 
     ENDCASE.
 
@@ -118,7 +163,8 @@ CLASS zcl_oassh IMPLEMENTATION.
 * https://datatracker.ietf.org/doc/html/rfc4253#section-4.2
 
     DATA lv_xstr TYPE xstring.
-    lv_xstr = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ) && zcl_oassh_ascii=>c_cr_lf.
+    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ).
+    lv_xstr = mv_client_version && zcl_oassh_ascii=>c_cr_lf.
 
     mi_socket->send( lv_xstr ).
 

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "npx abaplint && npm run unit",
     "build": "rimraf output && abap_transpile test/abap_transpile.json",
-    "unit": "npm run build && echo RUNNING && node output/index.mjs"
+    "unit": "npm run build && echo RUNNING && node output/index.mjs",
+    "integration:transport": "npm run build && node integration/transport.mjs"
   },
   "repository": {
     "type": "git",
