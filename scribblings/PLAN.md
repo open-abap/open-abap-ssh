@@ -14,6 +14,14 @@ plain ABAP language (crypto, encoding, sockets, randomness) is either implemente
 from scratch in ABAP or hidden behind a tiny injectable interface with one
 platform-specific implementation per target.
 
+**Exception — allowed standard classes**: `cl_abap_message_digest`, `cl_abap_hmac`
+and `cl_abap_codepage` may be called directly from core code. They are
+kernel-backed on any NW 7.02+ system (including ECC) and implemented in
+[open-abap-core](https://github.com/open-abap/open-abap-core) via Node `crypto`
+for the transpiler target, so they are fast and portable on both runtimes.
+`cl_abap_bigint` is explicitly **not** allowed — bigint performance is fixed
+locally in `zcl_oassh_bigint`.
+
 Relevant RFCs:
 
 | RFC | Topic |
@@ -83,9 +91,10 @@ Layered exactly like the RFCs. Prefix `zcl_oassh_*` / `zif_oassh_*` (established
 Everything above these two interfaces is deterministic, pure ABAP, and unit-testable
 offline. This is what makes the transpiler test setup work.
 
-`cl_abap_codepage` / `cl_abap_char_utilities` usage gets removed: SSH identifiers
-are ASCII, so a small pure-ABAP `zcl_oassh_ascii` (string ⇄ xstring, CRLF constant)
-replaces both.
+`cl_abap_char_utilities` usage gets removed: SSH identifiers are ASCII, so a
+small `zcl_oassh_ascii` (string ⇄ xstring, CRLF constant, non-printable
+filtering) replaces it, delegating the raw conversion to the allowed
+`cl_abap_codepage`.
 
 ### 2.2 Wire encoding — `zcl_oassh_stream` (exists, extend)
 
@@ -115,8 +124,8 @@ Each `zcl_oassh_message_<nn>` is a dumb `parse( stream ) → ty_data` /
 
 ### 2.4 Crypto — `zcl_oassh_hash_*`, `zcl_oassh_cipher_*`, `zcl_oassh_bigint`
 
-- `zcl_oassh_sha256` — streaming update/final API
-- `zcl_oassh_hmac` — generic over the hash class
+- `zcl_oassh_sha256` — thin wrapper over `cl_abap_message_digest`
+- `zcl_oassh_hmac` — thin wrapper over `cl_abap_hmac`
 - `zcl_oassh_bigint` — unsigned big integers on `xstring`
 - `zcl_oassh_x25519` — `scalarmult( k, u )`, clamping per RFC 7748
 - `zcl_oassh_aes` + `zcl_oassh_ctr` — block core + counter mode
@@ -201,7 +210,7 @@ Ordered so every milestone ends with something demonstrably working under
 
 ### M0 — Foundations (repo mostly has this)
 - [ ] finish `zcl_oassh_stream`: mpint, byte, fix `boolean_decode`, full testclass
-- [ ] `zcl_oassh_ascii` (drop `cl_abap_codepage` / `cl_abap_char_utilities`)
+- [ ] `zcl_oassh_ascii` (drop `cl_abap_char_utilities`, convert via `cl_abap_codepage`)
 - [ ] define `zif_oassh_socket`, `zif_oassh_random` + mock/fixed implementations
 - [ ] restructure `zcl_oassh` to depend only on the interfaces; move APC code to
       `zcl_oassh_socket_apc` (kept compiling on ECC via abaplint target version,

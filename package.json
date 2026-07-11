@@ -8,7 +8,8 @@
     "build": "rimraf output && abap_transpile test/abap_transpile.json",
     "unit": "npm run build && echo RUNNING && node output/index.mjs",
     "integration:transport": "npm run build && node integration/transport.mjs",
-    "integration:auth": "npm run build && node integration/auth.mjs"
+    "integration:auth": "npm run build && node integration/auth.mjs",
+    "integration:exec": "npm run build && node integration/exec.mjs"
   },
   "repository": {
     "type": "git",

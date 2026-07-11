@@ -102,3 +102,44 @@ inside `CASE`/`IF` branches. Splitting each state's handling into its own method
 puts every loop at the method top level, so its `indexBackup1` is always in
 scope. (We don't rely on `sy-index` here, so the mis-numbered restore value
 itself is harmless once it resolves.)
+
+## Method calls in `WAIT UNTIL` generate invalid JavaScript
+
+**Found in:** M7 — synchronous `execute( )` facade over socket callbacks
+
+A condition such as `WAIT UNTIL mo_channel->get_state( ) = closed` is emitted
+as a non-async JavaScript arrow callback containing `await`. Node rejects the
+generated module at parse time with `SyntaxError: Unexpected reserved word`.
+
+**Workaround:** have the callback path copy completion into a plain boolean
+attribute and make the wait condition compare only that attribute.
+
+## `CONCATENATE LINES OF ... IN BYTE MODE` is not byte-safe
+
+**Found in:** M8 — `zcl_oassh_stream` buffer rework
+
+The open-abap runtime `concatenate` implementation has no byte-mode branch: for
+the `LINES OF` form it calls `line.get().trimEnd()` on every row and joins the
+results with character semantics, then `set()`s the target. For an `xstring`
+table this happens to round-trip the hex text in simple cases, but it applies
+character trimming and offers no guarantee the join is treated as bytes — it is
+the character code path regardless of the `IN BYTE MODE` addition.
+
+**Workaround:** do not use `CONCATENATE LINES OF it INTO x IN BYTE MODE` to
+join an `xstring` table. Fold the chunks with the byte concat operator in a
+loop (`x = x && chunk`) — each `&&` on `xstring` is a real byte concatenation
+in the runtime (`XString.set` over the hex representation). Two-operand
+`CONCATENATE a b INTO c IN BYTE MODE` is fine; only the `LINES OF` table form is
+affected.
+
+## Transpiled `WAIT UNTIL ... UP TO` ignores the timeout
+
+**Found in:** M7 — synchronous `execute( )` facade over socket callbacks
+
+The transpiler passes the timeout to `abap.statements.wait`, but open-abap's
+runtime wait implementation never examines it. It polls until the condition is
+true, so `UP TO 300 SECONDS` does not time out as it does on standard ABAP.
+
+**Workaround:** successful protocol completion remains the condition. A proper
+portable timeout must be implemented above the runtime when timeout handling is
+added in M8.

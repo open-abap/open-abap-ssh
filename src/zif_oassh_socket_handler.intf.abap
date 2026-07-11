@@ -14,4 +14,7 @@ INTERFACE zif_oassh_socket_handler
       cx_static_check.
   METHODS on_close.
   METHODS on_error.
+  METHODS is_complete
+    RETURNING
+      VALUE(rv_complete) TYPE abap_bool.
 ENDINTERFACE.

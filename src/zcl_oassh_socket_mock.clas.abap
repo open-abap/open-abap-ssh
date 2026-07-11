@@ -82,9 +82,19 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD zif_oassh_socket~close.
+    mv_connected = abap_false.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_socket~send.
     ASSERT mv_connected = abap_true.
     mv_sent = mv_sent && iv_data.
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_socket~wait.
+    RETURN.
   ENDMETHOD.
 
 

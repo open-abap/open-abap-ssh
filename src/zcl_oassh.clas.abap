@@ -14,8 +14,28 @@ CLASS zcl_oassh DEFINITION
         iv_password TYPE string
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
+      RETURNING
+        VALUE(ro_ssh) TYPE REF TO zcl_oassh
       RAISING
         cx_static_check.
+
+    METHODS execute
+      IMPORTING
+        iv_command TYPE string
+      RETURNING
+        VALUE(rv_output) TYPE string
+      RAISING
+        cx_static_check.
+    METHODS get_stderr
+      RETURNING
+        VALUE(rv_output) TYPE string.
+    METHODS get_exit_status
+      RETURNING
+        VALUE(rv_status) TYPE i.
+    METHODS get_disconnect_reason
+      RETURNING
+        VALUE(rv_reason) TYPE i.
+    METHODS close.
 
     METHODS constructor
       IMPORTING
@@ -43,7 +63,17 @@ CLASS zcl_oassh DEFINITION
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
     DATA mv_enc_packet_length TYPE i.
+    DATA mo_channel TYPE REF TO zcl_oassh_channel.
+    DATA mv_command TYPE string.
+    DATA mv_command_done TYPE abap_bool.
+    DATA mv_disconnected TYPE abap_bool.
+    DATA mv_disconnect_reason TYPE i.
 
+    METHODS handle_transport_message
+      IMPORTING
+        iv_payload         TYPE xstring
+      RETURNING
+        VALUE(rv_handled)  TYPE abap_bool.
     METHODS handle
       RAISING
         cx_static_check.
@@ -56,6 +86,14 @@ CLASS zcl_oassh DEFINITION
     METHODS process_encrypted
       RAISING
         cx_static_check.
+    METHODS start_channel
+      RAISING
+        cx_static_check.
+    METHODS process_global_request
+      IMPORTING
+        iv_payload        TYPE xstring
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
 ENDCLASS.
 
 
@@ -65,14 +103,13 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD connect.
 
-    DATA lo_ssh    TYPE REF TO zcl_oassh.
     DATA li_socket TYPE REF TO zif_oassh_socket.
 
     li_socket = NEW zcl_oassh_socket_apc(
       iv_host = iv_host
       iv_port = iv_port ).
 
-    CREATE OBJECT lo_ssh
+    CREATE OBJECT ro_ssh
       EXPORTING
         ii_socket        = li_socket
         ii_random        = ii_random
@@ -80,9 +117,81 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_user          = iv_user
         iv_password      = iv_password.
 
-    li_socket->set_handler( lo_ssh ).
+    li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
 
+  ENDMETHOD.
+
+
+  METHOD execute.
+* Socket callbacks keep driving authentication while WAIT yields. Once the
+* transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
+* drive the channel until the peer closes it.
+    ASSERT mv_command IS INITIAL.
+    mv_command = iv_command.
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    mi_socket->wait( ).
+    ASSERT mo_channel IS BOUND.
+    ASSERT mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
+    rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
+  ENDMETHOD.
+
+
+  METHOD get_stderr.
+    IF mo_channel IS BOUND.
+      rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stderr( ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD get_exit_status.
+    rv_status = -1.
+    IF mo_channel IS BOUND.
+      rv_status = mo_channel->get_exit_status( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD close.
+    mi_socket->close( ).
+  ENDMETHOD.
+
+
+  METHOD get_disconnect_reason.
+    rv_reason = mv_disconnect_reason.
+  ENDMETHOD.
+
+
+  METHOD handle_transport_message.
+* RFC 4253 section 11: transport-layer messages that may arrive in any state.
+* Handle them centrally so the phase/auth/channel dispatchers never see them.
+    DATA ls_disconnect TYPE zcl_oassh_message_1=>ty_data.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    IF iv_payload IS INITIAL.
+      RETURN.
+    ENDIF.
+    lo_stream = NEW #( iv_payload ).
+    CASE iv_payload(1).
+      WHEN zcl_oassh_message_1=>gc_message_id. " DISCONNECT
+        ls_disconnect = zcl_oassh_message_1=>parse( lo_stream ).
+        mv_disconnected = abap_true.
+        mv_disconnect_reason = ls_disconnect-reason_code.
+        mv_command_done = abap_true.
+        rv_handled = abap_true.
+      WHEN zcl_oassh_message_2=>gc_message_id. " IGNORE
+        zcl_oassh_message_2=>parse( lo_stream ).
+        rv_handled = abap_true.
+      WHEN zcl_oassh_message_3=>gc_message_id. " UNIMPLEMENTED
+        zcl_oassh_message_3=>parse( lo_stream ).
+        rv_handled = abap_true.
+      WHEN zcl_oassh_message_4=>gc_message_id. " DEBUG
+        zcl_oassh_message_4=>parse( lo_stream ).
+        rv_handled = abap_true.
+      WHEN OTHERS.
+        rv_handled = abap_false.
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -157,6 +266,9 @@ CLASS zcl_oassh IMPLEMENTATION.
       ENDIF.
       lv_wire = mo_stream->take( lv_total_length ).
       lv_payload = mo_plain_packet->decode( lv_wire ).
+      IF handle_transport_message( lv_payload ) = abap_true.
+        CONTINUE.
+      ENDIF.
       CASE mo_transport->get_state( ).
         WHEN zcl_oassh_transport=>c_state-kexinit_sent.
           lv_reply = mo_transport->receive_kexinit( lv_payload ).
@@ -206,11 +318,57 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_rest = lv_rest
         iv_mac  = lv_mac ).
       mv_enc_packet_length = 0.
-      lv_reply = mo_transport->receive_auth( lv_payload ).
+      IF handle_transport_message( lv_payload ) = abap_true.
+        CONTINUE.
+      ENDIF.
+      IF mo_transport->get_auth_state( ) <> zcl_oassh_transport=>c_auth_state-authenticated.
+        lv_reply = mo_transport->receive_auth( lv_payload ).
+        IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated
+            AND mv_command IS NOT INITIAL.
+          start_channel( ).
+        ENDIF.
+      ELSEIF lv_payload(1) = '50'. " SSH_MSG_GLOBAL_REQUEST (80)
+        lv_reply = process_global_request( lv_payload ).
+      ELSEIF mo_channel IS BOUND.
+        lv_reply = mo_channel->receive( lv_payload ).
+        CASE mo_channel->get_state( ).
+          WHEN zcl_oassh_channel=>c_state-open.
+            lv_reply = mo_channel->exec( mv_command ).
+          WHEN zcl_oassh_channel=>c_state-closed.
+            mv_command_done = abap_true.
+        ENDCASE.
+      ELSE.
+        ASSERT 1 = 2.
+      ENDIF.
       IF lv_reply IS NOT INITIAL.
         mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
       ENDIF.
     ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD start_channel.
+    DATA lv_payload TYPE xstring.
+    ASSERT mo_channel IS NOT BOUND.
+    mo_channel = NEW #( ).
+    lv_payload = mo_channel->open( ).
+    mi_socket->send( mo_transport->get_packet( )->encode( lv_payload ) ).
+  ENDMETHOD.
+
+
+  METHOD process_global_request.
+* RFC 4254 section 4. OpenSSH sends hostkeys-00@openssh.com after auth.
+* It is an optional extension; reject requests asking for a reply and ignore
+* any request-specific trailing fields.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lv_want_reply TYPE abap_bool.
+    lo_stream = NEW #( iv_payload ).
+    ASSERT lo_stream->take( 1 ) = '50'.
+    lo_stream->string_decode( ).
+    lv_want_reply = lo_stream->boolean_decode( ).
+    IF lv_want_reply = abap_true.
+      rv_payload = '52'. " SSH_MSG_REQUEST_FAILURE (82)
+    ENDIF.
   ENDMETHOD.
 
 
@@ -220,7 +378,12 @@ CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD zif_oassh_socket_handler~on_error.
-    RETURN.
+    mv_command_done = abap_true.
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_socket_handler~is_complete.
+    rv_complete = mv_command_done.
   ENDMETHOD.
 
 

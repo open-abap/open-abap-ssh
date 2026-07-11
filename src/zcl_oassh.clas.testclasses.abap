@@ -17,10 +17,118 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS on_open_sends_version FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
+    METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
+    METHODS global_request FOR TESTING RAISING cx_static_check.
+    METHODS transport_messages FOR TESTING RAISING cx_static_check.
+    METHODS build_ssh RETURNING VALUE(ro_ssh) TYPE REF TO zcl_oassh.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD build_ssh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    ro_ssh = NEW #(
+      ii_socket        = NEW zcl_oassh_socket_mock( )
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+  ENDMETHOD.
+
+  METHOD transport_messages.
+* RFC 4253 section 11 control messages are handled centrally and consumed
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+
+    " IGNORE (02): string "x"
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '020000000178' ) ).
+
+    " DEBUG (04): always_display=false, "hi", ""
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '040000000002686900000000' ) ).
+
+    " UNIMPLEMENTED (03): sequence number 7
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '0300000007' ) ).
+
+    " DISCONNECT (01): reason 11 (by_application), "gone", ""
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true(
+      lo_ssh->handle_transport_message( '010000000B00000004676F6E6500000000' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_disconnect_reason( )
+      exp = zcl_oassh_message_1=>c_reason-by_application ).
+
+    " a non-control message is not consumed
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->handle_transport_message( '5E00000000' ) ).
+  ENDMETHOD.
+
+  METHOD global_request.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    lo_mock = NEW #( ).
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = lo_mock
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->process_global_request( '5000000004686F73740100000003616263' )
+      exp = '52' ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->process_global_request( '5000000004686F737400' ) ).
+  ENDMETHOD.
+
+  METHOD execute_returns_result.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lv_output TYPE string.
+    lo_mock = NEW #( ).
+    li_socket = lo_mock.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    li_socket->connect( ).
+    lo_ssh->mo_channel = NEW #( ).
+    lo_ssh->mo_channel->open( ).
+    lo_ssh->mo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_ssh->mo_channel->exec( 'echo hi' ).
+    lo_ssh->mo_channel->receive( '6300000000' ).
+    lo_ssh->mo_channel->receive( '5E000000000000000368690A' ).
+    lo_ssh->mo_channel->receive( '5F000000000000000100000003657272' ).
+    lo_ssh->mo_channel->receive( '62000000000000000B657869742D7374617475730000000000' ).
+    lo_ssh->mo_channel->receive( '6100000000' ).
+    lo_ssh->mv_command_done = abap_true.
+    lv_output = lo_ssh->execute( 'echo hi' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_output
+      exp = |hi\n| ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_stderr( )
+      exp = 'err' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_exit_status( )
+      exp = 0 ).
+    lo_ssh->close( ).
+    cl_abap_unit_assert=>assert_false( lo_mock->is_connected( ) ).
+  ENDMETHOD.
 
   METHOD on_open_sends_version.
 

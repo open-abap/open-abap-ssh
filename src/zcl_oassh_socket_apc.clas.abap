@@ -23,6 +23,7 @@ CLASS zcl_oassh_socket_apc DEFINITION
     DATA mv_port    TYPE string.
     DATA mi_client  TYPE REF TO if_apc_wsp_client.
     DATA mi_handler TYPE REF TO zif_oassh_socket_handler.
+    DATA mv_complete TYPE abap_bool.
 ENDCLASS.
 
 
@@ -39,6 +40,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD if_apc_wsp_event_handler~on_close.
     IF mi_handler IS BOUND.
       mi_handler->on_close( ).
+      mv_complete = mi_handler->is_complete( ).
     ENDIF.
   ENDMETHOD.
 
@@ -46,6 +48,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD if_apc_wsp_event_handler~on_error.
     IF mi_handler IS BOUND.
       mi_handler->on_error( ).
+      mv_complete = mi_handler->is_complete( ).
     ENDIF.
   ENDMETHOD.
 
@@ -60,6 +63,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
     TRY.
         mi_handler->on_message( i_message->get_binary( ) ).
+        mv_complete = mi_handler->is_complete( ).
       CATCH cx_root INTO lx_error.
         mi_handler->on_error( ).
     ENDTRY.
@@ -104,6 +108,18 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD zif_oassh_socket~close.
+    DATA lx_error TYPE REF TO cx_apc_error.
+    IF mi_client IS BOUND.
+      TRY.
+          mi_client->close( ).
+        CATCH cx_apc_error INTO lx_error.
+          RETURN.
+      ENDTRY.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_socket~send.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
@@ -128,5 +144,12 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
   METHOD zif_oassh_socket~set_handler.
     mi_handler = ii_handler.
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_socket~wait.
+* APC events are delivered only while the ABAP session is idle or explicitly
+* waiting for push channels. Generic WAIT UNTIL is not sufficient on ECC.
+    WAIT FOR PUSH CHANNELS UNTIL mv_complete = abap_true UP TO 300 SECONDS.
   ENDMETHOD.
 ENDCLASS.

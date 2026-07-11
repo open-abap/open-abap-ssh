@@ -15,4 +15,6 @@ INTERFACE zif_oassh_socket
       iv_data TYPE xstring
     RAISING
       cx_static_check.
+  METHODS close.
+  METHODS wait.
 ENDINTERFACE.
