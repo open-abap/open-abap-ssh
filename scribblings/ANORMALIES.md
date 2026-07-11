@@ -4,6 +4,17 @@ Behaviours where the `@abaplint` transpiler / open-abap runtime diverge from
 standard ABAP (or bit us in a surprising way). Recorded while implementing the
 checklist so we can work around them and, where relevant, report upstream.
 
+## Empty character literals pass as `xstring` actual parameters only in the transpiler
+
+**Found in:** M9 — group14 peer-public-value boundary tests
+
+The transpiler accepted `is_valid_public( '' )` where the formal parameter is
+an `xstring`. A4H rejected activation because the initial character literal is
+not type-compatible with the binary formal parameter.
+
+**Workaround:** pass an explicitly typed initial `xstring` variable. This also
+makes the intended zero-length binary value unambiguous on every runtime.
+
 ## Generic `x` returning parameters pass transpilation but fail on SAP
 
 **Found in:** M7 — first live on-premise/APC deployment on SAP_BASIS 758
