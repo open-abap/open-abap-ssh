@@ -31,7 +31,7 @@
 - [x] verify server signature over `H`; known-hosts callback
 
 ## M6 — Authentication
-- [ ] messages 50–53 + SERVICE_REQUEST/ACCEPT (5/6)
+- [x] messages 50–53 + SERVICE_REQUEST/ACCEPT (5/6)
 - [ ] `password` auth against Docker server (tier 3)
 
 ## M7 — Connection layer ⭐ v1.0
