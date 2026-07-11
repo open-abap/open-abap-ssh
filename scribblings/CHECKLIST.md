@@ -8,12 +8,12 @@
 - [x] CI runs unit tests on push
 
 ## M1 — Hashing
-- [ ] `zcl_oassh_sha256` + NIST vectors
-- [ ] `zcl_oassh_hmac` + RFC 4231 vectors
+- [x] `zcl_oassh_sha256` + NIST vectors
+- [x] `zcl_oassh_hmac` + RFC 4231 vectors
 
 ## M2 — Bigint & kex math
-- [ ] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
-- [ ] `zcl_oassh_x25519` + RFC 7748 vectors
+- [x] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
+- [x] `zcl_oassh_x25519` + RFC 7748 vectors
 - [ ] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
 
 ## M3 — Symmetric crypto
