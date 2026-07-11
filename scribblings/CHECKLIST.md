@@ -42,7 +42,7 @@
   - [ ] ECC via APC (`ztest_oassh` is ready; execution requires an ECC system)
 
 ## M8 — Hardening
-- [ ] table-of-xstring buffers (kill O(n²) concat)
+- [x] table-of-xstring buffers (kill O(n²) concat) — `zcl_oassh_stream` read cursor + pending-chunk table
 - [ ] rekeying, IGNORE/DEBUG/UNIMPLEMENTED, disconnect codes
 - [ ] strict-kex (`kex-strict-c-v00@openssh.com`)
 - [ ] timeouts, max packet sizes, malformed-packet fuzz fixtures

@@ -65,7 +65,17 @@ CLASS zcl_oassh_stream DEFINITION
   PROTECTED SECTION.
   PRIVATE SECTION.
 
+* Read side: mv_hex holds the backing bytes, mv_pos is the read cursor.
+* take/decode advance mv_pos instead of re-slicing the buffer (was O(n^2)).
+* Write side: append buffers into mt_pending; the chunks are folded into
+* mv_hex once, on the next read (materialize), instead of copying the whole
+* buffer on every append (was O(n^2)).
+    TYPES ty_chunks TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
     DATA mv_hex TYPE xstring.
+    DATA mv_pos TYPE i.
+    DATA mt_pending TYPE ty_chunks.
+
+    METHODS materialize.
 ENDCLASS.
 
 
@@ -74,7 +84,27 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD append.
-    mv_hex = mv_hex && iv_hex.
+    DATA lv_chunk TYPE xstring.
+    lv_chunk = iv_hex.
+    APPEND lv_chunk TO mt_pending.
+  ENDMETHOD.
+
+
+  METHOD materialize.
+* fold buffered append chunks into mv_hex in a single pass, dropping the
+* already-consumed prefix so it is not re-copied on every append
+    DATA lv_chunk TYPE xstring.
+    IF mt_pending IS INITIAL.
+      RETURN.
+    ENDIF.
+    IF mv_pos > 0.
+      mv_hex = mv_hex+mv_pos.
+      mv_pos = 0.
+    ENDIF.
+    LOOP AT mt_pending INTO lv_chunk.
+      mv_hex = mv_hex && lv_chunk.
+    ENDLOOP.
+    CLEAR mt_pending.
   ENDMETHOD.
 
 
@@ -154,6 +184,8 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
   METHOD clear.
     CLEAR mv_hex.
+    CLEAR mv_pos.
+    CLEAR mt_pending.
   ENDMETHOD.
 
 
@@ -163,12 +195,14 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD get.
-    rv_hex = mv_hex.
+    materialize( ).
+    rv_hex = mv_hex+mv_pos.
   ENDMETHOD.
 
 
   METHOD get_length.
-    rv_length = xstrlen( mv_hex ).
+    materialize( ).
+    rv_length = xstrlen( mv_hex ) - mv_pos.
   ENDMETHOD.
 
 
@@ -180,10 +214,9 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     DATA lv_text TYPE string.
 
     lv_length = uint32_decode( ).
-    lv_hex = mv_hex(lv_length).
+    lv_hex = take( lv_length ).
     lv_text = zcl_oassh_ascii=>from_xstring( lv_hex ).
     SPLIT lv_text AT ',' INTO TABLE rt_list.
-    take( lv_length ).
 
   ENDMETHOD.
 
@@ -221,8 +254,9 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD take.
-    rv_hex = mv_hex(iv_length).
-    mv_hex = mv_hex+iv_length.
+    materialize( ).
+    rv_hex = mv_hex+mv_pos(iv_length).
+    mv_pos = mv_pos + iv_length.
   ENDMETHOD.
 
 
@@ -235,7 +269,8 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
   METHOD uint32_decode_peek.
 
-    rv_int = mv_hex(4).
+    materialize( ).
+    rv_int = mv_hex+mv_pos(4).
 
   ENDMETHOD.
 

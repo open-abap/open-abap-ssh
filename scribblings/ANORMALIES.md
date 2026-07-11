@@ -114,6 +114,24 @@ generated module at parse time with `SyntaxError: Unexpected reserved word`.
 **Workaround:** have the callback path copy completion into a plain boolean
 attribute and make the wait condition compare only that attribute.
 
+## `CONCATENATE LINES OF ... IN BYTE MODE` is not byte-safe
+
+**Found in:** M8 — `zcl_oassh_stream` buffer rework
+
+The open-abap runtime `concatenate` implementation has no byte-mode branch: for
+the `LINES OF` form it calls `line.get().trimEnd()` on every row and joins the
+results with character semantics, then `set()`s the target. For an `xstring`
+table this happens to round-trip the hex text in simple cases, but it applies
+character trimming and offers no guarantee the join is treated as bytes — it is
+the character code path regardless of the `IN BYTE MODE` addition.
+
+**Workaround:** do not use `CONCATENATE LINES OF it INTO x IN BYTE MODE` to
+join an `xstring` table. Fold the chunks with the byte concat operator in a
+loop (`x = x && chunk`) — each `&&` on `xstring` is a real byte concatenation
+in the runtime (`XString.set` over the hex representation). Two-operand
+`CONCATENATE a b INTO c IN BYTE MODE` is fine; only the `LINES OF` table form is
+affected.
+
 ## Transpiled `WAIT UNTIL ... UP TO` ignores the timeout
 
 **Found in:** M7 — synchronous `execute( )` facade over socket callbacks

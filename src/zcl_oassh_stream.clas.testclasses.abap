@@ -8,6 +8,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS uint32_peek FOR TESTING RAISING cx_static_check.
     METHODS constructor FOR TESTING RAISING cx_static_check.
     METHODS append_take FOR TESTING RAISING cx_static_check.
+    METHODS interleaved_append_take FOR TESTING RAISING cx_static_check.
+    METHODS append_after_consume FOR TESTING RAISING cx_static_check.
     METHODS clear FOR TESTING RAISING cx_static_check.
     METHODS boolean_true FOR TESTING RAISING cx_static_check.
     METHODS boolean_false FOR TESTING RAISING cx_static_check.
@@ -114,6 +116,59 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = mo_stream->get( )
       exp = '2233' ).
+
+  ENDMETHOD.
+
+  METHOD interleaved_append_take.
+
+    " models the receive buffer: bytes arrive in chunks and are framed off
+    " the front while more chunks keep arriving. take() must never re-read
+    " already-consumed bytes and append() must extend the unconsumed tail.
+    mo_stream->append( '0011' ).
+    mo_stream->append( '2233' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->take( 3 )
+      exp = '001122' ).
+
+    " new data appended after partial consumption
+    mo_stream->append( '4455' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get_length( )
+      exp = 3 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = '334455' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->take( 3 )
+      exp = '334455' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get_length( )
+      exp = 0 ).
+
+  ENDMETHOD.
+
+  METHOD append_after_consume.
+
+    " drain fully, then append again - cursor must not desync
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    CREATE OBJECT lo_stream EXPORTING iv_hex = 'AABB'.
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->take( 2 )
+      exp = 'AABB' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->get_length( )
+      exp = 0 ).
+
+    lo_stream->append( 'CCDD' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->get_length( )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->take( 2 )
+      exp = 'CCDD' ).
 
   ENDMETHOD.
 
