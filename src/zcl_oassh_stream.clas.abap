@@ -5,6 +5,8 @@ CLASS zcl_oassh_stream DEFINITION
 
   PUBLIC SECTION.
 
+    TYPES ty_byte TYPE x LENGTH 1.
+
     METHODS constructor
       IMPORTING
         iv_hex TYPE xstring OPTIONAL.
@@ -33,7 +35,7 @@ CLASS zcl_oassh_stream DEFINITION
         iv_byte TYPE x.
     METHODS byte_decode
       RETURNING
-        VALUE(rv_byte) TYPE x.
+        VALUE(rv_byte) TYPE ty_byte.
     METHODS mpint_encode
       IMPORTING
         iv_int TYPE xsequence.

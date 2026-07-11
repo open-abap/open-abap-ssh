@@ -75,13 +75,14 @@ const socketAdapter = {
           iv_data: new abap.types.XString().set(data.toString("hex").toUpperCase()),
         }))
         .then(() => {
-          if (!debug) return;
           const core = client.FRIENDS_ACCESS_INSTANCE;
           const transport = core.mo_transport.get();
           const auth = transport?.FRIENDS_ACCESS_INSTANCE.mv_auth_state.get();
+          const transportState = transport?.FRIENDS_ACCESS_INSTANCE.mv_state.get();
+          if (!debug) return;
           const channel = core.mo_channel.get();
           const channelState = channel?.FRIENDS_ACCESS_INSTANCE.mv_state.get();
-          console.error(`processed auth=${auth} channel=${channelState}`);
+          console.error(`processed transport=${transportState} auth=${auth} channel=${channelState}`);
         })
         .catch(rejectSocket);
     });
@@ -98,7 +99,7 @@ const socketAdapter = {
     socket.end();
   },
   async zif_oassh_socket$wait() {
-    while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() === "") {
+    while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() !== "X") {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   },
@@ -119,10 +120,16 @@ await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});
 await socketAdapter.zif_oassh_socket$connect();
 
 const execution = client.execute({iv_command: new abap.types.String().set(command)});
+let timer;
 const timeout = new Promise((_, reject) => {
-  setTimeout(() => reject(new Error("Timed out waiting for SSH exec")), 300000);
+  timer = setTimeout(() => reject(new Error("Timed out waiting for SSH exec")), 300000);
 });
-const outputValue = await Promise.race([execution, socketFailure, timeout]);
+let outputValue;
+try {
+  outputValue = await Promise.race([execution, socketFailure, timeout]);
+} finally {
+  clearTimeout(timer);
+}
 const output = outputValue.get();
 const exitStatus = (await client.get_exit_status()).get();
 await client.close();
@@ -133,4 +140,9 @@ if (output !== expected) {
 if (exitStatus !== 0) {
   throw new Error(`Expected exit status 0, got ${exitStatus}`);
 }
+const rekeyCount = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_rekey_count()).get();
+if (process.env.OASSH_EXPECT_REKEY === "1" && rekeyCount < 1) {
+  throw new Error("Expected the server to initiate rekeying");
+}
 console.log(`exec succeeded: ${JSON.stringify(output)}`);
+if (rekeyCount > 0) console.log(`server-initiated rekey succeeded (${rekeyCount})`);

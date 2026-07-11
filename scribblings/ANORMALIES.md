@@ -4,6 +4,58 @@ Behaviours where the `@abaplint` transpiler / open-abap runtime diverge from
 standard ABAP (or bit us in a surprising way). Recorded while implementing the
 checklist so we can work around them and, where relevant, report upstream.
 
+## Generic `x` returning parameters pass transpilation but fail on SAP
+
+**Found in:** M7 — first live on-premise/APC deployment on SAP_BASIS 758
+
+The transpiler and abaplint accepted a method returning `VALUE(rv_byte) TYPE x`.
+On A4H, activation failed because a returning parameter must be fully typed;
+the generic byte type has no fixed length.
+
+**Workaround:** declare a named `x LENGTH 1` type and use it for the returning
+parameter.
+
+## An `xstring` offset expression cannot be passed directly to a method
+
+**Found in:** M7 — first live on-premise/APC deployment on SAP_BASIS 758
+
+The transpiler accepted `method( iv_xstring(length) )`, but A4H rejected the
+actual parameter because offsets or lengths cannot be specified for `xstring`
+in that statement. Reading the same slice in a standalone assignment works.
+
+**Workaround:** assign the slice to a fully typed `xstring` temporary, then pass
+the temporary to the method.
+
+## APC behavior differs between NPL 750 and A4H 758
+
+**Found in:** M7 — live on-premise/APC execution
+
+The same active sources completed a password-authenticated command round trip
+on NPL SAP_BASIS 750, but A4H SAP_BASIS 758 invoked the socket error callback
+before a channel was created. The A4H ABAP Unit run consequently dumped on the
+post-wait `mo_channel IS BOUND` assertion, and the Docker OpenSSH log showed no
+connection from A4H. Container-level DNS and TCP reachability to the target
+were both successful, so the difference is inside the A4H APC execution path
+or its system configuration rather than basic networking.
+
+**Current status:** NPL provides a completed on-premise AS ABAP/APC proof; an
+actual ECC run remains open. A4H remains a separate compatibility investigation;
+the socket adapter currently discards the `cx_root` details raised by APC event
+callbacks, so retaining structured socket error information will make that
+diagnosis actionable.
+
+## `abap_false.get()` is a single space in the JavaScript runtime
+
+**Found in:** M8 — live rekey integration
+
+The Node socket adapter waited only while `is_complete().get() === ""`. With
+the current open-abap runtime, an `abap_bool` false value reads as `" "`, so the
+adapter returned immediately and `execute()` asserted before the asynchronous
+socket connection opened.
+
+**Workaround:** test for the only complete value (`!== "X"`) instead of assuming
+which textual representation the runtime uses for false.
+
 ## `FIND ... IN` treats the pattern as a regular expression
 
 **Found in:** M0 — `zcl_oassh_ascii`

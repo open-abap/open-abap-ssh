@@ -208,52 +208,56 @@ Local dev loop: `docker run -p 2222:2222 ...` + `npm run integration`.
 Ordered so every milestone ends with something demonstrably working under
 `npm test`.
 
+Current completion is tracked below; `CHECKLIST.md` contains the concise view and
+the remaining cross-cutting tasks.
+
 ### M0 — Foundations (repo mostly has this)
-- [ ] finish `zcl_oassh_stream`: mpint, byte, fix `boolean_decode`, full testclass
-- [ ] `zcl_oassh_ascii` (drop `cl_abap_char_utilities`, convert via `cl_abap_codepage`)
-- [ ] define `zif_oassh_socket`, `zif_oassh_random` + mock/fixed implementations
-- [ ] restructure `zcl_oassh` to depend only on the interfaces; move APC code to
+- [x] finish `zcl_oassh_stream`: mpint, byte, fix `boolean_decode`, full testclass
+- [x] `zcl_oassh_ascii` (drop `cl_abap_char_utilities`, convert via `cl_abap_codepage`)
+- [x] define `zif_oassh_socket`, `zif_oassh_random` + mock/fixed implementations
+- [x] restructure `zcl_oassh` to depend only on the interfaces; move APC code to
       `zcl_oassh_socket_apc` (kept compiling on ECC via abaplint target version,
       excluded from transpilation)
-- [ ] CI runs tier 1 on push
+- [x] CI runs tier 1 on push
 
 ### M1 — Hashing
-- [ ] `zcl_oassh_sha256` + NIST vectors
-- [ ] `zcl_oassh_hmac` + RFC 4231 vectors
+- [x] `zcl_oassh_sha256` + NIST vectors
+- [x] `zcl_oassh_hmac` + RFC 4231 vectors
 
 ### M2 — Big integers & key exchange math
-- [ ] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
-- [ ] `zcl_oassh_x25519` + RFC 7748 vectors
-- [ ] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
+- [x] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
+- [x] `zcl_oassh_x25519` + RFC 7748 vectors
+- [x] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
 
 ### M3 — Symmetric crypto
-- [ ] `zcl_oassh_aes` (FIPS 197 vectors), `zcl_oassh_ctr` (SP 800-38A vectors)
+- [x] `zcl_oassh_aes` (FIPS 197 vectors), `zcl_oassh_ctr` (SP 800-38A vectors)
 
 ### M4 — Binary packet protocol & full kex  ⭐ first big demo
-- [ ] `zcl_oassh_packet`: framing, padding rules (§6), MAC, seq numbers
-- [ ] complete messages 20/21/30/31 (KEXINIT currently echoes the server's list —
+- [x] `zcl_oassh_packet`: framing, padding rules (§6), MAC, seq numbers
+- [x] complete messages 20/21/30/31 (KEXINIT currently echoes the server's list —
       replace with our own algorithm proposal + real random cookie)
-- [ ] `zcl_oassh_transport` state machine through NEWKEYS
-- [ ] **Demo: encrypted transport established with real OpenSSH** (tier 3 test:
+- [x] `zcl_oassh_transport` state machine through NEWKEYS
+- [x] **Demo: encrypted transport established with real OpenSSH** (tier 3 test:
       handshake completes, server log shows no errors)
 
 ### M5 — Host key verification
-- [ ] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
-- [ ] verify server signature over exchange hash `H`; known-hosts callback in API
+- [x] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
+- [x] verify server signature over exchange hash `H`; known-hosts callback in API
 
 ### M6 — Authentication (RFC 4252)
-- [ ] messages 50–53, `password` method, SERVICE_REQUEST/ACCEPT (5/6)
-- [ ] tier 3: authenticate against the Docker server
+- [x] messages 50–53, `password` method, SERVICE_REQUEST/ACCEPT (5/6)
+- [x] tier 3: authenticate against the Docker server
 
 ### M7 — Connection layer (RFC 4254)  ⭐ v1.0
-- [ ] session channel open, window management, `exec` request, stdout/stderr
+- [x] session channel open, window management, `exec` request, stdout/stderr
       collection, exit-status, channel close
-- [ ] public API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
+- [x] public API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
 - [ ] **Demo: run a command on a real server from transpiled ABAP — and from ECC**
+      (transpiled and NPL SAP_BASIS 750 APC runs pass; an actual ECC run remains)
 
 ### M8 — Hardening & performance
-- [ ] stream/packet buffers → table-of-xstring to kill O(n²) concat
-- [ ] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
+- [x] stream/packet buffers → table-of-xstring to kill O(n²) concat
+- [x] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
 - [ ] strict-kex (`kex-strict-c-v00@openssh.com`) — modern OpenSSH expects it
 - [ ] timeouts, max packet sizes, fuzz the packet parser with malformed fixtures
 

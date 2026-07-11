@@ -37,14 +37,16 @@
 ## M7 — Connection layer ⭐ v1.0
 - [x] session channel: open, window management, exec, stdout/stderr, exit-status, close
 - [x] API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
-- [ ] demo: run command on real server
+- [ ] demo: run command from transpiled ABAP and an actual ECC system
   - [x] transpiled ABAP against Docker OpenSSH (`integration/exec.mjs`)
-  - [ ] ECC via APC (`ztest_oassh` is ready; execution requires an ECC system)
+  - [x] on-premise AS ABAP via APC — NPL SAP_BASIS 750 executed `printf open-abap-ssh`
+        against Docker OpenSSH; ABAP Unit live runner passed in 43.13 s
+  - [ ] actual ECC system via APC
 
 ## M8 — Hardening
 - [x] table-of-xstring buffers (kill O(n²) concat) — `zcl_oassh_stream` read cursor + pending-chunk table
 - [x] IGNORE/DEBUG/UNIMPLEMENTED + disconnect codes — messages 1–4 (parse/serialize) + central `handle_transport_message` wired into kex & encrypted receive loops; disconnect reason captured
-- [ ] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
+- [x] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
 - [ ] strict-kex (`kex-strict-c-v00@openssh.com`)
 - [ ] timeouts, max packet sizes, malformed-packet fuzz fixtures
 
@@ -56,7 +58,7 @@
 - [ ] interactive shell, sftp, port forwarding
 
 ## Testing infrastructure (cross-cutting)
-- [ ] tier 1: vectors in testclasses, run via transpiler (`npm test`)
+- [x] tier 1: vectors in testclasses, run via transpiler (`npm test`)
 - [ ] tier 2: recorded OpenSSH session replayed via mock socket + fixed RNG
-- [ ] tier 3: GitHub Actions + Dockerized OpenSSH, Node socket shim, exec round-trip
+- [x] tier 3: GitHub Actions + Dockerized OpenSSH, Node socket shim, exec round-trip
 - [ ] abaplint rule: no SAP standard outside the two platform adapters

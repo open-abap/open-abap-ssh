@@ -37,6 +37,9 @@ CLASS zcl_oassh_transport DEFINITION
         iv_server_version TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring.
+    METHODS start_rekey
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
     METHODS receive_kexinit
       IMPORTING
         iv_payload        TYPE xstring
@@ -47,6 +50,7 @@ CLASS zcl_oassh_transport DEFINITION
         iv_payload        TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring.
+    METHODS activate_outbound_keys.
     METHODS receive_newkeys
       IMPORTING
         iv_payload TYPE xstring.
@@ -73,6 +77,9 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS get_session_id
       RETURNING
         VALUE(rv_session_id) TYPE xstring.
+    METHODS get_rekey_count
+      RETURNING
+        VALUE(rv_count) TYPE i.
     METHODS get_packet
       RETURNING
         VALUE(ro_packet) TYPE REF TO zcl_oassh_packet.
@@ -100,6 +107,8 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
     DATA mv_auth_state TYPE i.
+    DATA mv_rekey_in_progress TYPE abap_bool.
+    DATA mv_rekey_count TYPE i.
 
     METHODS derive_keys.
 ENDCLASS.
@@ -156,6 +165,20 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
     mv_i_c = rv_payload.
+    mv_state = c_state-kexinit_sent.
+  ENDMETHOD.
+
+
+  METHOD start_rekey.
+* Server-initiated rekey: reply with a fresh client KEXINIT while the current
+* packet keys remain active. Version strings and the original session id stay.
+    DATA ls_kexinit TYPE zcl_oassh_message_20=>ty_data.
+    ASSERT mv_state = c_state-encrypted.
+    ASSERT mv_session_id IS NOT INITIAL.
+    ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
+    rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
+    mv_i_c = rv_payload.
+    mv_rekey_in_progress = abap_true.
     mv_state = c_state-kexinit_sent.
   ENDMETHOD.
 
@@ -269,17 +292,37 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     lo_stream = NEW #( iv_payload ).
     zcl_oassh_message_21=>parse( lo_stream ).
     ASSERT lo_stream->get_length( ) = 0.
-    mo_packet = NEW #(
-      ii_random           = mi_random
-      iv_encrypt_key      = mv_key_c_to_s
-      iv_encrypt_iv       = mv_iv_c_to_s
-      iv_encrypt_mac      = mv_mac_c_to_s
-      iv_decrypt_key      = mv_key_s_to_c
-      iv_decrypt_iv       = mv_iv_s_to_c
-      iv_decrypt_mac      = mv_mac_s_to_c
-      iv_send_sequence    = 3
-      iv_receive_sequence = 3 ).
+    ASSERT mo_packet IS BOUND.
+    mo_packet->rekey_decrypt(
+      iv_decrypt_key = mv_key_s_to_c
+      iv_decrypt_iv  = mv_iv_s_to_c
+      iv_decrypt_mac = mv_mac_s_to_c ).
+    IF mv_rekey_in_progress = abap_true.
+      mv_rekey_count = mv_rekey_count + 1.
+      CLEAR mv_rekey_in_progress.
+    ENDIF.
     mv_state = c_state-encrypted.
+  ENDMETHOD.
+
+
+  METHOD activate_outbound_keys.
+* The NEWKEYS payload itself is sent with the old keys. Call this immediately
+* after that packet has been encoded and handed to the socket.
+    ASSERT mv_state = c_state-newkeys_sent.
+    IF mo_packet IS NOT BOUND.
+      mo_packet = NEW #(
+        ii_random           = mi_random
+        iv_encrypt_key      = mv_key_c_to_s
+        iv_encrypt_iv       = mv_iv_c_to_s
+        iv_encrypt_mac      = mv_mac_c_to_s
+        iv_send_sequence    = 3
+        iv_receive_sequence = 3 ).
+    ELSE.
+      mo_packet->rekey_encrypt(
+        iv_encrypt_key = mv_key_c_to_s
+        iv_encrypt_iv  = mv_iv_c_to_s
+        iv_encrypt_mac = mv_mac_c_to_s ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -350,6 +393,11 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD get_session_id.
     rv_session_id = mv_session_id.
+  ENDMETHOD.
+
+
+  METHOD get_rekey_count.
+    rv_count = mv_rekey_count.
   ENDMETHOD.
 
 

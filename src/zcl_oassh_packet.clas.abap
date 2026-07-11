@@ -36,6 +36,16 @@ CLASS zcl_oassh_packet DEFINITION
         iv_mac            TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring.
+    METHODS rekey_encrypt
+      IMPORTING
+        iv_encrypt_key TYPE xstring OPTIONAL
+        iv_encrypt_iv  TYPE xstring OPTIONAL
+        iv_encrypt_mac TYPE xstring OPTIONAL.
+    METHODS rekey_decrypt
+      IMPORTING
+        iv_decrypt_key TYPE xstring OPTIONAL
+        iv_decrypt_iv  TYPE xstring OPTIONAL
+        iv_decrypt_mac TYPE xstring OPTIONAL.
 
   PRIVATE SECTION.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -61,16 +71,37 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
 
   METHOD constructor.
     mi_random = ii_random.
-    mv_encrypt_mac = iv_encrypt_mac.
-    mv_decrypt_mac = iv_decrypt_mac.
     mv_send_sequence = iv_send_sequence.
     mv_receive_sequence = iv_receive_sequence.
+    rekey_encrypt(
+      iv_encrypt_key = iv_encrypt_key
+      iv_encrypt_iv  = iv_encrypt_iv
+      iv_encrypt_mac = iv_encrypt_mac ).
+    rekey_decrypt(
+      iv_decrypt_key = iv_decrypt_key
+      iv_decrypt_iv  = iv_decrypt_iv
+      iv_decrypt_mac = iv_decrypt_mac ).
+  ENDMETHOD.
+
+
+  METHOD rekey_encrypt.
+* RFC 4253 section 9: replacing algorithms does not reset packet sequence
+* numbers. The outbound cipher changes after our NEWKEYS has been sent.
+    CLEAR mo_encrypt.
+    mv_encrypt_mac = iv_encrypt_mac.
     IF iv_encrypt_key IS NOT INITIAL.
       ASSERT xstrlen( iv_encrypt_iv ) = 16.
       mo_encrypt = NEW #(
         iv_key     = iv_encrypt_key
         iv_counter = iv_encrypt_iv ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD rekey_decrypt.
+* The inbound cipher changes only after the peer's NEWKEYS has been received.
+    CLEAR mo_decrypt.
+    mv_decrypt_mac = iv_decrypt_mac.
     IF iv_decrypt_key IS NOT INITIAL.
       ASSERT xstrlen( iv_decrypt_iv ) = 16.
       mo_decrypt = NEW #(
@@ -136,6 +167,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
   METHOD decode.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA lv_cipher_length TYPE i.
+    DATA lv_cipher TYPE xstring.
     DATA lv_plain TYPE xstring.
     DATA lv_received_mac TYPE xstring.
     DATA lv_expected_mac TYPE xstring.
@@ -152,7 +184,8 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     ASSERT lv_cipher_length >= 8.
     IF mo_decrypt IS BOUND.
       ASSERT lv_cipher_length MOD 16 = 0.
-      lv_plain = mo_decrypt->crypt( iv_packet(lv_cipher_length) ).
+      lv_cipher = iv_packet(lv_cipher_length).
+      lv_plain = mo_decrypt->crypt( lv_cipher ).
     ELSE.
       ASSERT lv_cipher_length MOD 8 = 0.
       lv_plain = iv_packet(lv_cipher_length).

@@ -51,6 +51,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS signature_tampered_hash FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_sig_algo FOR TESTING RAISING cx_static_check.
+    METHODS rekey FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
     METHODS signature_bytes RETURNING VALUE(rv_signature) TYPE xstring.
     METHODS signature_blob RETURNING VALUE(rv_signature) TYPE xstring.
@@ -99,6 +100,7 @@ CLASS ltcl_test IMPLEMENTATION.
     ls_reply-q_s = 'CABC16BA515B878A3F17A2E5ECBD86FAE1554EA1559ACD496A22F45127652A68'.
     ls_reply-signature = signature_blob( ).
     ro_transport->receive_ecdh_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
+    ro_transport->activate_outbound_keys( ).
     ro_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
   ENDMETHOD.
 
@@ -106,6 +108,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD password_auth.
     DATA lo_transport TYPE REF TO zcl_oassh_transport.
     DATA lv_payload TYPE xstring.
+    DATA lv_message_id TYPE x LENGTH 1.
     DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
     DATA ls_banner TYPE zcl_oassh_message_53=>ty_data.
 
@@ -117,8 +120,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_payload = lo_transport->start_auth(
       iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
       iv_password = zcl_oassh_ascii=>to_xstring( 'test' ) ).
+    lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_payload(1)
+      act = lv_message_id
       exp = zcl_oassh_message_5=>gc_message_id ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
@@ -128,8 +132,9 @@ CLASS ltcl_test IMPLEMENTATION.
     ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
     ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
     lv_payload = lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+    lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_payload(1)
+      act = lv_message_id
       exp = zcl_oassh_message_50=>gc_message_id ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
@@ -210,6 +215,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
     DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
     DATA lv_payload TYPE xstring.
+    DATA lv_message_id TYPE x LENGTH 1.
     DATA lo_packet TYPE REF TO zcl_oassh_packet.
 
     lo_random = NEW #( iv_pattern = '0102030405060708' ).
@@ -220,8 +226,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_payload = lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
+    lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_payload(1)
+      act = lv_message_id
       exp = zcl_oassh_message_20=>gc_message_id ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_state( )
@@ -229,8 +236,9 @@ CLASS ltcl_test IMPLEMENTATION.
 
     ls_server = zcl_oassh_message_20=>create( lo_random ).
     lv_payload = lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_payload(1)
+      act = lv_message_id
       exp = zcl_oassh_message_ecdh_30=>gc_message_id ).
 
     ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
@@ -253,6 +261,7 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = host_key( ) ).
     cl_abap_unit_assert=>assert_not_initial( lo_transport->get_exchange_hash( ) ).
 
+    lo_transport->activate_outbound_keys( ).
     lo_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_state( )
@@ -260,5 +269,57 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_packet = lo_transport->get_packet( ).
     cl_abap_unit_assert=>assert_bound( lo_packet ).
     cl_abap_unit_assert=>assert_not_initial( lo_packet->encode( '05' ) ).
+  ENDMETHOD.
+
+
+  METHOD rekey.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_packet TYPE REF TO zcl_oassh_packet.
+    DATA lo_server_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    DATA lv_payload TYPE xstring.
+    DATA lv_message_id TYPE x LENGTH 1.
+    DATA lv_session_id TYPE xstring.
+
+    lo_transport = handshake( ).
+    lo_packet = lo_transport->get_packet( ).
+    lv_session_id = lo_transport->get_session_id( ).
+
+    lo_server_random = NEW #( iv_pattern = '0102030405060708' ).
+    ls_server = zcl_oassh_message_20=>create( lo_server_random ).
+    lv_payload = lo_transport->start_rekey( ).
+    lv_message_id = lv_payload(1).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_message_id
+      exp = zcl_oassh_message_20=>gc_message_id ).
+    lv_payload = lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    lv_message_id = lv_payload(1).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_message_id
+      exp = zcl_oassh_message_ecdh_30=>gc_message_id ).
+
+    ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
+    ls_reply-k_s = host_key( ).
+    ls_reply-q_s = 'CABC16BA515B878A3F17A2E5ECBD86FAE1554EA1559ACD496A22F45127652A68'.
+    ls_reply-signature = signature_blob( ).
+    lv_payload = lo_transport->receive_ecdh_reply(
+      zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_payload
+      exp = zcl_oassh_message_21=>gc_message_id ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_session_id( )
+      exp = lv_session_id ).
+
+    lo_transport->activate_outbound_keys( ).
+    lo_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_state( )
+      exp = zcl_oassh_transport=>c_state-encrypted ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_transport->get_packet( ) = lo_packet ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_rekey_count( )
+      exp = 1 ).
   ENDMETHOD.
 ENDCLASS.

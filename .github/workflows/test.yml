@@ -85,8 +85,10 @@ jobs:
       run: |
         container=$(docker ps --filter publish=2222 -q)
         docker exec "$container" sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker exec "$container" sh -c "echo 'RekeyLimit 1K 1h' >> /config/sshd/sshd_config"
         docker restart "$container"
     - run: npm run integration:exec
       env:
         OASSH_USER: test
         OASSH_PASSWORD: test
+        OASSH_EXPECT_REKEY: "1"

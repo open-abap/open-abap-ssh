@@ -276,6 +276,7 @@ CLASS zcl_oassh IMPLEMENTATION.
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
           lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
+          mo_transport->activate_outbound_keys( ).
         WHEN zcl_oassh_transport=>c_state-newkeys_sent.
           mo_transport->receive_newkeys( lv_payload ).
           mv_state = gc_state-encrypted.
@@ -321,6 +322,26 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF handle_transport_message( lv_payload ) = abap_true.
         CONTINUE.
       ENDIF.
+      CASE mo_transport->get_state( ).
+        WHEN zcl_oassh_transport=>c_state-encrypted.
+          IF lv_payload(1) = zcl_oassh_message_20=>gc_message_id.
+* RFC 4253 section 9: the server may begin a fresh key exchange at any time.
+* KEXINIT and ECDH_INIT are still protected by the current packet keys.
+            lv_reply = mo_transport->start_rekey( ).
+            mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+            lv_reply = mo_transport->receive_kexinit( lv_payload ).
+            mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+            CONTINUE.
+          ENDIF.
+        WHEN zcl_oassh_transport=>c_state-ecdh_sent.
+          lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
+          mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+          mo_transport->activate_outbound_keys( ).
+          CONTINUE.
+        WHEN zcl_oassh_transport=>c_state-newkeys_sent.
+          mo_transport->receive_newkeys( lv_payload ).
+          CONTINUE.
+      ENDCASE.
       IF mo_transport->get_auth_state( ) <> zcl_oassh_transport=>c_auth_state-authenticated.
         lv_reply = mo_transport->receive_auth( lv_payload ).
         IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated
