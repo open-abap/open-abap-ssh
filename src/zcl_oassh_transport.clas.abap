@@ -4,6 +4,8 @@ CLASS zcl_oassh_transport DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
+    CONSTANTS c_kex_curve25519 TYPE string VALUE 'curve25519-sha256'.
+    CONSTANTS c_kex_group14 TYPE string VALUE 'diffie-hellman-group14-sha256'.
     CONSTANTS:
       BEGIN OF c_state,
         initial      TYPE i VALUE 0,
@@ -24,7 +26,8 @@ CLASS zcl_oassh_transport DEFINITION
       IMPORTING
         ii_random        TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
-        iv_offer_strict  TYPE abap_bool DEFAULT abap_true.
+        iv_offer_strict  TYPE abap_bool DEFAULT abap_true
+        iv_offer_group14 TYPE abap_bool DEFAULT abap_true.
     CLASS-METHODS verify_server_signature
       IMPORTING
         iv_host_key       TYPE xstring
@@ -46,11 +49,13 @@ CLASS zcl_oassh_transport DEFINITION
         iv_payload        TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring.
-    METHODS receive_ecdh_reply
+    METHODS receive_kex_reply
       IMPORTING
         iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS activate_outbound_keys.
     METHODS receive_newkeys
       IMPORTING
@@ -81,6 +86,8 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS get_rekey_count
       RETURNING
         VALUE(rv_count) TYPE i.
+    METHODS get_kex_algorithm
+      RETURNING VALUE(rv_algorithm) TYPE string.
     METHODS is_strict_kex
       RETURNING
         VALUE(rv_strict) TYPE abap_bool.
@@ -119,6 +126,8 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_strict_kex TYPE abap_bool.
     DATA mv_initial_kex TYPE abap_bool.
     DATA mv_offer_strict TYPE abap_bool.
+    DATA mv_offer_group14 TYPE abap_bool.
+    DATA mv_kex_algorithm TYPE string.
 
     METHODS derive_keys.
 ENDCLASS.
@@ -130,6 +139,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     mi_random = ii_random.
     mi_host_verifier = ii_host_verifier.
     mv_offer_strict = iv_offer_strict.
+    mv_offer_group14 = iv_offer_group14.
   ENDMETHOD.
 
 
@@ -174,6 +184,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     mv_v_c = iv_client_version.
     mv_v_s = iv_server_version.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
+    IF mv_offer_group14 = abap_false.
+      DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
+    ENDIF.
 * Offer both the standard and widely deployed OpenSSH strict-KEX markers.
     IF mv_offer_strict = abap_true.
       APPEND 'kex-strict-c' TO ls_kexinit-kex_algorithms.
@@ -193,6 +206,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ASSERT mv_state = c_state-encrypted.
     ASSERT mv_session_id IS NOT INITIAL.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
+    IF mv_offer_group14 = abap_false.
+      DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
+    ENDIF.
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
     mv_i_c = rv_payload.
     mv_rekey_in_progress = abap_true.
@@ -204,11 +220,20 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
     DATA ls_ecdh TYPE zcl_oassh_message_ecdh_30=>ty_data.
+    DATA ls_dh TYPE zcl_oassh_message_dh_30=>ty_data.
     ASSERT mv_state = c_state-kexinit_sent.
     lo_stream = NEW #( iv_payload ).
     ls_server = zcl_oassh_message_20=>parse( lo_stream ).
     ASSERT lo_stream->get_length( ) = 0.
-    ASSERT line_exists( ls_server-kex_algorithms[ table_line = 'curve25519-sha256' ] ).
+* RFC 4253 section 7.1 selects the first client-preferred common method.
+    IF line_exists( ls_server-kex_algorithms[ table_line = c_kex_curve25519 ] ).
+      mv_kex_algorithm = c_kex_curve25519.
+    ELSEIF mv_offer_group14 = abap_true
+        AND line_exists( ls_server-kex_algorithms[ table_line = c_kex_group14 ] ).
+      mv_kex_algorithm = c_kex_group14.
+    ELSE.
+      ASSERT 1 = 2.
+    ENDIF.
     ASSERT line_exists( ls_server-server_host_key_algorithms[ table_line = 'rsa-sha2-256' ] ).
     ASSERT line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = 'aes128-ctr' ] ).
     ASSERT line_exists( ls_server-encryption_algorithms_s_to_c[ table_line = 'aes128-ctr' ] ).
@@ -223,10 +248,23 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ENDIF.
     mv_i_s = iv_payload.
     mv_private = mi_random->bytes( 32 ).
-    mv_q_c = zcl_oassh_x25519=>scalarmult_base( mv_private ).
-    ls_ecdh-message_id = zcl_oassh_message_ecdh_30=>gc_message_id.
-    ls_ecdh-q_c = mv_q_c.
-    rv_payload = zcl_oassh_message_ecdh_30=>serialize( ls_ecdh )->get( ).
+    IF mv_kex_algorithm = c_kex_curve25519.
+      mv_q_c = zcl_oassh_x25519=>scalarmult_base( mv_private ).
+      ls_ecdh-message_id = zcl_oassh_message_ecdh_30=>gc_message_id.
+      ls_ecdh-q_c = mv_q_c.
+      rv_payload = zcl_oassh_message_ecdh_30=>serialize( ls_ecdh )->get( ).
+    ELSE.
+* A 256-bit exponent supplies more than twice group14's ~112-bit strength.
+      IF zcl_oassh_bigint=>compare(
+          iv_a = mv_private
+          iv_b = '01' ) <= 0.
+        mv_private = '02'.
+      ENDIF.
+      mv_q_c = zcl_oassh_group14=>public_key( mv_private ).
+      ls_dh-message_id = zcl_oassh_message_dh_30=>gc_message_id.
+      ls_dh-e = mv_q_c.
+      rv_payload = zcl_oassh_message_dh_30=>serialize( ls_dh )->get( ).
+    ENDIF.
     mv_state = c_state-ecdh_sent.
   ENDMETHOD.
 
@@ -271,33 +309,60 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD receive_ecdh_reply.
+  METHOD receive_kex_reply.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
-    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    DATA ls_ecdh TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    DATA ls_dh TYPE zcl_oassh_message_dh_31=>ty_data.
     DATA lv_shared_le TYPE xstring.
+    DATA lv_host_key TYPE xstring.
+    DATA lv_server_public TYPE xstring.
+    DATA lv_signature TYPE xstring.
     ASSERT mv_state = c_state-ecdh_sent.
     lo_stream = NEW #( iv_payload ).
-    ls_reply = zcl_oassh_message_ecdh_31=>parse( lo_stream ).
-    ASSERT lo_stream->get_length( ) = 0.
-    ASSERT xstrlen( ls_reply-q_s ) = 32.
-    lv_shared_le = zcl_oassh_x25519=>scalarmult(
-      iv_scalar = mv_private
-      iv_u      = ls_reply-q_s ).
+    IF mv_kex_algorithm = c_kex_curve25519.
+      ls_ecdh = zcl_oassh_message_ecdh_31=>parse( lo_stream ).
+      ASSERT xstrlen( ls_ecdh-q_s ) = 32.
+      lv_host_key = ls_ecdh-k_s.
+      lv_server_public = ls_ecdh-q_s.
+      lv_signature = ls_ecdh-signature.
+      lv_shared_le = zcl_oassh_x25519=>scalarmult(
+        iv_scalar = mv_private
+        iv_u      = lv_server_public ).
 * RFC 8731 encodes the X25519 octet string directly as an SSH mpint.
-    mv_k = lv_shared_le.
-    mv_h = zcl_oassh_kdf=>exchange_hash(
-      iv_v_c = mv_v_c
-      iv_v_s = mv_v_s
-      iv_i_c = mv_i_c
-      iv_i_s = mv_i_s
-      iv_k_s = ls_reply-k_s
-      iv_q_c = mv_q_c
-      iv_q_s = ls_reply-q_s
-      iv_k   = mv_k ).
-    ASSERT mi_host_verifier->verify( ls_reply-k_s ) = abap_true.
+      mv_k = lv_shared_le.
+      mv_h = zcl_oassh_kdf=>exchange_hash(
+        iv_v_c = mv_v_c
+        iv_v_s = mv_v_s
+        iv_i_c = mv_i_c
+        iv_i_s = mv_i_s
+        iv_k_s = lv_host_key
+        iv_q_c = mv_q_c
+        iv_q_s = lv_server_public
+        iv_k   = mv_k ).
+    ELSE.
+      ls_dh = zcl_oassh_message_dh_31=>parse( lo_stream ).
+      ASSERT zcl_oassh_group14=>is_valid_public( ls_dh-f ) = abap_true.
+      lv_host_key = ls_dh-k_s.
+      lv_server_public = ls_dh-f.
+      lv_signature = ls_dh-signature.
+      mv_k = zcl_oassh_group14=>shared_secret(
+        iv_peer_public = lv_server_public
+        iv_private     = mv_private ).
+      mv_h = zcl_oassh_kdf=>exchange_hash_dh(
+        iv_v_c = mv_v_c
+        iv_v_s = mv_v_s
+        iv_i_c = mv_i_c
+        iv_i_s = mv_i_s
+        iv_k_s = lv_host_key
+        iv_e   = mv_q_c
+        iv_f   = lv_server_public
+        iv_k   = mv_k ).
+    ENDIF.
+    ASSERT lo_stream->get_length( ) = 0.
+    ASSERT mi_host_verifier->verify( lv_host_key ) = abap_true.
     ASSERT verify_server_signature(
-      iv_host_key      = ls_reply-k_s
-      iv_signature     = ls_reply-signature
+      iv_host_key      = lv_host_key
+      iv_signature     = lv_signature
       iv_exchange_hash = mv_h ) = abap_true.
     IF mv_session_id IS INITIAL.
       mv_session_id = mv_h.
@@ -435,6 +500,11 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD get_rekey_count.
     rv_count = mv_rekey_count.
+  ENDMETHOD.
+
+
+  METHOD get_kex_algorithm.
+    rv_algorithm = mv_kex_algorithm.
   ENDMETHOD.
 
 

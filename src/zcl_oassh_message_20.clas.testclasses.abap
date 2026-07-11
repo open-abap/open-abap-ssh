@@ -19,6 +19,9 @@ CLASS ltcl_test IMPLEMENTATION.
       act = ls_data-kex_algorithms[ 1 ]
       exp = 'curve25519-sha256' ).
     cl_abap_unit_assert=>assert_equals(
+      act = ls_data-kex_algorithms[ 2 ]
+      exp = 'diffie-hellman-group14-sha256' ).
+    cl_abap_unit_assert=>assert_equals(
       act = ls_data-server_host_key_algorithms[ 1 ]
       exp = 'rsa-sha2-256' ).
     cl_abap_unit_assert=>assert_equals(

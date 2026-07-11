@@ -300,7 +300,7 @@ CLASS zcl_oassh IMPLEMENTATION.
           ENDIF.
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
-          lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
+          lv_reply = mo_transport->receive_kex_reply( lv_payload ).
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
           mo_transport->activate_outbound_keys( ).
         WHEN zcl_oassh_transport=>c_state-newkeys_sent.
@@ -360,7 +360,7 @@ CLASS zcl_oassh IMPLEMENTATION.
             CONTINUE.
           ENDIF.
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
-          lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
+          lv_reply = mo_transport->receive_kex_reply( lv_payload ).
           mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
           mo_transport->activate_outbound_keys( ).
           CONTINUE.
@@ -445,7 +445,7 @@ CLASS zcl_oassh IMPLEMENTATION.
 * https://datatracker.ietf.org/doc/html/rfc4253#section-4.2
 
     DATA lv_xstr TYPE xstring.
-    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ).
+    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ). "#EC NOTEXT
     lv_xstr = mv_client_version && zcl_oassh_ascii=>c_cr_lf.
 
     mi_socket->send( lv_xstr ).

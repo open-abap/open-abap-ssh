@@ -55,7 +55,7 @@
 ## M9 — Post-1.0
 - [ ] `ssh-ed25519` host keys (SHA-512 + edwards)
 - [ ] `publickey` auth
-- [ ] `diffie-hellman-group14-sha256`
+- [x] `diffie-hellman-group14-sha256`
 - [ ] `chacha20-poly1305@openssh.com`
 - [ ] interactive shell, sftp, port forwarding
 

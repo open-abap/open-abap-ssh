@@ -42,6 +42,11 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS mpint_decode
       RETURNING
         VALUE(rv_int) TYPE xstring.
+    METHODS mpint_decode_positive
+      RETURNING
+        VALUE(rv_int) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS name_list_decode
       RETURNING
         VALUE(rt_list) TYPE string_table.
@@ -138,6 +143,34 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
       rv_int = rv_int+1.
     ENDIF.
 
+  ENDMETHOD.
+
+
+  METHOD mpint_decode_positive.
+* Decode the non-negative, canonical subset of RFC 4251 mpint used by
+* fixed-group Diffie-Hellman. Negative and redundant encodings are malformed.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_second TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+    rv_int = string_decode( ).
+    IF xstrlen( rv_int ) = 0.
+      RETURN.
+    ENDIF.
+    lv_first = rv_int(1).
+    GET BIT 1 OF lv_first INTO lv_bit.
+    IF lv_first = '00'.
+      IF xstrlen( rv_int ) = 1.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      lv_second = rv_int+1(1).
+      GET BIT 1 OF lv_second INTO lv_bit.
+      IF lv_bit <> '1'.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      rv_int = rv_int+1.
+    ELSEIF lv_bit = '1'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
