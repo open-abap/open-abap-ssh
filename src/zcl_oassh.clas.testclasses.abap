@@ -212,6 +212,11 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = ls_kexinit-kex_algorithms[ 1 ]
       exp = 'curve25519-sha256' ).
+    cl_abap_unit_assert=>assert_true(
+      xsdbool( line_exists( ls_kexinit-kex_algorithms[ table_line = 'kex-strict-c' ] ) ) ).
+    cl_abap_unit_assert=>assert_true(
+      xsdbool( line_exists(
+        ls_kexinit-kex_algorithms[ table_line = 'kex-strict-c-v00@openssh.com' ] ) ) ).
   ENDMETHOD.
 
 ENDCLASS.

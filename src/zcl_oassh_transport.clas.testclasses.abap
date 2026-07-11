@@ -52,6 +52,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_sig_algo FOR TESTING RAISING cx_static_check.
     METHODS rekey FOR TESTING RAISING cx_static_check.
+    METHODS strict_kex FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
     METHODS signature_bytes RETURNING VALUE(rv_signature) TYPE xstring.
     METHODS signature_blob RETURNING VALUE(rv_signature) TYPE xstring.
@@ -89,7 +90,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     ro_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
     ro_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
@@ -222,7 +224,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
     lv_payload = lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
@@ -321,5 +324,38 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_rekey_count( )
       exp = 1 ).
+  ENDMETHOD.
+
+
+  METHOD strict_kex.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_client TYPE zcl_oassh_message_20=>ty_data.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lv_payload TYPE xstring.
+
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    lv_payload = lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
+    lo_stream = NEW #( lv_payload ).
+    ls_client = zcl_oassh_message_20=>parse( lo_stream ).
+    cl_abap_unit_assert=>assert_true(
+      xsdbool( line_exists( ls_client-kex_algorithms[ table_line = 'kex-strict-c' ] ) ) ).
+    cl_abap_unit_assert=>assert_true(
+      xsdbool( line_exists(
+        ls_client-kex_algorithms[ table_line = 'kex-strict-c-v00@openssh.com' ] ) ) ).
+
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    APPEND 'kex-strict-s-v00@openssh.com' TO ls_server-kex_algorithms.
+    lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    cl_abap_unit_assert=>assert_true( lo_transport->is_strict_kex( ) ).
+    cl_abap_unit_assert=>assert_true( lo_transport->is_initial_kex( ) ).
   ENDMETHOD.
 ENDCLASS.

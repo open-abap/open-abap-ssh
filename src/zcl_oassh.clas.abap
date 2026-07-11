@@ -258,6 +258,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA lv_wire TYPE xstring.
     DATA lv_payload TYPE xstring.
     DATA lv_reply TYPE xstring.
+    DATA lv_message_id TYPE i.
     WHILE mo_stream->get_length( ) >= 8.
       lv_length = mo_stream->uint32_decode_peek( ).
       lv_total_length = lv_length + 4.
@@ -266,12 +267,23 @@ CLASS zcl_oassh IMPLEMENTATION.
       ENDIF.
       lv_wire = mo_stream->take( lv_total_length ).
       lv_payload = mo_plain_packet->decode( lv_wire ).
+      lv_message_id = lv_payload(1).
+      IF mo_transport->is_strict_kex( ) = abap_true
+          AND mo_transport->is_initial_kex( ) = abap_true.
+        ASSERT lv_message_id = 20 OR lv_message_id = 21
+          OR ( lv_message_id >= 30 AND lv_message_id <= 49 ).
+      ENDIF.
       IF handle_transport_message( lv_payload ) = abap_true.
         CONTINUE.
       ENDIF.
       CASE mo_transport->get_state( ).
         WHEN zcl_oassh_transport=>c_state-kexinit_sent.
           lv_reply = mo_transport->receive_kexinit( lv_payload ).
+          IF mo_transport->is_strict_kex( ) = abap_true.
+* Strict KEX is negotiated by this packet, so verify retrospectively that it
+* was the server's first binary packet (sequence zero before decode).
+            ASSERT mo_plain_packet->get_receive_sequence( ) = 1.
+          ENDIF.
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
           lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).

@@ -6,6 +6,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS sequence_numbers FOR TESTING RAISING cx_static_check.
     METHODS initial_sequence FOR TESTING RAISING cx_static_check.
     METHODS rekey_keeps_sequence FOR TESTING RAISING cx_static_check.
+    METHODS strict_resets_sequence FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -190,5 +191,62 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->decode( lv_wire )
       exp = '02' ).
+  ENDMETHOD.
+
+
+  METHOD strict_resets_sequence.
+    CONSTANTS lc_old_key TYPE xstring VALUE '2B7E151628AED2A6ABF7158809CF4F3C'.
+    CONSTANTS lc_old_iv TYPE xstring VALUE 'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'.
+    CONSTANTS lc_old_mac TYPE xstring VALUE '00112233445566778899AABBCCDDEEFF'.
+    CONSTANTS lc_new_key TYPE xstring VALUE '000102030405060708090A0B0C0D0E0F'.
+    CONSTANTS lc_new_iv TYPE xstring VALUE '101112131415161718191A1B1C1D1E1F'.
+    CONSTANTS lc_new_mac TYPE xstring VALUE 'FFEEDDCCBBAA99887766554433221100'.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA lo_expected TYPE REF TO zcl_oassh_packet.
+    DATA lv_wire TYPE xstring.
+
+    lo_sender = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_encrypt_key = lc_old_key
+      iv_encrypt_iv  = lc_old_iv
+      iv_encrypt_mac = lc_old_mac ).
+    lo_receiver = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_decrypt_key = lc_old_key
+      iv_decrypt_iv  = lc_old_iv
+      iv_decrypt_mac = lc_old_mac ).
+    lv_wire = lo_sender->encode( '01' ).
+    lo_receiver->decode( lv_wire ).
+
+    lo_sender->rekey_encrypt(
+      iv_encrypt_key = lc_new_key
+      iv_encrypt_iv  = lc_new_iv
+      iv_encrypt_mac = lc_new_mac ).
+    lo_receiver->rekey_decrypt(
+      iv_decrypt_key = lc_new_key
+      iv_decrypt_iv  = lc_new_iv
+      iv_decrypt_mac = lc_new_mac ).
+    lo_sender->reset_send_sequence( ).
+    lo_receiver->reset_receive_sequence( ).
+
+    lo_expected = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_encrypt_key = lc_new_key
+      iv_encrypt_iv  = lc_new_iv
+      iv_encrypt_mac = lc_new_mac ).
+    lv_wire = lo_sender->encode( '02' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_wire
+      exp = lo_expected->encode( '02' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode( lv_wire )
+      exp = '02' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_sender->get_send_sequence( )
+      exp = 1 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_receive_sequence( )
+      exp = 1 ).
   ENDMETHOD.
 ENDCLASS.

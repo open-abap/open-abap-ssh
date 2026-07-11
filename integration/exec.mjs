@@ -141,8 +141,13 @@ if (exitStatus !== 0) {
   throw new Error(`Expected exit status 0, got ${exitStatus}`);
 }
 const rekeyCount = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_rekey_count()).get();
+const strictKex = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().is_strict_kex()).get() === "X";
 if (process.env.OASSH_EXPECT_REKEY === "1" && rekeyCount < 1) {
   throw new Error("Expected the server to initiate rekeying");
 }
+if (process.env.OASSH_EXPECT_STRICT_KEX === "1" && !strictKex) {
+  throw new Error("Expected strict KEX negotiation");
+}
 console.log(`exec succeeded: ${JSON.stringify(output)}`);
 if (rekeyCount > 0) console.log(`server-initiated rekey succeeded (${rekeyCount})`);
+if (strictKex) console.log("strict KEX negotiated");

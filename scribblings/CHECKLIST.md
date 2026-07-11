@@ -47,7 +47,8 @@
 - [x] table-of-xstring buffers (kill O(n²) concat) — `zcl_oassh_stream` read cursor + pending-chunk table
 - [x] IGNORE/DEBUG/UNIMPLEMENTED + disconnect codes — messages 1–4 (parse/serialize) + central `handle_transport_message` wired into kex & encrypted receive loops; disconnect reason captured
 - [x] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
-- [ ] strict-kex (`kex-strict-c-v00@openssh.com`)
+- [x] strict-kex (`kex-strict-c` + `kex-strict-c-v00@openssh.com`; initial-KEX message discipline,
+      retrospective first-packet check, and directional sequence resets after every NEWKEYS)
 - [ ] timeouts, max packet sizes, malformed-packet fuzz fixtures
 
 ## M9 — Post-1.0

@@ -23,7 +23,8 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS constructor
       IMPORTING
         ii_random        TYPE REF TO zif_oassh_random
-        ii_host_verifier TYPE REF TO zif_oassh_host_verifier.
+        ii_host_verifier TYPE REF TO zif_oassh_host_verifier
+        iv_offer_strict  TYPE abap_bool DEFAULT abap_true.
     CLASS-METHODS verify_server_signature
       IMPORTING
         iv_host_key       TYPE xstring
@@ -80,6 +81,12 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS get_rekey_count
       RETURNING
         VALUE(rv_count) TYPE i.
+    METHODS is_strict_kex
+      RETURNING
+        VALUE(rv_strict) TYPE abap_bool.
+    METHODS is_initial_kex
+      RETURNING
+        VALUE(rv_initial) TYPE abap_bool.
     METHODS get_packet
       RETURNING
         VALUE(ro_packet) TYPE REF TO zcl_oassh_packet.
@@ -109,6 +116,9 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_auth_state TYPE i.
     DATA mv_rekey_in_progress TYPE abap_bool.
     DATA mv_rekey_count TYPE i.
+    DATA mv_strict_kex TYPE abap_bool.
+    DATA mv_initial_kex TYPE abap_bool.
+    DATA mv_offer_strict TYPE abap_bool.
 
     METHODS derive_keys.
 ENDCLASS.
@@ -119,6 +129,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
   METHOD constructor.
     mi_random = ii_random.
     mi_host_verifier = ii_host_verifier.
+    mv_offer_strict = iv_offer_strict.
   ENDMETHOD.
 
 
@@ -163,8 +174,14 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     mv_v_c = iv_client_version.
     mv_v_s = iv_server_version.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
+* Offer both the standard and widely deployed OpenSSH strict-KEX markers.
+    IF mv_offer_strict = abap_true.
+      APPEND 'kex-strict-c' TO ls_kexinit-kex_algorithms.
+      APPEND 'kex-strict-c-v00@openssh.com' TO ls_kexinit-kex_algorithms.
+    ENDIF.
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
     mv_i_c = rv_payload.
+    mv_initial_kex = abap_true.
     mv_state = c_state-kexinit_sent.
   ENDMETHOD.
 
@@ -199,6 +216,11 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ASSERT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] ).
     ASSERT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] ).
     ASSERT line_exists( ls_server-compression_algorithms_s_to_c[ table_line = 'none' ] ).
+    IF mv_initial_kex = abap_true.
+      mv_strict_kex = xsdbool( mv_offer_strict = abap_true
+        AND ( line_exists( ls_server-kex_algorithms[ table_line = 'kex-strict-s' ] )
+          OR line_exists( ls_server-kex_algorithms[ table_line = 'kex-strict-s-v00@openssh.com' ] ) ) ).
+    ENDIF.
     mv_i_s = iv_payload.
     mv_private = mi_random->bytes( 32 ).
     mv_q_c = zcl_oassh_x25519=>scalarmult_base( mv_private ).
@@ -288,7 +310,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD receive_newkeys.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lv_was_initial TYPE abap_bool.
     ASSERT mv_state = c_state-newkeys_sent.
+    lv_was_initial = mv_initial_kex.
     lo_stream = NEW #( iv_payload ).
     zcl_oassh_message_21=>parse( lo_stream ).
     ASSERT lo_stream->get_length( ) = 0.
@@ -297,31 +321,44 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       iv_decrypt_key = mv_key_s_to_c
       iv_decrypt_iv  = mv_iv_s_to_c
       iv_decrypt_mac = mv_mac_s_to_c ).
+    IF mv_strict_kex = abap_true.
+      mo_packet->reset_receive_sequence( ).
+    ENDIF.
     IF mv_rekey_in_progress = abap_true.
       mv_rekey_count = mv_rekey_count + 1.
       CLEAR mv_rekey_in_progress.
+    ENDIF.
+    IF lv_was_initial = abap_true.
+      CLEAR mv_initial_kex.
     ENDIF.
     mv_state = c_state-encrypted.
   ENDMETHOD.
 
 
   METHOD activate_outbound_keys.
+    DATA lv_sequence TYPE i VALUE 3.
 * The NEWKEYS payload itself is sent with the old keys. Call this immediately
 * after that packet has been encoded and handed to the socket.
     ASSERT mv_state = c_state-newkeys_sent.
+    IF mv_strict_kex = abap_true.
+      CLEAR lv_sequence.
+    ENDIF.
     IF mo_packet IS NOT BOUND.
       mo_packet = NEW #(
         ii_random           = mi_random
         iv_encrypt_key      = mv_key_c_to_s
         iv_encrypt_iv       = mv_iv_c_to_s
         iv_encrypt_mac      = mv_mac_c_to_s
-        iv_send_sequence    = 3
-        iv_receive_sequence = 3 ).
+        iv_send_sequence    = lv_sequence
+        iv_receive_sequence = lv_sequence ).
     ELSE.
       mo_packet->rekey_encrypt(
         iv_encrypt_key = mv_key_c_to_s
         iv_encrypt_iv  = mv_iv_c_to_s
         iv_encrypt_mac = mv_mac_c_to_s ).
+      IF mv_strict_kex = abap_true.
+        mo_packet->reset_send_sequence( ).
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
@@ -398,6 +435,16 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD get_rekey_count.
     rv_count = mv_rekey_count.
+  ENDMETHOD.
+
+
+  METHOD is_strict_kex.
+    rv_strict = mv_strict_kex.
+  ENDMETHOD.
+
+
+  METHOD is_initial_kex.
+    rv_initial = mv_initial_kex.
   ENDMETHOD.
 
 

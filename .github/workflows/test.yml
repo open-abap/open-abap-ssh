@@ -92,3 +92,4 @@ jobs:
         OASSH_USER: test
         OASSH_PASSWORD: test
         OASSH_EXPECT_REKEY: "1"
+        OASSH_EXPECT_STRICT_KEX: "1"

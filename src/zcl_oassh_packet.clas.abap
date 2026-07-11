@@ -46,6 +46,14 @@ CLASS zcl_oassh_packet DEFINITION
         iv_decrypt_key TYPE xstring OPTIONAL
         iv_decrypt_iv  TYPE xstring OPTIONAL
         iv_decrypt_mac TYPE xstring OPTIONAL.
+    METHODS reset_send_sequence.
+    METHODS reset_receive_sequence.
+    METHODS get_send_sequence
+      RETURNING
+        VALUE(rv_sequence) TYPE i.
+    METHODS get_receive_sequence
+      RETURNING
+        VALUE(rv_sequence) TYPE i.
 
   PRIVATE SECTION.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -108,6 +116,26 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_key     = iv_decrypt_key
         iv_counter = iv_decrypt_iv ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD reset_send_sequence.
+    CLEAR mv_send_sequence.
+  ENDMETHOD.
+
+
+  METHOD reset_receive_sequence.
+    CLEAR mv_receive_sequence.
+  ENDMETHOD.
+
+
+  METHOD get_send_sequence.
+    rv_sequence = mv_send_sequence.
+  ENDMETHOD.
+
+
+  METHOD get_receive_sequence.
+    rv_sequence = mv_receive_sequence.
   ENDMETHOD.
 
 

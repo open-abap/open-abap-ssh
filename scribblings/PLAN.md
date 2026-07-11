@@ -258,7 +258,8 @@ the remaining cross-cutting tasks.
 ### M8 — Hardening & performance
 - [x] stream/packet buffers → table-of-xstring to kill O(n²) concat
 - [x] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
-- [ ] strict-kex (`kex-strict-c-v00@openssh.com`) — modern OpenSSH expects it
+- [x] strict-kex (standard + OpenSSH markers, initial-KEX message discipline,
+      first-packet enforcement, and directional sequence resets after every NEWKEYS)
 - [ ] timeouts, max packet sizes, fuzz the packet parser with malformed fixtures
 
 ### M9 — Nice-to-haves (post-1.0, order by demand)
