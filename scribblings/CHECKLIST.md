@@ -14,10 +14,10 @@
 ## M2 — Bigint & kex math
 - [x] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
 - [x] `zcl_oassh_x25519` + RFC 7748 vectors
-- [ ] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
+- [x] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
 
 ## M3 — Symmetric crypto
-- [ ] `zcl_oassh_aes` + FIPS 197 vectors
+- [x] `zcl_oassh_aes` + FIPS 197 vectors
 - [ ] `zcl_oassh_ctr` + SP 800-38A vectors
 
 ## M4 — Packet protocol & full kex ⭐
