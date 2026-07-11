@@ -196,8 +196,9 @@ Local dev loop: `docker run -p 2222:2222 ...` + `npm run integration`.
 
 ### Quality gates
 
-- `abaplint` strict (already configured) — add rules forbidding SAP-standard
-  object usage outside the two platform adapter classes
+- `abaplint` strict (already configured) plus a repository dependency gate
+  forbidding SAP-standard object usage outside the documented adapters and
+  portable kernel-backed exceptions
 - CI green = tiers 1+2+3 all pass
 - every crypto class lands **with its vectors in the same PR** — no untested crypto
 
