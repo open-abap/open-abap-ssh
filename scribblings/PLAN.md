@@ -14,6 +14,14 @@ plain ABAP language (crypto, encoding, sockets, randomness) is either implemente
 from scratch in ABAP or hidden behind a tiny injectable interface with one
 platform-specific implementation per target.
 
+**Exception — allowed standard classes**: `cl_abap_message_digest`, `cl_abap_hmac`
+and `cl_abap_codepage` may be called directly from core code. They are
+kernel-backed on any NW 7.02+ system (including ECC) and implemented in
+[open-abap-core](https://github.com/open-abap/open-abap-core) via Node `crypto`
+for the transpiler target, so they are fast and portable on both runtimes.
+`cl_abap_bigint` is explicitly **not** allowed — bigint performance is fixed
+locally in `zcl_oassh_bigint`.
+
 Relevant RFCs:
 
 | RFC | Topic |
