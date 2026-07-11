@@ -19,10 +19,54 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
     METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
     METHODS global_request FOR TESTING RAISING cx_static_check.
+    METHODS transport_messages FOR TESTING RAISING cx_static_check.
+    METHODS build_ssh RETURNING VALUE(ro_ssh) TYPE REF TO zcl_oassh.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD build_ssh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    ro_ssh = NEW #(
+      ii_socket        = NEW zcl_oassh_socket_mock( )
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+  ENDMETHOD.
+
+  METHOD transport_messages.
+* RFC 4253 section 11 control messages are handled centrally and consumed
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+
+    " IGNORE (02): string "x"
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '020000000178' ) ).
+
+    " DEBUG (04): always_display=false, "hi", ""
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '040000000002686900000000' ) ).
+
+    " UNIMPLEMENTED (03): sequence number 7
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->handle_transport_message( '0300000007' ) ).
+
+    " DISCONNECT (01): reason 11 (by_application), "gone", ""
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_true(
+      lo_ssh->handle_transport_message( '010000000B00000004676F6E6500000000' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_disconnect_reason( )
+      exp = zcl_oassh_message_1=>c_reason-by_application ).
+
+    " a non-control message is not consumed
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->handle_transport_message( '5E00000000' ) ).
+  ENDMETHOD.
 
   METHOD global_request.
     DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.

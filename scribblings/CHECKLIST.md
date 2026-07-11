@@ -43,7 +43,8 @@
 
 ## M8 — Hardening
 - [x] table-of-xstring buffers (kill O(n²) concat) — `zcl_oassh_stream` read cursor + pending-chunk table
-- [ ] rekeying, IGNORE/DEBUG/UNIMPLEMENTED, disconnect codes
+- [x] IGNORE/DEBUG/UNIMPLEMENTED + disconnect codes — messages 1–4 (parse/serialize) + central `handle_transport_message` wired into kex & encrypted receive loops; disconnect reason captured
+- [ ] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
 - [ ] strict-kex (`kex-strict-c-v00@openssh.com`)
 - [ ] timeouts, max packet sizes, malformed-packet fuzz fixtures
 
