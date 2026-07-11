@@ -12,6 +12,13 @@ CLASS zcl_oassh_transport DEFINITION
         newkeys_sent TYPE i VALUE 3,
         encrypted    TYPE i VALUE 4,
       END OF c_state.
+    CONSTANTS:
+      BEGIN OF c_auth_state,
+        none              TYPE i VALUE 0,
+        service_requested TYPE i VALUE 1,
+        request_sent      TYPE i VALUE 2,
+        authenticated     TYPE i VALUE 3,
+      END OF c_auth_state.
 
     METHODS constructor
       IMPORTING
@@ -43,6 +50,20 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS receive_newkeys
       IMPORTING
         iv_payload TYPE xstring.
+    METHODS start_auth
+      IMPORTING
+        iv_user           TYPE xstring
+        iv_password       TYPE xstring
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
+    METHODS receive_auth
+      IMPORTING
+        iv_payload        TYPE xstring
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
+    METHODS get_auth_state
+      RETURNING
+        VALUE(rv_state) TYPE i.
     METHODS get_state
       RETURNING
         VALUE(rv_state) TYPE i.
@@ -76,6 +97,9 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_mac_c_to_s TYPE xstring.
     DATA mv_mac_s_to_c TYPE xstring.
     DATA mo_packet TYPE REF TO zcl_oassh_packet.
+    DATA mv_user TYPE xstring.
+    DATA mv_password TYPE xstring.
+    DATA mv_auth_state TYPE i.
 
     METHODS derive_keys.
 ENDCLASS.
@@ -256,6 +280,61 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       iv_send_sequence    = 3
       iv_receive_sequence = 3 ).
     mv_state = c_state-encrypted.
+  ENDMETHOD.
+
+
+  METHOD start_auth.
+* https://datatracker.ietf.org/doc/html/rfc4253#section-10
+* request the ssh-userauth service; the password method follows in receive_auth
+    DATA ls_data TYPE zcl_oassh_message_5=>ty_data.
+    ASSERT mv_state = c_state-encrypted.
+    mv_user = iv_user.
+    mv_password = iv_password.
+    ls_data-message_id = zcl_oassh_message_5=>gc_message_id.
+    ls_data-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    rv_payload = zcl_oassh_message_5=>serialize( ls_data )->get( ).
+    mv_auth_state = c_auth_state-service_requested.
+  ENDMETHOD.
+
+
+  METHOD receive_auth.
+* https://datatracker.ietf.org/doc/html/rfc4252
+    DATA lv_id TYPE x LENGTH 1.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA ls_request TYPE zcl_oassh_message_50=>ty_data.
+    lv_id = iv_payload(1).
+    lo_stream = NEW #( iv_payload ).
+    CASE lv_id.
+      WHEN zcl_oassh_message_6=>gc_message_id.
+        ASSERT mv_auth_state = c_auth_state-service_requested.
+        ls_accept = zcl_oassh_message_6=>parse( lo_stream ).
+        ASSERT zcl_oassh_ascii=>from_xstring( ls_accept-service_name ) = 'ssh-userauth'.
+        ls_request-message_id = zcl_oassh_message_50=>gc_message_id.
+        ls_request-user_name = mv_user.
+        ls_request-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-connection' ).
+        ls_request-method_name = zcl_oassh_ascii=>to_xstring( 'password' ).
+        ls_request-password = mv_password.
+        rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
+        mv_auth_state = c_auth_state-request_sent.
+      WHEN zcl_oassh_message_53=>gc_message_id.
+* USERAUTH_BANNER: informational only, no reply
+        zcl_oassh_message_53=>parse( lo_stream ).
+      WHEN zcl_oassh_message_52=>gc_message_id.
+        zcl_oassh_message_52=>parse( lo_stream ).
+        mv_auth_state = c_auth_state-authenticated.
+      WHEN zcl_oassh_message_51=>gc_message_id.
+* USERAUTH_FAILURE: password rejected (or more methods required)
+        zcl_oassh_message_51=>parse( lo_stream ).
+        ASSERT 1 = 2.
+      WHEN OTHERS.
+        ASSERT 1 = 2.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD get_auth_state.
+    rv_state = mv_auth_state.
   ENDMETHOD.
 
 

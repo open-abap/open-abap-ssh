@@ -43,6 +43,10 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     CONSTANTS c_exchange_hash TYPE xstring VALUE
       '2EB36772C13530C22D335FD21E0244DB92A99A9F41027C6198581CD2A2F395D4'.
     METHODS through_newkeys FOR TESTING RAISING cx_static_check.
+    METHODS password_auth FOR TESTING RAISING cx_static_check.
+    METHODS handshake
+      RETURNING VALUE(ro_transport) TYPE REF TO zcl_oassh_transport
+      RAISING cx_static_check.
     METHODS signature_ok FOR TESTING RAISING cx_static_check.
     METHODS signature_tampered_hash FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
@@ -72,6 +76,81 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'rsa-sha2-256' ) ).
     lo_stream->string_encode( signature_bytes( ) ).
     rv_signature = lo_stream->get( ).
+  ENDMETHOD.
+
+
+  METHOD handshake.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    ro_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    ro_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    ro_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
+    ls_reply-k_s = host_key( ).
+    ls_reply-q_s = 'CABC16BA515B878A3F17A2E5ECBD86FAE1554EA1559ACD496A22F45127652A68'.
+    ls_reply-signature = signature_blob( ).
+    ro_transport->receive_ecdh_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
+    ro_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD password_auth.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lv_payload TYPE xstring.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA ls_banner TYPE zcl_oassh_message_53=>ty_data.
+
+    lo_transport = handshake( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_state( )
+      exp = zcl_oassh_transport=>c_state-encrypted ).
+
+    lv_payload = lo_transport->start_auth(
+      iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password = zcl_oassh_ascii=>to_xstring( 'test' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_payload(1)
+      exp = zcl_oassh_message_5=>gc_message_id ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-service_requested ).
+
+* SERVICE_ACCEPT triggers the password USERAUTH_REQUEST
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+    ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_payload(1)
+      exp = zcl_oassh_message_50=>gc_message_id ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-request_sent ).
+
+* a banner in between is informational: no reply, state unchanged
+    ls_banner-message_id = zcl_oassh_message_53=>gc_message_id.
+    ls_banner-message = zcl_oassh_ascii=>to_xstring( 'hello' ).
+    ls_banner-language_tag = zcl_oassh_ascii=>to_xstring( 'en' ).
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_53=>serialize( ls_banner )->get( ) ).
+    cl_abap_unit_assert=>assert_initial( lv_payload ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-request_sent ).
+
+* USERAUTH_SUCCESS completes authentication
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_52=>serialize( )->get( ) ).
+    cl_abap_unit_assert=>assert_initial( lv_payload ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-authenticated ).
   ENDMETHOD.
 
 

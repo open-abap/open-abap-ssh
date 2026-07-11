@@ -77,3 +77,28 @@ constant `0D0A` even though both represent the same bytes.
 
 **Workaround:** uppercase hexadecimal strings at every handwritten JavaScript
 boundary before assigning them to an open-abap `XString`.
+
+## `RETURN` inside a loop nested in a later CASE/IF branch: `indexBackup1 is not defined`
+
+**Found in:** M6 — `zcl_oassh` receive state machine
+
+The transpiler saves/restores `sy-index` around each loop with a per-loop
+`const indexBackupN`, declared **inside that branch's block**. But a `RETURN`
+statement inside a loop always emits the restore against `indexBackup1`
+regardless of which loop it is in. When the loop lives in the second or later
+branch of a `CASE`/`IF` (where `indexBackup1` is out of scope), the generated
+JavaScript throws `ReferenceError: indexBackup1 is not defined` — but only when
+that `RETURN` line is actually reached at runtime, so it hides until exercised.
+
+```abap
+CASE mv_state.
+  WHEN 1. WHILE cond. ... RETURN. ... ENDWHILE.   " indexBackup1 in scope, ok
+  WHEN 2. WHILE cond. ... RETURN. ... ENDWHILE.   " restores indexBackup1 -> crash
+ENDCASE.
+```
+
+**Workaround:** keep at most one loop per method and don't nest loops-with-RETURN
+inside `CASE`/`IF` branches. Splitting each state's handling into its own method
+puts every loop at the method top level, so its `indexBackup1` is always in
+scope. (We don't rely on `sy-index` here, so the mis-numbered restore value
+itself is harmless once it resolves.)

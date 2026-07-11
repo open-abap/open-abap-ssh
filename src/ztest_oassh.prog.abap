@@ -24,6 +24,8 @@ FORM run RAISING cx_static_check.
   zcl_oassh=>connect(
     iv_host          = 'github.com'
     iv_port          = '22'
+    iv_user          = 'demo'
+    iv_password      = 'demo'
     ii_random        = lo_random
     ii_host_verifier = lo_host_verifier ).
 

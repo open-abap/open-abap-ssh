@@ -25,6 +25,17 @@ CLASS zcl_oassh_packet DEFINITION
         iv_packet        TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring.
+    METHODS decode_length
+      IMPORTING
+        iv_first_block          TYPE xstring
+      RETURNING
+        VALUE(rv_packet_length) TYPE i.
+    METHODS decode_remainder
+      IMPORTING
+        iv_rest           TYPE xstring
+        iv_mac            TYPE xstring
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
 
   PRIVATE SECTION.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -34,6 +45,7 @@ CLASS zcl_oassh_packet DEFINITION
     DATA mv_decrypt_mac TYPE xstring.
     DATA mv_send_sequence TYPE i.
     DATA mv_receive_sequence TYPE i.
+    DATA mv_recv_plain TYPE xstring.
 
     METHODS mac
       IMPORTING
@@ -164,5 +176,58 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
     mv_receive_sequence = mv_receive_sequence + 1.
+  ENDMETHOD.
+
+
+  METHOD decode_length.
+* Decrypt the first cipher block so the (encrypted) packet_length field can be
+* read; the CTR keystream is streaming, so the plaintext is buffered here and
+* consumed by decode_remainder. Used to frame packets on a byte stream.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    ASSERT xstrlen( iv_first_block ) = 16.
+    IF mo_decrypt IS BOUND.
+      mv_recv_plain = mo_decrypt->crypt( iv_first_block ).
+    ELSE.
+      mv_recv_plain = iv_first_block.
+    ENDIF.
+    lo_stream = NEW #( mv_recv_plain ).
+    rv_packet_length = lo_stream->uint32_decode_peek( ).
+  ENDMETHOD.
+
+
+  METHOD decode_remainder.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lv_expected_mac TYPE xstring.
+    DATA lv_rest_plain TYPE xstring.
+    DATA lv_packet_length TYPE i.
+    DATA lv_padding_length TYPE i.
+    DATA lv_payload_length TYPE i.
+    IF mo_decrypt IS BOUND.
+      ASSERT xstrlen( iv_rest ) MOD 16 = 0.
+      lv_rest_plain = mo_decrypt->crypt( iv_rest ).
+    ELSE.
+      lv_rest_plain = iv_rest.
+    ENDIF.
+    CONCATENATE mv_recv_plain lv_rest_plain INTO mv_recv_plain IN BYTE MODE.
+
+    IF mv_decrypt_mac IS NOT INITIAL.
+      lv_expected_mac = mac(
+        iv_key      = mv_decrypt_mac
+        iv_sequence = mv_receive_sequence
+        iv_plain    = mv_recv_plain ).
+      ASSERT iv_mac = lv_expected_mac.
+    ENDIF.
+
+    lo_stream = NEW #( mv_recv_plain ).
+    lv_packet_length = lo_stream->uint32_decode( ).
+    ASSERT lv_packet_length + 4 = xstrlen( mv_recv_plain ).
+    lv_padding_length = lo_stream->byte_decode( ).
+    ASSERT lv_padding_length >= 4.
+    ASSERT lv_padding_length < lv_packet_length.
+    lv_payload_length = lv_packet_length - lv_padding_length - 1.
+    rv_payload = lo_stream->take( lv_payload_length ).
+    ASSERT lo_stream->get_length( ) = lv_padding_length.
+    mv_receive_sequence = mv_receive_sequence + 1.
+    CLEAR mv_recv_plain.
   ENDMETHOD.
 ENDCLASS.

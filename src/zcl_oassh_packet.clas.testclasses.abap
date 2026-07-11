@@ -2,6 +2,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS plain_framing FOR TESTING RAISING cx_static_check.
     METHODS encrypted_roundtrip FOR TESTING RAISING cx_static_check.
+    METHODS encrypted_streaming FOR TESTING RAISING cx_static_check.
     METHODS sequence_numbers FOR TESTING RAISING cx_static_check.
     METHODS initial_sequence FOR TESTING RAISING cx_static_check.
 ENDCLASS.
@@ -44,6 +45,48 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->decode( lv_wire )
       exp = '140102030405' ).
+  ENDMETHOD.
+
+
+  METHOD encrypted_streaming.
+* frame a packet the way zcl_oassh does on receive: decrypt the first block to
+* learn the length, then hand the rest plus the MAC to decode_remainder
+    CONSTANTS lc_key TYPE xstring VALUE '2B7E151628AED2A6ABF7158809CF4F3C'.
+    CONSTANTS lc_iv TYPE xstring VALUE 'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'.
+    CONSTANTS lc_mac TYPE xstring VALUE '0102030405060708090A0B0C0D0E0F10'.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA lv_wire TYPE xstring.
+    DATA lv_packet_length TYPE i.
+    DATA lv_rest_length TYPE i.
+    DATA lv_rest TYPE xstring.
+    DATA lv_mac TYPE xstring.
+    DATA lv_mac_offset TYPE i.
+
+    lo_random = NEW #( iv_pattern = 'ABCD' ).
+    lo_sender = NEW #(
+      ii_random      = lo_random
+      iv_encrypt_key = lc_key
+      iv_encrypt_iv  = lc_iv
+      iv_encrypt_mac = lc_mac ).
+    lo_receiver = NEW #(
+      ii_random      = lo_random
+      iv_decrypt_key = lc_key
+      iv_decrypt_iv  = lc_iv
+      iv_decrypt_mac = lc_mac ).
+    lv_wire = lo_sender->encode( '32000000047465737400' ).
+
+    lv_packet_length = lo_receiver->decode_length( lv_wire(16) ).
+    lv_rest_length = lv_packet_length + 4 - 16.
+    lv_rest = lv_wire+16(lv_rest_length).
+    lv_mac_offset = lv_packet_length + 4.
+    lv_mac = lv_wire+lv_mac_offset(32).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode_remainder(
+        iv_rest = lv_rest
+        iv_mac  = lv_mac )
+      exp = '32000000047465737400' ).
   ENDMETHOD.
 
 

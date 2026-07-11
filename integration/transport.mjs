@@ -18,6 +18,12 @@ for (const module of [
   "zcl_oassh_message_21.clas.mjs",
   "zcl_oassh_message_ecdh_30.clas.mjs",
   "zcl_oassh_message_ecdh_31.clas.mjs",
+  "zcl_oassh_message_5.clas.mjs",
+  "zcl_oassh_message_6.clas.mjs",
+  "zcl_oassh_message_50.clas.mjs",
+  "zcl_oassh_message_51.clas.mjs",
+  "zcl_oassh_message_52.clas.mjs",
+  "zcl_oassh_message_53.clas.mjs",
   "zcl_oassh_transport.clas.mjs",
   "zcl_oassh.clas.mjs",
 ]) {
@@ -172,6 +178,8 @@ const client = await new abap.Classes.ZCL_OASSH().constructor_({
   ii_socket: socketRef,
   ii_random: randomRef,
   ii_host_verifier: verifierRef,
+  iv_user: new abap.types.String().set(process.env.OASSH_USER ?? "test"),
+  iv_password: new abap.types.String().set(process.env.OASSH_PASSWORD ?? "test"),
 });
 const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});

@@ -39,7 +39,9 @@ CLASS ltcl_test IMPLEMENTATION.
       EXPORTING
         ii_socket        = li_socket
         ii_random        = li_random
-        ii_host_verifier = li_verifier.
+        ii_host_verifier = li_verifier
+        iv_user          = 'test'
+        iv_password      = 'test'.
 
     li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
@@ -76,7 +78,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_ssh = NEW #(
       ii_socket        = li_socket
       ii_random        = li_random
-      ii_host_verifier = li_verifier ).
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
     li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
     lo_mock->simulate_open( ).

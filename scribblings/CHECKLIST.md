@@ -32,7 +32,7 @@
 
 ## M6 — Authentication
 - [x] messages 50–53 + SERVICE_REQUEST/ACCEPT (5/6)
-- [ ] `password` auth against Docker server (tier 3)
+- [x] `password` auth against Docker server (tier 3)
 
 ## M7 — Connection layer ⭐ v1.0
 - [ ] session channel: open, window management, exec, stdout/stderr, exit-status, close
