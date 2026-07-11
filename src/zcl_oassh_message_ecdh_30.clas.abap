@@ -1,7 +1,7 @@
 CLASS zcl_oassh_message_ecdh_30 DEFINITION
   PUBLIC
   FINAL
-  CREATE PUBLIC .
+  CREATE PUBLIC.
 
   PUBLIC SECTION.
 
@@ -9,21 +9,21 @@ CLASS zcl_oassh_message_ecdh_30 DEFINITION
       BEGIN OF ty_data,
         message_id TYPE x LENGTH 1,
         q_c        TYPE xstring,
-      END OF ty_data .
+      END OF ty_data.
 
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '1E'. " is 30 in decimal
 
     CLASS-METHODS parse
       IMPORTING
-        !io_stream     TYPE REF TO zcl_oassh_stream
+        io_stream     TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data .
+        VALUE(rs_data) TYPE ty_data.
 
     CLASS-METHODS serialize
       IMPORTING
         is_data          TYPE ty_data
       RETURNING
-        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream .
+        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
 
   PROTECTED SECTION.
   PRIVATE SECTION.

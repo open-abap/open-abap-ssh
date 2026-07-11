@@ -1,7 +1,7 @@
 CLASS zcl_oassh_message_20 DEFINITION
   PUBLIC
   FINAL
-  CREATE PUBLIC .
+  CREATE PUBLIC.
 
   PUBLIC SECTION.
 
@@ -21,19 +21,25 @@ CLASS zcl_oassh_message_20 DEFINITION
         languages_s_to_c              TYPE string_table,
         first_kex_packet_follows      TYPE abap_bool,
         reserved                      TYPE i,
-      END OF ty_data .
+      END OF ty_data.
 
     CLASS-METHODS parse
       IMPORTING
-        !io_stream     TYPE REF TO zcl_oassh_stream
+        io_stream     TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data .
+        VALUE(rs_data) TYPE ty_data.
 
     CLASS-METHODS serialize
       IMPORTING
         is_data          TYPE ty_data
       RETURNING
-        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream .
+        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
+
+    CLASS-METHODS create
+      IMPORTING
+        ii_random      TYPE REF TO zif_oassh_random
+      RETURNING
+        VALUE(rs_data) TYPE ty_data.
 
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '14'. " is 20 in decimal
 
@@ -44,6 +50,21 @@ ENDCLASS.
 
 
 CLASS zcl_oassh_message_20 IMPLEMENTATION.
+
+
+  METHOD create.
+    rs_data-message_id = gc_message_id.
+    rs_data-cookie = ii_random->bytes( 16 ).
+    APPEND 'curve25519-sha256' TO rs_data-kex_algorithms.
+    APPEND 'rsa-sha2-256' TO rs_data-server_host_key_algorithms.
+    APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_c_to_s.
+    APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_s_to_c.
+    APPEND 'hmac-sha2-256' TO rs_data-mac_algorithms_c_to_s.
+    APPEND 'hmac-sha2-256' TO rs_data-mac_algorithms_s_to_c.
+    APPEND 'none' TO rs_data-compression_algorithms_c_to_s.
+    APPEND 'none' TO rs_data-compression_algorithms_s_to_c.
+    rs_data-first_kex_packet_follows = abap_false.
+  ENDMETHOD.
 
 
   METHOD parse.
