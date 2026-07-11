@@ -28,6 +28,18 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS boolean_decode
       RETURNING
         VALUE(rv_boolean) TYPE abap_bool .
+    METHODS byte_encode
+      IMPORTING
+        !iv_byte TYPE x .
+    METHODS byte_decode
+      RETURNING
+        VALUE(rv_byte) TYPE x .
+    METHODS mpint_encode
+      IMPORTING
+        !iv_int TYPE xsequence .
+    METHODS mpint_decode
+      RETURNING
+        VALUE(rv_int) TYPE xstring .
     METHODS name_list_decode
       RETURNING
         VALUE(rt_list) TYPE string_table .
@@ -67,7 +79,64 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD boolean_decode.
-    rv_boolean = boolc( take( 1 ) = '00' ).
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+* the value 0 represents FALSE, all non-zero values represent TRUE
+    rv_boolean = boolc( take( 1 ) <> '00' ).
+  ENDMETHOD.
+
+
+  METHOD byte_decode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+    rv_byte = take( 1 ).
+  ENDMETHOD.
+
+
+  METHOD byte_encode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+    append( iv_byte ).
+  ENDMETHOD.
+
+
+  METHOD mpint_decode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+* the magnitude is returned; the sign padding byte (if any) is stripped
+
+    rv_int = string_decode( ).
+    IF xstrlen( rv_int ) > 0 AND rv_int(1) = '00'.
+      rv_int = rv_int+1.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD mpint_encode.
+* https://datatracker.ietf.org/doc/html/rfc4251#section-5
+* only non-negative integers are supported
+
+    DATA lv_data TYPE xstring.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+
+    lv_data = iv_int.
+
+* unnecessary leading zero bytes MUST NOT be included
+    WHILE xstrlen( lv_data ) > 0 AND lv_data(1) = '00'.
+      lv_data = lv_data+1.
+    ENDWHILE.
+
+* if the most significant bit would be set for a positive number,
+* the number MUST be preceded by a zero byte
+    IF xstrlen( lv_data ) > 0.
+      lv_first = lv_data(1).
+      GET BIT 1 OF lv_first INTO lv_bit.
+      IF lv_bit = '1'.
+        DATA(lv_zero) = CONV xstring( '00' ).
+        lv_data = lv_zero && lv_data.
+      ENDIF.
+    ENDIF.
+
+    string_encode( lv_data ).
+
   ENDMETHOD.
 
 
