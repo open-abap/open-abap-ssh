@@ -1,17 +1,17 @@
 CLASS zcl_oassh DEFINITION
   PUBLIC
-  CREATE PRIVATE .
+  CREATE PRIVATE.
 
   PUBLIC SECTION.
 
-    INTERFACES if_apc_wsp_event_handler .
+    INTERFACES if_apc_wsp_event_handler.
 
     CLASS-METHODS connect
       IMPORTING
         iv_host TYPE string
         iv_port TYPE string
       RAISING
-        cx_static_check .
+        cx_static_check.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -19,19 +19,19 @@ CLASS zcl_oassh DEFINITION
       BEGIN OF gc_state,
         protocol_version_exchange TYPE i VALUE 1,
         key_exchange              TYPE i VALUE 2,
-      END OF gc_state .
-    DATA mi_client TYPE REF TO if_apc_wsp_client .
-    DATA mo_stream TYPE REF TO zcl_oassh_stream .
-    DATA mv_state TYPE i .
+      END OF gc_state.
+    DATA mi_client TYPE REF TO if_apc_wsp_client.
+    DATA mo_stream TYPE REF TO zcl_oassh_stream.
+    DATA mv_state TYPE i.
 
     METHODS handle
       RAISING
-        cx_apc_error .
+        cx_apc_error.
     METHODS send
       IMPORTING
         iv_message TYPE xstring
       RAISING
-        cx_apc_error .
+        cx_apc_error.
 ENDCLASS.
 
 

@@ -1,7 +1,7 @@
 CLASS zcl_oassh_message_20 DEFINITION
   PUBLIC
   FINAL
-  CREATE PUBLIC .
+  CREATE PUBLIC.
 
   PUBLIC SECTION.
 
@@ -21,19 +21,19 @@ CLASS zcl_oassh_message_20 DEFINITION
         languages_s_to_c              TYPE string_table,
         first_kex_packet_follows      TYPE abap_bool,
         reserved                      TYPE i,
-      END OF ty_data .
+      END OF ty_data.
 
     CLASS-METHODS parse
       IMPORTING
         io_stream     TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data .
+        VALUE(rs_data) TYPE ty_data.
 
     CLASS-METHODS serialize
       IMPORTING
         is_data          TYPE ty_data
       RETURNING
-        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream .
+        VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
 
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '14'. " is 20 in decimal
 
