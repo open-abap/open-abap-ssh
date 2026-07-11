@@ -4,6 +4,8 @@ CLASS zcl_oassh_packet DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
+    CONSTANTS c_max_payload_length TYPE i VALUE 32768.
+    CONSTANTS c_max_packet_length TYPE i VALUE 35000.
     METHODS constructor
       IMPORTING
         ii_random      TYPE REF TO zif_oassh_random
@@ -19,23 +21,31 @@ CLASS zcl_oassh_packet DEFINITION
       IMPORTING
         iv_payload       TYPE xstring
       RETURNING
-        VALUE(rv_packet) TYPE xstring.
+        VALUE(rv_packet) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS decode
       IMPORTING
         iv_packet        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS decode_length
       IMPORTING
         iv_first_block          TYPE xstring
       RETURNING
-        VALUE(rv_packet_length) TYPE i.
+        VALUE(rv_packet_length) TYPE i
+      RAISING
+        zcx_oassh_error.
     METHODS decode_remainder
       IMPORTING
         iv_rest           TYPE xstring
         iv_mac            TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS rekey_encrypt
       IMPORTING
         iv_encrypt_key TYPE xstring OPTIONAL
@@ -159,6 +169,9 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_plain TYPE xstring.
     DATA lv_mac TYPE xstring.
 
+    IF xstrlen( iv_payload ) > c_max_payload_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     IF mo_encrypt IS BOUND.
       lv_block_size = 16.
     ENDIF.
@@ -188,6 +201,9 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       rv_packet = lv_plain.
     ENDIF.
     CONCATENATE rv_packet lv_mac INTO rv_packet IN BYTE MODE.
+    IF xstrlen( rv_packet ) > c_max_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     mv_send_sequence = mv_send_sequence + 1.
   ENDMETHOD.
 
@@ -202,20 +218,32 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_packet_length TYPE i.
     DATA lv_padding_length TYPE i.
     DATA lv_payload_length TYPE i.
+    DATA lv_expected_packet_length TYPE i.
 
     lv_cipher_length = xstrlen( iv_packet ).
+    IF lv_cipher_length > c_max_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     IF mv_decrypt_mac IS NOT INITIAL.
-      ASSERT lv_cipher_length >= 32.
+      IF lv_cipher_length < 32.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_cipher_length = lv_cipher_length - 32.
       lv_received_mac = iv_packet+lv_cipher_length(32).
     ENDIF.
-    ASSERT lv_cipher_length >= 8.
+    IF lv_cipher_length < 16.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     IF mo_decrypt IS BOUND.
-      ASSERT lv_cipher_length MOD 16 = 0.
+      IF lv_cipher_length MOD 16 <> 0.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_cipher = iv_packet(lv_cipher_length).
       lv_plain = mo_decrypt->crypt( lv_cipher ).
     ELSE.
-      ASSERT lv_cipher_length MOD 8 = 0.
+      IF lv_cipher_length MOD 8 <> 0.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_plain = iv_packet(lv_cipher_length).
     ENDIF.
 
@@ -224,16 +252,25 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_key      = mv_decrypt_mac
         iv_sequence = mv_receive_sequence
         iv_plain    = lv_plain ).
-      ASSERT lv_received_mac = lv_expected_mac.
+      IF lv_received_mac <> lv_expected_mac.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
+      ENDIF.
     ENDIF.
 
     lo_stream = NEW #( lv_plain ).
     lv_packet_length = lo_stream->uint32_decode( ).
-    ASSERT lv_packet_length + 4 = lv_cipher_length.
+    lv_expected_packet_length = lv_cipher_length - 4.
+    IF lv_packet_length < 12 OR lv_packet_length <> lv_expected_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_padding_length = lo_stream->byte_decode( ).
-    ASSERT lv_padding_length >= 4.
-    ASSERT lv_padding_length < lv_packet_length.
+    IF lv_padding_length < 4 OR lv_padding_length >= lv_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_payload_length = lv_packet_length - lv_padding_length - 1.
+    IF lv_payload_length > c_max_payload_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
     mv_receive_sequence = mv_receive_sequence + 1.
@@ -245,7 +282,11 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
 * read; the CTR keystream is streaming, so the plaintext is buffered here and
 * consumed by decode_remainder. Used to frame packets on a byte stream.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
-    ASSERT xstrlen( iv_first_block ) = 16.
+    DATA lv_mac_length TYPE i.
+    DATA lv_max_packet_length TYPE i.
+    IF xstrlen( iv_first_block ) <> 16.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     IF mo_decrypt IS BOUND.
       mv_recv_plain = mo_decrypt->crypt( iv_first_block ).
     ELSE.
@@ -253,6 +294,16 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     ENDIF.
     lo_stream = NEW #( mv_recv_plain ).
     rv_packet_length = lo_stream->uint32_decode_peek( ).
+    IF mv_decrypt_mac IS NOT INITIAL.
+      lv_mac_length = 32.
+    ENDIF.
+    lv_max_packet_length = c_max_packet_length - 4 - lv_mac_length.
+    IF rv_packet_length < 12.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    IF rv_packet_length > lv_max_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -263,8 +314,20 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_packet_length TYPE i.
     DATA lv_padding_length TYPE i.
     DATA lv_payload_length TYPE i.
+    DATA lv_expected_packet_length TYPE i.
+    IF mv_decrypt_mac IS INITIAL AND iv_mac IS NOT INITIAL.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    IF mv_decrypt_mac IS NOT INITIAL AND xstrlen( iv_mac ) <> 32.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    IF xstrlen( mv_recv_plain ) + xstrlen( iv_rest ) + xstrlen( iv_mac ) > c_max_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     IF mo_decrypt IS BOUND.
-      ASSERT xstrlen( iv_rest ) MOD 16 = 0.
+      IF xstrlen( iv_rest ) MOD 16 <> 0.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_rest_plain = mo_decrypt->crypt( iv_rest ).
     ELSE.
       lv_rest_plain = iv_rest.
@@ -276,16 +339,25 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_key      = mv_decrypt_mac
         iv_sequence = mv_receive_sequence
         iv_plain    = mv_recv_plain ).
-      ASSERT iv_mac = lv_expected_mac.
+      IF iv_mac <> lv_expected_mac.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
+      ENDIF.
     ENDIF.
 
     lo_stream = NEW #( mv_recv_plain ).
     lv_packet_length = lo_stream->uint32_decode( ).
-    ASSERT lv_packet_length + 4 = xstrlen( mv_recv_plain ).
+    lv_expected_packet_length = xstrlen( mv_recv_plain ) - 4.
+    IF lv_packet_length < 12 OR lv_packet_length <> lv_expected_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_padding_length = lo_stream->byte_decode( ).
-    ASSERT lv_padding_length >= 4.
-    ASSERT lv_padding_length < lv_packet_length.
+    IF lv_padding_length < 4 OR lv_padding_length >= lv_packet_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_payload_length = lv_packet_length - lv_padding_length - 1.
+    IF lv_payload_length > c_max_payload_length.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+    ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
     mv_receive_sequence = mv_receive_sequence + 1.

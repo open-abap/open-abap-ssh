@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 await import("../output/init.mjs");
 for (const module of [
   "zcl_oassh_ascii.clas.mjs",
+  "zcx_oassh_error.clas.mjs",
   "zcl_oassh_stream.clas.mjs",
   "zcl_oassh_sha256.clas.mjs",
   "zcl_oassh_hmac.clas.mjs",
@@ -98,8 +99,10 @@ const socketAdapter = {
   async zif_oassh_socket$close() {
     socket.end();
   },
-  async zif_oassh_socket$wait() {
+  async zif_oassh_socket$wait({iv_timeout_seconds}) {
+    const deadline = Date.now() + iv_timeout_seconds.get() * 1000;
     while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() !== "X") {
+      if (Date.now() >= deadline) return;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   },

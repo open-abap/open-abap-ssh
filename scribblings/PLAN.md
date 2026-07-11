@@ -260,7 +260,8 @@ the remaining cross-cutting tasks.
 - [x] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
 - [x] strict-kex (standard + OpenSSH markers, initial-KEX message discipline,
       first-packet enforcement, and directional sequence resets after every NEWKEYS)
-- [ ] timeouts, max packet sizes, fuzz the packet parser with malformed fixtures
+- [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
+      deterministic malformed/MAC/oversize packet fixtures
 
 ### M9 — Nice-to-haves (post-1.0, order by demand)
 - [ ] `ssh-ed25519` host keys (needs SHA-512 + edwards arithmetic)

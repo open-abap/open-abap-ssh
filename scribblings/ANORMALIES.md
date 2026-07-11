@@ -15,6 +15,23 @@ the generic byte type has no fixed length.
 **Workaround:** declare a named `x LENGTH 1` type and use it for the returning
 parameter.
 
+## `RAISE EXCEPTION NEW` passes transpilation and A4H but fails on NPL 750
+
+**Found in:** M8 — typed timeout and malformed-packet errors
+
+The constructor-expression form `RAISE EXCEPTION NEW zcx_...( )` compiled on
+A4H SAP_BASIS 758 and in the transpiler, but NPL SAP_BASIS 750 parsed `NEW` as
+an unknown field in this statement position.
+
+**Workaround:** centralize the classic, downportable form `RAISE EXCEPTION TYPE
+... EXPORTING ...` in a static exception helper and call that helper from the
+protocol code.
+
+NPL also required dependency activation in explicit stages for the new
+exception class and the changed socket interface: activate the dependency
+first, then its consumers. A single mixed batch reported the dependency as
+active while consumers still resolved its previous active definition.
+
 ## An `xstring` offset expression cannot be passed directly to a method
 
 **Found in:** M7 — first live on-premise/APC deployment on SAP_BASIS 758

@@ -49,7 +49,8 @@
 - [x] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
 - [x] strict-kex (`kex-strict-c` + `kex-strict-c-v00@openssh.com`; initial-KEX message discipline,
       retrospective first-packet check, and directional sequence resets after every NEWKEYS)
-- [ ] timeouts, max packet sizes, malformed-packet fuzz fixtures
+- [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
+      deterministic malformed/MAC/oversize packet fixtures
 
 ## M9 — Post-1.0
 - [ ] `ssh-ed25519` host keys (SHA-512 + edwards)

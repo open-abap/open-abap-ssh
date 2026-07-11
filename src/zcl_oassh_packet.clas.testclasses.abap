@@ -7,6 +7,12 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS initial_sequence FOR TESTING RAISING cx_static_check.
     METHODS rekey_keeps_sequence FOR TESTING RAISING cx_static_check.
     METHODS strict_resets_sequence FOR TESTING RAISING cx_static_check.
+    METHODS malformed_fixtures FOR TESTING RAISING cx_static_check.
+    METHODS oversize_fixtures FOR TESTING RAISING cx_static_check.
+    METHODS assert_rejected
+      IMPORTING
+        iv_packet         TYPE xstring
+        iv_expected_reason TYPE i.
 ENDCLASS.
 
 
@@ -248,5 +254,104 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->get_receive_sequence( )
       exp = 1 ).
+  ENDMETHOD.
+
+
+  METHOD assert_rejected.
+    DATA lo_packet TYPE REF TO zcl_oassh_packet.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_packet = NEW #( ii_random = NEW zcl_oassh_random_fixed( ) ).
+    TRY.
+        lo_packet->decode( iv_packet ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = iv_expected_reason ).
+  ENDMETHOD.
+
+
+  METHOD malformed_fixtures.
+* Deterministic parser corpus: truncated, non-aligned, length mismatch,
+* insufficient padding, and padding that consumes the full packet.
+    assert_rejected(
+      iv_packet          = '00000000'
+      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+    assert_rejected(
+      iv_packet          = '0000000C0A00000000000000'
+      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+    assert_rejected(
+      iv_packet          = '0000000D0A1400000000000000000000'
+      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+    assert_rejected(
+      iv_packet          = '0000000C030102030405060708000000'
+      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+    assert_rejected(
+      iv_packet          = '0000000C0C0000000000000000000000'
+      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+  ENDMETHOD.
+
+
+  METHOD oversize_fixtures.
+    CONSTANTS lc_mac TYPE xstring VALUE '00112233445566778899AABBCCDDEEFF'.
+    DATA lo_packet TYPE REF TO zcl_oassh_packet.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    DATA lv_wire TYPE xstring.
+    DATA lv_bad_mac TYPE xstring.
+    lo_packet = NEW #( ii_random = NEW zcl_oassh_random_fixed( ) ).
+    li_random = NEW zcl_oassh_random_fixed( ).
+    TRY.
+        lo_packet->encode( li_random->bytes( 32769 ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+
+    CLEAR lv_reason.
+    TRY.
+        lo_packet->decode_length( '00010000000000000000000000000000' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+
+    CLEAR lv_reason.
+    TRY.
+        lo_packet->decode_length( '7FFFFFFF000000000000000000000000' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+
+    lo_sender = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_encrypt_mac = lc_mac ).
+    lo_receiver = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_decrypt_mac = lc_mac ).
+    lv_wire = lo_sender->encode( '01' ).
+    lv_bad_mac = lv_wire(16) &&
+      '0000000000000000000000000000000000000000000000000000000000000000'.
+    CLEAR lv_reason.
+    TRY.
+        lo_receiver->decode( lv_bad_mac ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-mac_invalid ).
   ENDMETHOD.
 ENDCLASS.

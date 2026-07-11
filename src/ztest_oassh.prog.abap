@@ -12,6 +12,7 @@ PARAMETERS p_user TYPE ty_user LOWER CASE DEFAULT 'demo'.
 PARAMETERS p_pass TYPE ty_password LOWER CASE DEFAULT 'demo' NO-DISPLAY.
 PARAMETERS p_cmd TYPE ty_command LOWER CASE DEFAULT 'printf open-abap-ssh'.
 PARAMETERS p_expect TYPE ty_command LOWER CASE DEFAULT 'open-abap-ssh'.
+PARAMETERS p_tmout TYPE i DEFAULT 300.
 
 CLASS lcl_accept_host DEFINITION FINAL.
   PUBLIC SECTION.
@@ -44,7 +45,9 @@ FORM run RAISING cx_static_check.
     iv_password      = CONV #( p_pass )
     ii_random        = lo_random
     ii_host_verifier = lo_host_verifier ).
-  lv_output = lo_ssh->execute( CONV #( p_cmd ) ).
+  lv_output = lo_ssh->execute(
+    iv_command         = CONV #( p_cmd )
+    iv_timeout_seconds = p_tmout ).
   lv_expected = p_expect.
   WRITE / lv_output.
   ASSERT lv_output = lv_expected.

@@ -20,6 +20,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
     METHODS global_request FOR TESTING RAISING cx_static_check.
     METHODS transport_messages FOR TESTING RAISING cx_static_check.
+    METHODS execute_timeout FOR TESTING RAISING cx_static_check.
     METHODS build_ssh RETURNING VALUE(ro_ssh) TYPE REF TO zcl_oassh.
 ENDCLASS.
 
@@ -128,6 +129,24 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = 0 ).
     lo_ssh->close( ).
     cl_abap_unit_assert=>assert_false( lo_mock->is_connected( ) ).
+  ENDMETHOD.
+
+
+  METHOD execute_timeout.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->execute(
+          iv_command         = 'echo hi'
+          iv_timeout_seconds = 1 ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-timeout ).
   ENDMETHOD.
 
   METHOD on_open_sends_version.

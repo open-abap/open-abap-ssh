@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 await import("../output/init.mjs");
 for (const module of [
   "zcl_oassh_ascii.clas.mjs",
+  "zcx_oassh_error.clas.mjs",
   "zcl_oassh_stream.clas.mjs",
   "zcl_oassh_sha256.clas.mjs",
   "zcl_oassh_hmac.clas.mjs",

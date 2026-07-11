@@ -21,7 +21,8 @@ CLASS zcl_oassh DEFINITION
 
     METHODS execute
       IMPORTING
-        iv_command TYPE string
+        iv_command         TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
         VALUE(rv_output) TYPE string
       RAISING
@@ -128,11 +129,16 @@ CLASS zcl_oassh IMPLEMENTATION.
 * transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
 * drive the channel until the peer closes it.
     ASSERT mv_command IS INITIAL.
+    ASSERT iv_timeout_seconds > 0.
     mv_command = iv_command.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( ).
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_command_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
     ASSERT mo_channel IS BOUND.
     ASSERT mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
     rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
@@ -259,8 +265,16 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA lv_payload TYPE xstring.
     DATA lv_reply TYPE xstring.
     DATA lv_message_id TYPE i.
+    DATA lv_max_length TYPE i.
+    lv_max_length = zcl_oassh_packet=>c_max_packet_length - 4.
     WHILE mo_stream->get_length( ) >= 8.
       lv_length = mo_stream->uint32_decode_peek( ).
+      IF lv_length < 12.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      IF lv_length > lv_max_length.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      ENDIF.
       lv_total_length = lv_length + 4.
       IF mo_stream->get_length( ) < lv_total_length.
         RETURN.
