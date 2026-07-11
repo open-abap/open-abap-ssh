@@ -28,7 +28,7 @@
 
 ## M5 — Host key verification
 - [x] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
-- [ ] verify server signature over `H`; known-hosts callback
+- [x] verify server signature over `H`; known-hosts callback
 
 ## M6 — Authentication
 - [ ] messages 50–53 + SERVICE_REQUEST/ACCEPT (5/6)

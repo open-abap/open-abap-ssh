@@ -40,8 +40,15 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
       'D1E5E91C6E6AE54A16BFA1AEFE1180541A064CCBF06953F8DF237702FCE823EE'.
     CONSTANTS c_sig_4 TYPE xstring VALUE
       '9E107D795AE9161BEAA42EAEC32F116851270B6B7CE9B60A8C01150D8E64789D'.
+    CONSTANTS c_exchange_hash TYPE xstring VALUE
+      '2EB36772C13530C22D335FD21E0244DB92A99A9F41027C6198581CD2A2F395D4'.
     METHODS through_newkeys FOR TESTING RAISING cx_static_check.
+    METHODS signature_ok FOR TESTING RAISING cx_static_check.
+    METHODS signature_tampered_hash FOR TESTING RAISING cx_static_check.
+    METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
+    METHODS signature_wrong_sig_algo FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
+    METHODS signature_bytes RETURNING VALUE(rv_signature) TYPE xstring.
     METHODS signature_blob RETURNING VALUE(rv_signature) TYPE xstring.
 ENDCLASS.
 
@@ -53,15 +60,67 @@ CLASS ltcl_test IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD signature_bytes.
+    CONCATENATE c_sig_1 c_sig_2 c_sig_3 c_sig_4
+      INTO rv_signature IN BYTE MODE.
+  ENDMETHOD.
+
+
   METHOD signature_blob.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
-    DATA lv_signature TYPE xstring.
-    CONCATENATE c_sig_1 c_sig_2 c_sig_3 c_sig_4
-      INTO lv_signature IN BYTE MODE.
     lo_stream = NEW #( ).
     lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'rsa-sha2-256' ) ).
-    lo_stream->string_encode( lv_signature ).
+    lo_stream->string_encode( signature_bytes( ) ).
     rv_signature = lo_stream->get( ).
+  ENDMETHOD.
+
+
+  METHOD signature_ok.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = host_key( )
+        iv_signature     = signature_blob( )
+        iv_exchange_hash = c_exchange_hash )
+      exp = abap_true ).
+  ENDMETHOD.
+
+
+  METHOD signature_tampered_hash.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = host_key( )
+        iv_signature     = signature_blob( )
+        iv_exchange_hash = '00' )
+      exp = abap_false ).
+  ENDMETHOD.
+
+
+  METHOD signature_wrong_host_algo.
+* An "ssh-dss" host key must be rejected before any RSA math runs.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    lo_stream = NEW #( ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'ssh-dss' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = lo_stream->get( )
+        iv_signature     = signature_blob( )
+        iv_exchange_hash = c_exchange_hash )
+      exp = abap_false ).
+  ENDMETHOD.
+
+
+  METHOD signature_wrong_sig_algo.
+* Legacy "ssh-rsa" (SHA-1) signatures are not accepted; only rsa-sha2-256.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    lo_stream = NEW #( ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'ssh-rsa' ) ).
+    lo_stream->string_encode( signature_bytes( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = host_key( )
+        iv_signature     = lo_stream->get( )
+        iv_exchange_hash = c_exchange_hash )
+      exp = abap_false ).
   ENDMETHOD.
 
 

@@ -11,6 +11,7 @@
 - Look at the code, consider reorganizing to make it simpler
 - Look at the code, suggest performance improvements
 - Review the code, adjust the plan and checklist if needed
+- Double check the items on the finished checklist items, make sure they are done and tested
 
 
 Opus 4.8 or GPT 5.6 Sol Medium
