@@ -104,6 +104,18 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD zif_oassh_socket~close.
+    DATA lx_error TYPE REF TO cx_apc_error.
+    IF mi_client IS BOUND.
+      TRY.
+          mi_client->close( ).
+        CATCH cx_apc_error INTO lx_error.
+          RETURN.
+      ENDTRY.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_socket~send.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.

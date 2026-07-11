@@ -17,10 +17,53 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS on_open_sends_version FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
+    METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD execute_returns_result.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lv_output TYPE string.
+    lo_mock = NEW #( ).
+    li_socket = lo_mock.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    li_socket->connect( ).
+    lo_ssh->mo_channel = NEW #( ).
+    lo_ssh->mo_channel->open( ).
+    lo_ssh->mo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_ssh->mo_channel->exec( 'echo hi' ).
+    lo_ssh->mo_channel->receive( '6300000000' ).
+    lo_ssh->mo_channel->receive( '5E000000000000000368690A' ).
+    lo_ssh->mo_channel->receive( '5F000000000000000100000003657272' ).
+    lo_ssh->mo_channel->receive( '62000000000000000B657869742D7374617475730000000000' ).
+    lo_ssh->mo_channel->receive( '6100000000' ).
+    lo_ssh->mv_command_done = abap_true.
+    lv_output = lo_ssh->execute( 'echo hi' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_output
+      exp = |hi\n| ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_stderr( )
+      exp = 'err' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_exit_status( )
+      exp = 0 ).
+    lo_ssh->close( ).
+    cl_abap_unit_assert=>assert_false( lo_mock->is_connected( ) ).
+  ENDMETHOD.
 
   METHOD on_open_sends_version.
 

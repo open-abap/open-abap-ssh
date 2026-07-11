@@ -35,8 +35,8 @@
 - [x] `password` auth against Docker server (tier 3)
 
 ## M7 — Connection layer ⭐ v1.0
-- [ ] session channel: open, window management, exec, stdout/stderr, exit-status, close
-- [ ] API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
+- [x] session channel: open, window management, exec, stdout/stderr, exit-status, close
+- [x] API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
 - [ ] demo: run command on real server — transpiled and on ECC
 
 ## M8 — Hardening

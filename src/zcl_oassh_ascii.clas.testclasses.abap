@@ -8,10 +8,17 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS roundtrip_printable FOR TESTING RAISING cx_static_check.
     METHODS with_space FOR TESTING RAISING cx_static_check.
     METHODS cr_lf FOR TESTING RAISING cx_static_check.
+    METHODS text_controls FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD text_controls.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_ascii=>from_xstring_text( '41090A0D42' )
+      exp = |A\t\n\rB| ).
+  ENDMETHOD.
 
   METHOD to_xstring.
 

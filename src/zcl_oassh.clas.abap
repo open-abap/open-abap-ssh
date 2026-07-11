@@ -14,8 +14,25 @@ CLASS zcl_oassh DEFINITION
         iv_password TYPE string
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
+      RETURNING
+        VALUE(ro_ssh) TYPE REF TO zcl_oassh
       RAISING
         cx_static_check.
+
+    METHODS execute
+      IMPORTING
+        iv_command TYPE string
+      RETURNING
+        VALUE(rv_output) TYPE string
+      RAISING
+        cx_static_check.
+    METHODS get_stderr
+      RETURNING
+        VALUE(rv_output) TYPE string.
+    METHODS get_exit_status
+      RETURNING
+        VALUE(rv_status) TYPE i.
+    METHODS close.
 
     METHODS constructor
       IMPORTING
@@ -43,6 +60,9 @@ CLASS zcl_oassh DEFINITION
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
     DATA mv_enc_packet_length TYPE i.
+    DATA mo_channel TYPE REF TO zcl_oassh_channel.
+    DATA mv_command TYPE string.
+    DATA mv_command_done TYPE abap_bool.
 
     METHODS handle
       RAISING
@@ -56,6 +76,9 @@ CLASS zcl_oassh DEFINITION
     METHODS process_encrypted
       RAISING
         cx_static_check.
+    METHODS start_channel
+      RAISING
+        cx_static_check.
 ENDCLASS.
 
 
@@ -65,14 +88,13 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD connect.
 
-    DATA lo_ssh    TYPE REF TO zcl_oassh.
     DATA li_socket TYPE REF TO zif_oassh_socket.
 
     li_socket = NEW zcl_oassh_socket_apc(
       iv_host = iv_host
       iv_port = iv_port ).
 
-    CREATE OBJECT lo_ssh
+    CREATE OBJECT ro_ssh
       EXPORTING
         ii_socket        = li_socket
         ii_random        = ii_random
@@ -80,9 +102,45 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_user          = iv_user
         iv_password      = iv_password.
 
-    li_socket->set_handler( lo_ssh ).
+    li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
 
+  ENDMETHOD.
+
+
+  METHOD execute.
+* Socket callbacks keep driving authentication while WAIT yields. Once the
+* transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
+* drive the channel until the peer closes it.
+    ASSERT mv_command IS INITIAL.
+    mv_command = iv_command.
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    WAIT UNTIL mv_command_done = abap_true UP TO 300 SECONDS.
+    ASSERT mo_channel IS BOUND.
+    ASSERT mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
+    rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
+  ENDMETHOD.
+
+
+  METHOD get_stderr.
+    IF mo_channel IS BOUND.
+      rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stderr( ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD get_exit_status.
+    rv_status = -1.
+    IF mo_channel IS BOUND.
+      rv_status = mo_channel->get_exit_status( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD close.
+    mi_socket->close( ).
   ENDMETHOD.
 
 
@@ -206,11 +264,36 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_rest = lv_rest
         iv_mac  = lv_mac ).
       mv_enc_packet_length = 0.
-      lv_reply = mo_transport->receive_auth( lv_payload ).
+      IF mo_transport->get_auth_state( ) <> zcl_oassh_transport=>c_auth_state-authenticated.
+        lv_reply = mo_transport->receive_auth( lv_payload ).
+        IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated
+            AND mv_command IS NOT INITIAL.
+          start_channel( ).
+        ENDIF.
+      ELSEIF mo_channel IS BOUND.
+        lv_reply = mo_channel->receive( lv_payload ).
+        CASE mo_channel->get_state( ).
+          WHEN zcl_oassh_channel=>c_state-open.
+            lv_reply = mo_channel->exec( mv_command ).
+          WHEN zcl_oassh_channel=>c_state-closed.
+            mv_command_done = abap_true.
+        ENDCASE.
+      ELSE.
+        ASSERT 1 = 2.
+      ENDIF.
       IF lv_reply IS NOT INITIAL.
         mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
       ENDIF.
     ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD start_channel.
+    DATA lv_payload TYPE xstring.
+    ASSERT mo_channel IS NOT BOUND.
+    mo_channel = NEW #( ).
+    lv_payload = mo_channel->open( ).
+    mi_socket->send( mo_transport->get_packet( )->encode( lv_payload ) ).
   ENDMETHOD.
 
 

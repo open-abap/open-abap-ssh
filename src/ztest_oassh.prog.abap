@@ -19,9 +19,10 @@ FORM run RAISING cx_static_check.
 
   DATA lo_random TYPE REF TO zif_oassh_random.
   DATA lo_host_verifier TYPE REF TO zif_oassh_host_verifier.
+  DATA lo_ssh TYPE REF TO zcl_oassh.
   lo_random = NEW zcl_oassh_random_fixed( ).
   lo_host_verifier = NEW lcl_accept_host( ).
-  zcl_oassh=>connect(
+  lo_ssh = zcl_oassh=>connect(
     iv_host          = 'github.com'
     iv_port          = '22'
     iv_user          = 'demo'

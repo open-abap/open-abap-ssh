@@ -60,3 +60,28 @@ jobs:
       env:
         OASSH_USER: test
         OASSH_PASSWORD: test
+
+  command-exec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      openssh:
+        image: lscr.io/linuxserver/openssh-server@sha256:deec9e402eb9a656de1749c3ea93e99478a565cf187ecfb051f8446d93b12483
+        env:
+          PUID: 1000
+          PGID: 1000
+          TZ: Etc/UTC
+          USER_NAME: test
+          USER_PASSWORD: test
+          PASSWORD_ACCESS: "true"
+          SUDO_ACCESS: "false"
+        ports:
+          - 2222:2222
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - run: npm run integration:exec
+      env:
+        OASSH_USER: test
+        OASSH_PASSWORD: test

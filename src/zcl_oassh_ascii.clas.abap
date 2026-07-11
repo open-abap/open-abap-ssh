@@ -22,6 +22,11 @@ CLASS zcl_oassh_ascii DEFINITION
         iv_hex           TYPE xstring
       RETURNING
         VALUE(rv_string) TYPE string.
+    CLASS-METHODS from_xstring_text
+      IMPORTING
+        iv_hex           TYPE xstring
+      RETURNING
+        VALUE(rv_string) TYPE string.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -35,6 +40,36 @@ ENDCLASS.
 
 
 CLASS zcl_oassh_ascii IMPLEMENTATION.
+
+
+  METHOD from_xstring_text.
+* Command output is text rather than an SSH identifier, so retain the common
+* ASCII whitespace controls that from_xstring intentionally drops.
+    DATA lv_offset TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_code TYPE i.
+    DATA lv_index TYPE i.
+    DATA lv_printable TYPE string.
+    lv_printable = printable( ).
+    DO xstrlen( iv_hex ) TIMES.
+      lv_offset = sy-index - 1.
+      lv_byte = iv_hex+lv_offset(1).
+      lv_code = lv_byte.
+      CASE lv_code.
+        WHEN 9.
+          rv_string = rv_string && |\t|.
+        WHEN 10.
+          rv_string = rv_string && |\n|.
+        WHEN 13.
+          rv_string = rv_string && |\r|.
+        WHEN OTHERS.
+          IF lv_code >= 32 AND lv_code <= 126.
+            lv_index = lv_code - 32.
+            rv_string = rv_string && lv_printable+lv_index(1).
+          ENDIF.
+      ENDCASE.
+    ENDDO.
+  ENDMETHOD.
 
 
   METHOD from_xstring.
