@@ -179,6 +179,9 @@ the full client runs VERSION → KEX → NEWKEYS → AUTH → EXEC against canne
 This is the highest-value test: it exercises the whole state machine
 deterministically in plain `npm test`.
 
+Implemented with a capture from the pinned OpenSSH 10.3 CI container: the test
+replays all 3,134 inbound bytes and verifies the exact 646-byte client stream.
+
 ### Tier 3 — live integration (CI job, real network)
 
 GitHub Actions workflow (`.github/workflows/test.yml`, extend):

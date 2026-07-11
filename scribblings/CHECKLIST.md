@@ -61,6 +61,6 @@
 
 ## Testing infrastructure (cross-cutting)
 - [x] tier 1: vectors in testclasses, run via transpiler (`npm test`)
-- [ ] tier 2: recorded OpenSSH session replayed via mock socket + fixed RNG
+- [x] tier 2: recorded OpenSSH session replayed via mock socket + fixed RNG
 - [x] tier 3: GitHub Actions + Dockerized OpenSSH, Node socket shim, exec round-trip
 - [x] CI dependency gate: no SAP standard outside the documented adapters/exceptions
