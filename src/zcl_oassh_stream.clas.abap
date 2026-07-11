@@ -181,7 +181,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
     lv_length = uint32_decode( ).
     lv_hex = mv_hex(lv_length).
-    lv_text = cl_abap_codepage=>convert_from( lv_hex ).
+    lv_text = zcl_oassh_ascii=>from_xstring( lv_hex ).
     SPLIT lv_text AT ',' INTO TABLE rt_list.
     take( lv_length ).
 
@@ -195,7 +195,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     CONCATENATE LINES OF it_list INTO lv_text SEPARATED BY ','.
 
     uint32_encode( strlen( lv_text ) ).
-    append( cl_abap_codepage=>convert_to( lv_text ) ).
+    append( zcl_oassh_ascii=>to_xstring( lv_text ) ).
 
   ENDMETHOD.
 

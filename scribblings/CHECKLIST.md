@@ -2,10 +2,10 @@
 
 ## M0 — Foundations
 - [x] `zcl_oassh_stream`: add mpint + byte helpers, fix inverted `boolean_decode`, full testclass
-- [ ] `zcl_oassh_ascii` — replace `cl_abap_codepage` / `cl_abap_char_utilities`
-- [ ] `zif_oassh_socket` + `zif_oassh_random` interfaces, mock/fixed test implementations
-- [ ] move APC code to `zcl_oassh_socket_apc`; `zcl_oassh` depends only on interfaces
-- [ ] CI runs unit tests on push
+- [x] `zcl_oassh_ascii` — replace `cl_abap_codepage` / `cl_abap_char_utilities`
+- [x] `zif_oassh_socket` + `zif_oassh_random` interfaces, mock/fixed test implementations
+- [x] move APC code to `zcl_oassh_socket_apc`; `zcl_oassh` depends only on interfaces
+- [x] CI runs unit tests on push
 
 ## M1 — Hashing
 - [ ] `zcl_oassh_sha256` + NIST vectors
