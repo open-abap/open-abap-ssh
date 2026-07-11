@@ -51,6 +51,10 @@ CLASS lcl_handler IMPLEMENTATION.
     mv_errored = abap_true.
   ENDMETHOD.
 
+  METHOD zif_oassh_socket_handler~is_complete.
+    rv_complete = mv_closed.
+  ENDMETHOD.
+
 ENDCLASS.
 
 

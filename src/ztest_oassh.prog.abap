@@ -20,6 +20,7 @@ FORM run RAISING cx_static_check.
   DATA lo_random TYPE REF TO zif_oassh_random.
   DATA lo_host_verifier TYPE REF TO zif_oassh_host_verifier.
   DATA lo_ssh TYPE REF TO zcl_oassh.
+  DATA lv_output TYPE string.
   lo_random = NEW zcl_oassh_random_fixed( ).
   lo_host_verifier = NEW lcl_accept_host( ).
   lo_ssh = zcl_oassh=>connect(
@@ -29,5 +30,9 @@ FORM run RAISING cx_static_check.
     iv_password      = 'demo'
     ii_random        = lo_random
     ii_host_verifier = lo_host_verifier ).
+  lv_output = lo_ssh->execute( 'printf open-abap-ssh' ).
+  ASSERT lv_output = 'open-abap-ssh'.
+  ASSERT lo_ssh->get_exit_status( ) = 0.
+  lo_ssh->close( ).
 
 ENDFORM.

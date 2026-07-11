@@ -18,10 +18,31 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS on_open_sends_version FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
     METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
+    METHODS global_request FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD global_request.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    lo_mock = NEW #( ).
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = lo_mock
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->process_global_request( '5000000004686F73740100000003616263' )
+      exp = '52' ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->process_global_request( '5000000004686F737400' ) ).
+  ENDMETHOD.
 
   METHOD execute_returns_result.
     DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.

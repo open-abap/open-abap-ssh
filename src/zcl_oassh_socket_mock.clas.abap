@@ -93,6 +93,11 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD zif_oassh_socket~wait.
+    RETURN.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_socket~set_handler.
     mi_handler = ii_handler.
   ENDMETHOD.

@@ -100,6 +100,12 @@ const socketAdapter = {
     if (debug) console.error(`sending ${data.length} bytes`);
     socket.write(data);
   },
+  async zif_oassh_socket$close() {
+    socket.end();
+  },
+  async zif_oassh_socket$wait() {
+    return;
+  },
 };
 
 const socketRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET"}).set(socketAdapter);

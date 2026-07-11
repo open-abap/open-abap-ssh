@@ -42,7 +42,7 @@ let handler;
 let socket;
 let callbackQueue = Promise.resolve();
 let rejectSocket;
-const debug = process.env.OASSH_DEBUG !== "0";
+const debug = process.env.OASSH_DEBUG === "1";
 const socketFailure = new Promise((_, reject) => { rejectSocket = reject; });
 
 const random = {
@@ -96,6 +96,11 @@ const socketAdapter = {
   },
   async zif_oassh_socket$close() {
     socket.end();
+  },
+  async zif_oassh_socket$wait() {
+    while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() === "") {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
   },
 };
 

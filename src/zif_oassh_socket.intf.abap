@@ -16,4 +16,5 @@ INTERFACE zif_oassh_socket
     RAISING
       cx_static_check.
   METHODS close.
+  METHODS wait.
 ENDINTERFACE.

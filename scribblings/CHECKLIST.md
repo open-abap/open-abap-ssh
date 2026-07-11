@@ -37,7 +37,9 @@
 ## M7 — Connection layer ⭐ v1.0
 - [x] session channel: open, window management, exec, stdout/stderr, exit-status, close
 - [x] API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
-- [ ] demo: run command on real server — transpiled and on ECC
+- [ ] demo: run command on real server
+  - [x] transpiled ABAP against Docker OpenSSH (`integration/exec.mjs`)
+  - [ ] ECC via APC (`ztest_oassh` is ready; execution requires an ECC system)
 
 ## M8 — Hardening
 - [ ] table-of-xstring buffers (kill O(n²) concat)

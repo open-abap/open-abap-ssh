@@ -81,6 +81,11 @@ jobs:
     - uses: actions/checkout@v6
     - uses: actions/setup-node@v6
     - run: npm ci
+    - name: Allow time for pure-ABAP RSA verification
+      run: |
+        container=$(docker ps --filter publish=2222 -q)
+        docker exec "$container" sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker restart "$container"
     - run: npm run integration:exec
       env:
         OASSH_USER: test

@@ -79,6 +79,11 @@ CLASS zcl_oassh DEFINITION
     METHODS start_channel
       RAISING
         cx_static_check.
+    METHODS process_global_request
+      IMPORTING
+        iv_payload        TYPE xstring
+      RETURNING
+        VALUE(rv_payload) TYPE xstring.
 ENDCLASS.
 
 
@@ -117,7 +122,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    WAIT UNTIL mv_command_done = abap_true UP TO 300 SECONDS.
+    mi_socket->wait( ).
     ASSERT mo_channel IS BOUND.
     ASSERT mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
     rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
@@ -270,6 +275,8 @@ CLASS zcl_oassh IMPLEMENTATION.
             AND mv_command IS NOT INITIAL.
           start_channel( ).
         ENDIF.
+      ELSEIF lv_payload(1) = '50'. " SSH_MSG_GLOBAL_REQUEST (80)
+        lv_reply = process_global_request( lv_payload ).
       ELSEIF mo_channel IS BOUND.
         lv_reply = mo_channel->receive( lv_payload ).
         CASE mo_channel->get_state( ).
@@ -297,13 +304,34 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD process_global_request.
+* RFC 4254 section 4. OpenSSH sends hostkeys-00@openssh.com after auth.
+* It is an optional extension; reject requests asking for a reply and ignore
+* any request-specific trailing fields.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lv_want_reply TYPE abap_bool.
+    lo_stream = NEW #( iv_payload ).
+    ASSERT lo_stream->take( 1 ) = '50'.
+    lo_stream->string_decode( ).
+    lv_want_reply = lo_stream->boolean_decode( ).
+    IF lv_want_reply = abap_true.
+      rv_payload = '52'. " SSH_MSG_REQUEST_FAILURE (82)
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_socket_handler~on_close.
     RETURN.
   ENDMETHOD.
 
 
   METHOD zif_oassh_socket_handler~on_error.
-    RETURN.
+    mv_command_done = abap_true.
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_socket_handler~is_complete.
+    rv_complete = mv_command_done.
   ENDMETHOD.
 
 
