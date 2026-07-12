@@ -122,14 +122,13 @@ CLASS zcl_oassh IMPLEMENTATION.
       iv_host = iv_host
       iv_port = iv_port ).
 
-    CREATE OBJECT ro_ssh
-      EXPORTING
-        ii_socket        = li_socket
-        ii_random        = li_random
-        ii_host_verifier = ii_host_verifier
-        iv_user          = iv_user
-        iv_password      = iv_password
-        iv_private_seed  = iv_private_seed.
+    ro_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = ii_host_verifier
+      iv_user          = iv_user
+      iv_password      = iv_password
+      iv_private_seed  = iv_private_seed ).
 
     li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
@@ -223,7 +222,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     mv_user = zcl_oassh_ascii=>to_xstring( iv_user ).
     mv_password = zcl_oassh_ascii=>to_xstring( iv_password ).
     mv_private_seed = iv_private_seed.
-    CREATE OBJECT mo_stream.
+    mo_stream = NEW #( ).
     mo_plain_packet = NEW #( ii_random = mi_random ).
     mo_transport = NEW #(
       ii_random        = mi_random

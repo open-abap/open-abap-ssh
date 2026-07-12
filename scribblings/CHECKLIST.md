@@ -66,6 +66,7 @@
 - [x] `chacha20-poly1305@openssh.com` — RFC 8439/OpenSSH vectors,
   authenticated streaming packets, forced OpenSSH integration, A4H/NPL ABAP Unit
 - [ ] interactive shell, sftp, port forwarding
+  - sftp: implementation plan and milestone checklist in `CHECKLIST2.md`
 
 ## Testing infrastructure (cross-cutting)
 - [x] tier 1: vectors in testclasses, run via transpiler (`npm test`)
