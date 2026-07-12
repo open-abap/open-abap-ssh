@@ -51,6 +51,10 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS signature_tampered_hash FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_sig_algo FOR TESTING RAISING cx_static_check.
+    METHODS signature_negotiated_mismatch FOR TESTING RAISING cx_static_check.
+    METHODS negotiation_rejected FOR TESTING RAISING cx_static_check.
+    METHODS invalid_private_seed FOR TESTING RAISING cx_static_check.
+    METHODS invalid_group14_public FOR TESTING RAISING cx_static_check.
     METHODS rekey FOR TESTING RAISING cx_static_check.
     METHODS strict_kex FOR TESTING RAISING cx_static_check.
     METHODS group14_fallback FOR TESTING RAISING cx_static_check.
@@ -219,6 +223,94 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_signature     = lo_stream->get( )
         iv_exchange_hash = c_exchange_hash )
       exp = abap_false ).
+  ENDMETHOD.
+
+
+  METHOD signature_negotiated_mismatch.
+* A valid RSA wrapper cannot satisfy an ssh-ed25519 negotiation.
+    cl_abap_unit_assert=>assert_false(
+      zcl_oassh_transport=>verify_server_signature(
+        iv_host_key           = host_key( )
+        iv_signature          = signature_blob( )
+        iv_exchange_hash      = c_exchange_hash
+        iv_expected_algorithm = zcl_oassh_transport=>c_host_ed25519 ) ).
+  ENDMETHOD.
+
+
+  METHOD negotiation_rejected.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    CLEAR ls_server-kex_algorithms.
+    TRY.
+        lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+        cl_abap_unit_assert=>fail( 'missing common KEX accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-negotiation_failed ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD invalid_private_seed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_transport = handshake( ).
+    TRY.
+        lo_transport->start_auth(
+          iv_user         = zcl_oassh_ascii=>to_xstring( 'test' )
+          iv_password     = zcl_oassh_ascii=>to_xstring( 'fallback' )
+          iv_private_seed = '01' ).
+        cl_abap_unit_assert=>fail( 'malformed private seed accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-invalid_credentials ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD invalid_group14_public.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA ls_reply TYPE zcl_oassh_message_dh_31=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_curve25519.
+    lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    ls_reply-message_id = zcl_oassh_message_dh_31=>gc_message_id.
+    ls_reply-f = '01'.
+    TRY.
+        lo_transport->receive_kex_reply( zcl_oassh_message_dh_31=>serialize( ls_reply )->get( ) ).
+        cl_abap_unit_assert=>fail( 'invalid group14 public value accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
   ENDMETHOD.
 
 

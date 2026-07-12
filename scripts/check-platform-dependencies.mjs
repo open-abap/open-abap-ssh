@@ -47,20 +47,46 @@ function stripStringsAndComments(line) {
 
   let result = "";
   let delimiter;
+  let templateDepth = 0;
 
   for (let index = 0; index < line.length; index += 1) {
     const character = line[index];
 
-    if (delimiter !== undefined) {
-      if (delimiter === "|" && character === "\\") {
+    if (delimiter === "|") {
+      if (character === "\\") {
         index += 1;
-      } else if (character === delimiter && line[index + 1] === delimiter) {
+        result += "  ";
+        continue;
+      }
+      if (character === "{") {
+        delimiter = undefined;
+        templateDepth = 1;
+      } else if (character === "|") {
+        delimiter = undefined;
+      }
+      result += " ";
+    } else if (delimiter !== undefined) {
+      if (character === delimiter && line[index + 1] === delimiter) {
         index += 1;
       } else if (character === delimiter) {
         delimiter = undefined;
       }
       result += " ";
-    } else if (["'", "`", "|"].includes(character)) {
+    } else if (templateDepth > 0 && character === "{") {
+      templateDepth += 1;
+      result += character;
+    } else if (templateDepth > 0 && character === "}") {
+      templateDepth -= 1;
+      if (templateDepth === 0) {
+        delimiter = "|";
+        result += " ";
+      } else {
+        result += character;
+      }
+    } else if (["'", "`"].includes(character)) {
+      delimiter = character;
+      result += " ";
+    } else if (character === "|") {
       delimiter = character;
       result += " ";
     } else if (character === '"') {

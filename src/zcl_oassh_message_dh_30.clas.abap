@@ -24,7 +24,9 @@ CLASS zcl_oassh_message_dh_30 IMPLEMENTATION.
   METHOD parse.
 * RFC 4253 section 8: SSH_MSG_KEXDH_INIT carries e as an mpint.
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-e = io_stream->mpint_decode_positive( ).
   ENDMETHOD.
 

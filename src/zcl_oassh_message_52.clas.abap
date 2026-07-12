@@ -7,7 +7,8 @@ CLASS zcl_oassh_message_52 DEFINITION
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '34'. " is 52 in decimal
     CLASS-METHODS parse
       IMPORTING
-        io_stream TYPE REF TO zcl_oassh_stream.
+        io_stream TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
     CLASS-METHODS serialize
       RETURNING
         VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.

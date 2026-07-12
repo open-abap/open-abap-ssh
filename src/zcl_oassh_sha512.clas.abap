@@ -9,7 +9,6 @@ CLASS zcl_oassh_sha512 DEFINITION
       RETURNING VALUE(rv_hash) TYPE xstring.
 ENDCLASS.
 
-
 CLASS zcl_oassh_sha512 IMPLEMENTATION.
   METHOD hash.
     TRY.
@@ -24,4 +23,3 @@ CLASS zcl_oassh_sha512 IMPLEMENTATION.
     ENDTRY.
   ENDMETHOD.
 ENDCLASS.
-

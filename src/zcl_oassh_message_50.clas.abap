@@ -31,7 +31,8 @@ CLASS zcl_oassh_message_50 DEFINITION
       IMPORTING
         io_stream      TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data.
+        VALUE(rs_data) TYPE ty_data
+      RAISING zcx_oassh_error.
 
     CLASS-METHODS serialize
       IMPORTING

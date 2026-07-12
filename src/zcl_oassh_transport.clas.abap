@@ -39,6 +39,7 @@ CLASS zcl_oassh_transport DEFINITION
         iv_host_key       TYPE xstring
         iv_signature      TYPE xstring
         iv_exchange_hash  TYPE xstring
+        iv_expected_algorithm TYPE string OPTIONAL
       RETURNING
         VALUE(rv_verified) TYPE abap_bool.
     METHODS start_kex
@@ -54,7 +55,9 @@ CLASS zcl_oassh_transport DEFINITION
       IMPORTING
         iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS receive_kex_reply
       IMPORTING
         iv_payload        TYPE xstring
@@ -65,19 +68,23 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS activate_outbound_keys.
     METHODS receive_newkeys
       IMPORTING
-        iv_payload TYPE xstring.
+        iv_payload TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS start_auth
       IMPORTING
         iv_user           TYPE xstring
         iv_password       TYPE xstring OPTIONAL
         iv_private_seed   TYPE xstring OPTIONAL
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS receive_auth
       IMPORTING
         iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS get_auth_state
       RETURNING
         VALUE(rv_state) TYPE i.
@@ -148,7 +155,8 @@ CLASS zcl_oassh_transport DEFINITION
 
     METHODS derive_keys.
     METHODS select_host_key
-      IMPORTING it_algorithms TYPE string_table.
+      IMPORTING it_algorithms TYPE string_table
+      RAISING zcx_oassh_error.
     METHODS publickey_request
       RETURNING VALUE(rv_payload) TYPE xstring.
 ENDCLASS.
@@ -177,44 +185,62 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lv_host_name TYPE string.
     DATA lv_signature_name TYPE string.
     DATA lv_public_key TYPE xstring.
-    lo_host = NEW #( iv_host_key ).
-    lv_host_algorithm = lo_host->string_decode( ).
-    lv_host_name = zcl_oassh_ascii=>from_xstring( lv_host_algorithm ).
-    lo_signature = NEW #( iv_signature ).
-    lv_signature_algorithm = lo_signature->string_decode( ).
-    lv_signature_name = zcl_oassh_ascii=>from_xstring( lv_signature_algorithm ).
-    lv_signature = lo_signature->string_decode( ).
-    IF lo_signature->get_length( ) <> 0.
-      RETURN.
-    ENDIF.
-    CASE lv_host_name.
-      WHEN 'ssh-rsa'.
-        IF lv_signature_name <> c_host_rsa.
+    TRY.
+        lo_host = NEW #( iv_host_key ).
+        lv_host_algorithm = lo_host->string_decode( ).
+        lv_host_name = zcl_oassh_ascii=>from_xstring( lv_host_algorithm ).
+        lo_signature = NEW #( iv_signature ).
+        lv_signature_algorithm = lo_signature->string_decode( ).
+        lv_signature_name = zcl_oassh_ascii=>from_xstring( lv_signature_algorithm ).
+        lv_signature = lo_signature->string_decode( ).
+        IF lo_signature->get_length( ) <> 0.
           RETURN.
         ENDIF.
-        lv_e = lo_host->mpint_decode( ).
-        lv_n = lo_host->mpint_decode( ).
-        IF lo_host->get_length( ) <> 0.
-          RETURN.
-        ENDIF.
-        rv_verified = zcl_oassh_rsa=>verify_pkcs1_sha256(
-          iv_n         = lv_n
-          iv_e         = lv_e
-          iv_signature = lv_signature
-          iv_message   = iv_exchange_hash ).
-      WHEN c_host_ed25519.
-        IF lv_signature_name <> c_host_ed25519.
-          RETURN.
-        ENDIF.
-        lv_public_key = lo_host->string_decode( ).
-        IF lo_host->get_length( ) <> 0.
-          RETURN.
-        ENDIF.
-        rv_verified = zcl_oassh_ed25519=>verify(
-          iv_public_key = lv_public_key
-          iv_message    = iv_exchange_hash
-          iv_signature  = lv_signature ).
-    ENDCASE.
+        CASE iv_expected_algorithm.
+          WHEN c_host_rsa.
+            IF lv_host_name <> 'ssh-rsa' OR lv_signature_name <> c_host_rsa.
+              RETURN.
+            ENDIF.
+          WHEN c_host_ed25519.
+            IF lv_host_name <> c_host_ed25519 OR lv_signature_name <> c_host_ed25519.
+              RETURN.
+            ENDIF.
+          WHEN ''.
+            CLEAR rv_verified.
+          WHEN OTHERS.
+            RETURN.
+        ENDCASE.
+        CASE lv_host_name.
+          WHEN 'ssh-rsa'.
+            IF lv_signature_name <> c_host_rsa.
+              RETURN.
+            ENDIF.
+            lv_e = lo_host->mpint_decode( ).
+            lv_n = lo_host->mpint_decode( ).
+            IF lo_host->get_length( ) <> 0.
+              RETURN.
+            ENDIF.
+            rv_verified = zcl_oassh_rsa=>verify_pkcs1_sha256(
+              iv_n         = lv_n
+              iv_e         = lv_e
+              iv_signature = lv_signature
+              iv_message   = iv_exchange_hash ).
+          WHEN c_host_ed25519.
+            IF lv_signature_name <> c_host_ed25519.
+              RETURN.
+            ENDIF.
+            lv_public_key = lo_host->string_decode( ).
+            IF lo_host->get_length( ) <> 0.
+              RETURN.
+            ENDIF.
+            rv_verified = zcl_oassh_ed25519=>verify(
+              iv_public_key = lv_public_key
+              iv_message    = iv_exchange_hash
+              iv_signature  = lv_signature ).
+        ENDCASE.
+      CATCH zcx_oassh_error.
+        CLEAR rv_verified.
+    ENDTRY.
   ENDMETHOD.
 
 
@@ -278,7 +304,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ASSERT mv_state = c_state-kexinit_sent.
     lo_stream = NEW #( iv_payload ).
     ls_server = zcl_oassh_message_20=>parse( lo_stream ).
-    ASSERT lo_stream->get_length( ) = 0.
+    IF lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
 * RFC 4253 section 7.1 selects the first client-preferred common method.
     IF line_exists( ls_server-kex_algorithms[ table_line = c_kex_curve25519 ] ).
       mv_kex_algorithm = c_kex_curve25519.
@@ -286,7 +314,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         AND line_exists( ls_server-kex_algorithms[ table_line = c_kex_group14 ] ).
       mv_kex_algorithm = c_kex_group14.
     ELSE.
-      ASSERT 1 = 2.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
     select_host_key( ls_server-server_host_key_algorithms ).
     IF line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_aes128_ctr ] ).
@@ -295,7 +323,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_chachapoly ] ).
       mv_cipher_c_to_s = c_cipher_chachapoly.
     ELSE.
-      ASSERT 1 = 2.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
     IF line_exists( ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_aes128_ctr ] ).
       mv_cipher_s_to_c = c_cipher_aes128_ctr.
@@ -303,12 +331,14 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_chachapoly ] ).
       mv_cipher_s_to_c = c_cipher_chachapoly.
     ELSE.
-      ASSERT 1 = 2.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
-    ASSERT line_exists( ls_server-mac_algorithms_c_to_s[ table_line = 'hmac-sha2-256' ] ).
-    ASSERT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] ).
-    ASSERT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] ).
-    ASSERT line_exists( ls_server-compression_algorithms_s_to_c[ table_line = 'none' ] ).
+    IF NOT line_exists( ls_server-mac_algorithms_c_to_s[ table_line = 'hmac-sha2-256' ] )
+        OR NOT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] )
+        OR NOT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] )
+        OR NOT line_exists( ls_server-compression_algorithms_s_to_c[ table_line = 'none' ] ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+    ENDIF.
     IF mv_initial_kex = abap_true.
       mv_strict_kex = xsdbool( mv_offer_strict = abap_true
         AND ( line_exists( ls_server-kex_algorithms[ table_line = 'kex-strict-s' ] )
@@ -343,7 +373,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ELSEIF line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
       mv_host_key_algorithm = c_host_ed25519.
     ELSE.
-      ASSERT 1 = 2.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
   ENDMETHOD.
 
@@ -421,7 +451,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     lo_stream = NEW #( iv_payload ).
     IF mv_kex_algorithm = c_kex_curve25519.
       ls_ecdh = zcl_oassh_message_ecdh_31=>parse( lo_stream ).
-      ASSERT xstrlen( ls_ecdh-q_s ) = 32.
+      IF xstrlen( ls_ecdh-q_s ) <> 32.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_host_key = ls_ecdh-k_s.
       lv_server_public = ls_ecdh-q_s.
       lv_signature = ls_ecdh-signature.
@@ -441,7 +473,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         iv_k   = mv_k ).
     ELSE.
       ls_dh = zcl_oassh_message_dh_31=>parse( lo_stream ).
-      ASSERT zcl_oassh_group14=>is_valid_public( ls_dh-f ) = abap_true.
+      IF zcl_oassh_group14=>is_valid_public( ls_dh-f ) = abap_false.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       lv_host_key = ls_dh-k_s.
       lv_server_public = ls_dh-f.
       lv_signature = ls_dh-signature.
@@ -458,12 +492,19 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         iv_f   = lv_server_public
         iv_k   = mv_k ).
     ENDIF.
-    ASSERT lo_stream->get_length( ) = 0.
-    ASSERT mi_host_verifier->verify( lv_host_key ) = abap_true.
-    ASSERT verify_server_signature(
-      iv_host_key      = lv_host_key
-      iv_signature     = lv_signature
-      iv_exchange_hash = mv_h ) = abap_true.
+    IF lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    IF mi_host_verifier->verify( lv_host_key ) = abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-host_key_rejected ).
+    ENDIF.
+    IF verify_server_signature(
+        iv_host_key           = lv_host_key
+        iv_signature          = lv_signature
+        iv_exchange_hash      = mv_h
+        iv_expected_algorithm = mv_host_key_algorithm ) = abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-signature_invalid ).
+    ENDIF.
     IF mv_session_id IS INITIAL.
       mv_session_id = mv_h.
     ENDIF.
@@ -480,7 +521,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     lv_was_initial = mv_initial_kex.
     lo_stream = NEW #( iv_payload ).
     zcl_oassh_message_21=>parse( lo_stream ).
-    ASSERT lo_stream->get_length( ) = 0.
+    IF lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     ASSERT mo_packet IS BOUND.
     mo_packet->rekey_decrypt(
       iv_decrypt_key       = mv_key_s_to_c
@@ -537,10 +580,15 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 * request the ssh-userauth service; the password method follows in receive_auth
     DATA ls_data TYPE zcl_oassh_message_5=>ty_data.
     ASSERT mv_state = c_state-encrypted.
+    IF iv_private_seed IS NOT INITIAL AND xstrlen( iv_private_seed ) <> 32.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
+    ENDIF.
+    IF iv_private_seed IS INITIAL AND iv_password IS INITIAL.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
+    ENDIF.
     mv_user = iv_user.
     mv_password = iv_password.
     mv_private_seed = iv_private_seed.
-    ASSERT mv_password IS NOT INITIAL OR xstrlen( mv_private_seed ) = 32.
     ls_data-message_id = zcl_oassh_message_5=>gc_message_id.
     ls_data-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
     rv_payload = zcl_oassh_message_5=>serialize( ls_data )->get( ).

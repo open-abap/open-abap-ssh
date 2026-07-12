@@ -23,6 +23,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS mpint_decode_test FOR TESTING RAISING cx_static_check.
     METHODS positive_rejects_negative FOR TESTING RAISING cx_static_check.
     METHODS positive_rejects_redundant FOR TESTING RAISING cx_static_check.
+    METHODS take_rejects_truncated FOR TESTING RAISING cx_static_check.
+    METHODS string_rejects_truncated FOR TESTING RAISING cx_static_check.
     METHODS mpint_roundtrip FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -356,6 +358,36 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_stream->mpint_decode_positive( ).
         cl_abap_unit_assert=>fail( 'non-canonical mpint accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD take_rejects_truncated.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_stream = NEW #( 'AABB' ).
+    TRY.
+        lo_stream->take( 3 ).
+        cl_abap_unit_assert=>fail( 'truncated field accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD string_rejects_truncated.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_stream = NEW #( '00000005AA' ).
+    TRY.
+        lo_stream->string_decode( ).
+        cl_abap_unit_assert=>fail( 'truncated SSH string accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_reason( )

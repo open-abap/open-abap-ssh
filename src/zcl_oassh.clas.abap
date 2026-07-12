@@ -77,7 +77,8 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_payload         TYPE xstring
       RETURNING
-        VALUE(rv_handled)  TYPE abap_bool.
+        VALUE(rv_handled)  TYPE abap_bool
+      RAISING zcx_oassh_error.
     METHODS handle
       RAISING
         cx_static_check.
@@ -97,7 +98,8 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
 ENDCLASS.
 
 
@@ -315,6 +317,7 @@ CLASS zcl_oassh IMPLEMENTATION.
             iv_user         = mv_user
             iv_password     = mv_password
             iv_private_seed = mv_private_seed ).
+          CLEAR mv_private_seed.
           mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
           RETURN.
         WHEN OTHERS.

@@ -90,3 +90,16 @@ test("ignores testclasses, comments, and text literals", () => {
 
   assert.deepEqual(violations, []);
 });
+
+test("checks executable expressions embedded in string templates", () => {
+  const violations = findPlatformDependencyViolations([{
+    name: "zcl_example.clas.abap",
+    source: "DATA(text) = |result: { cl_forbidden=>call( ) }|.",
+  }]);
+
+  assert.deepEqual(violations, [{
+    file: "zcl_example.clas.abap",
+    line: 1,
+    reference: "cl_forbidden",
+  }]);
+});

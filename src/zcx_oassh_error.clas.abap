@@ -11,6 +11,10 @@ CLASS zcx_oassh_error DEFINITION
         packet_too_large TYPE i VALUE 2,
         malformed_packet TYPE i VALUE 3,
         mac_invalid      TYPE i VALUE 4,
+        negotiation_failed TYPE i VALUE 5,
+        host_key_rejected TYPE i VALUE 6,
+        signature_invalid TYPE i VALUE 7,
+        invalid_credentials TYPE i VALUE 8,
       END OF c_reason.
     METHODS constructor
       IMPORTING

@@ -18,7 +18,8 @@ CLASS zcl_oassh_channel DEFINITION
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS receive
       IMPORTING iv_payload TYPE xstring
-      RETURNING VALUE(rv_payload) TYPE xstring.
+      RETURNING VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS get_state RETURNING VALUE(rv_state) TYPE i.
     METHODS get_stdout RETURNING VALUE(rv_data) TYPE xstring.
     METHODS get_stderr RETURNING VALUE(rv_data) TYPE xstring.
