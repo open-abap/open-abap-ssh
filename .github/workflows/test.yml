@@ -221,6 +221,7 @@ jobs:
         docker exec "$container" mkdir -p /config/.ssh
         docker exec "$container" sh -c "echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINdamAGCsQq31Uv+08lkBzoO4XLz2qYjJa8CGmj3B1Ea' > /config/.ssh/authorized_keys"
         docker exec "$container" chmod 600 /config/.ssh/authorized_keys
+        docker exec "$container" sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
         docker restart "$container"
     - run: npm run integration:exec
       env:

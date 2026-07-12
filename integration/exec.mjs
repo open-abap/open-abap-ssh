@@ -52,6 +52,7 @@ let handler;
 let socket;
 let callbackQueue = Promise.resolve();
 let rejectSocket;
+let executionComplete = false;
 const debug = process.env.OASSH_DEBUG === "1";
 const socketFailure = new Promise((_, reject) => { rejectSocket = reject; });
 
@@ -98,7 +99,9 @@ const socketAdapter = {
     });
     socket.once("error", rejectSocket);
     socket.once("close", hadError => {
-      if (hadError) rejectSocket(new Error("OpenSSH socket closed with an error"));
+      if (hadError || !executionComplete) {
+        rejectSocket(new Error("OpenSSH socket closed before SSH exec completed"));
+      }
     });
   },
   async zif_oassh_socket$send({iv_data}) {
@@ -132,7 +135,10 @@ const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HA
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});
 await socketAdapter.zif_oassh_socket$connect();
 
-const execution = client.execute({iv_command: new abap.types.String().set(command)});
+const execution = client.execute({iv_command: new abap.types.String().set(command)}).then(value => {
+  executionComplete = true;
+  return value;
+});
 let timer;
 const timeout = new Promise((_, reject) => {
   timer = setTimeout(() => reject(new Error("Timed out waiting for SSH exec")), 300000);
