@@ -12,7 +12,22 @@ CLASS zcl_oassh_aes DEFINITION
 * transpiled and on a real ABAP kernel.
 
     TYPES ty_word TYPE x LENGTH 4.
+    TYPES ty_words TYPE STANDARD TABLE OF ty_word WITH EMPTY KEY.
 
+* expand_key computes the round-key schedule once; encrypt_block_schedule
+* runs the block transform against a precomputed schedule. CTR mode expands
+* the key a single time and reuses the schedule for every counter block.
+    CLASS-METHODS expand_key
+      IMPORTING
+        iv_key      TYPE xstring
+      RETURNING
+        VALUE(rt_w) TYPE ty_words.
+    CLASS-METHODS encrypt_block_schedule
+      IMPORTING
+        it_w            TYPE ty_words
+        iv_block        TYPE xstring
+      RETURNING
+        VALUE(rv_block) TYPE xstring.
     CLASS-METHODS encrypt_block
       IMPORTING
         iv_key          TYPE xstring
@@ -24,7 +39,6 @@ CLASS zcl_oassh_aes DEFINITION
 
     TYPES ty_byte TYPE x LENGTH 1.
     TYPES ty_bytes TYPE STANDARD TABLE OF ty_byte WITH EMPTY KEY.
-    TYPES ty_words TYPE STANDARD TABLE OF ty_word WITH EMPTY KEY.
 
     CLASS-DATA gv_sbox TYPE xstring.
 
@@ -47,12 +61,6 @@ CLASS zcl_oassh_aes DEFINITION
         iv_sbox        TYPE xstring
       RETURNING
         VALUE(rv_word) TYPE ty_word.
-    CLASS-METHODS expand_key
-      IMPORTING
-        iv_key      TYPE xstring
-        iv_sbox     TYPE xstring
-      RETURNING
-        VALUE(rt_w) TYPE ty_words.
     CLASS-METHODS add_round_key
       IMPORTING
         iv_w     TYPE ty_words
@@ -152,6 +160,7 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
 
   METHOD expand_key.
 * FIPS 197 section 5.2 key expansion
+    DATA lv_sbox  TYPE xstring.
     DATA lv_nk    TYPE i.
     DATA lv_nr    TYPE i.
     DATA lv_total TYPE i.
@@ -163,6 +172,7 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
     DATA lv_rcon  TYPE x LENGTH 1 VALUE '01'.
     DATA lv_b0    TYPE x LENGTH 1.
 
+    lv_sbox = sbox( ).
     lv_nk = xstrlen( iv_key ) / 4.
     lv_nr = lv_nk + 6.
     lv_total = 4 * ( lv_nr + 1 ).
@@ -180,14 +190,14 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
         lv_temp = rot_word( lv_temp ).
         lv_temp = sub_word(
           iv_word = lv_temp
-          iv_sbox = iv_sbox ).
+          iv_sbox = lv_sbox ).
         lv_b0 = lv_temp(1) BIT-XOR lv_rcon.
         CONCATENATE lv_b0 lv_temp+1(3) INTO lv_temp IN BYTE MODE.
         lv_rcon = xtime( lv_rcon ).
       ELSEIF lv_nk > 6 AND lv_i MOD lv_nk = 4.
         lv_temp = sub_word(
           iv_word = lv_temp
-          iv_sbox = iv_sbox ).
+          iv_sbox = lv_sbox ).
       ENDIF.
       lv_prev = rt_w[ lv_i - lv_nk + 1 ].
       lv_word = lv_prev BIT-XOR lv_temp.
@@ -316,8 +326,14 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
 
 
   METHOD encrypt_block.
+    rv_block = encrypt_block_schedule(
+      it_w     = expand_key( iv_key )
+      iv_block = iv_block ).
+  ENDMETHOD.
+
+
+  METHOD encrypt_block_schedule.
     DATA lt_state TYPE ty_bytes.
-    DATA lt_w     TYPE ty_words.
     DATA lv_sbox  TYPE xstring.
     DATA lv_nr    TYPE i.
     DATA lv_round TYPE i.
@@ -325,10 +341,8 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
     DATA lv_byte  TYPE x LENGTH 1.
 
     lv_sbox = sbox( ).
-    lt_w = expand_key(
-      iv_key  = iv_key
-      iv_sbox = lv_sbox ).
-    lv_nr = xstrlen( iv_key ) / 4 + 6.
+* the schedule holds 4 words per round plus the initial round key
+    lv_nr = lines( it_w ) / 4 - 1.
 
     DO 16 TIMES.
       lv_off = sy-index - 1.
@@ -338,7 +352,7 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
 
     add_round_key(
       EXPORTING
-        iv_w     = lt_w
+        iv_w     = it_w
         iv_round = 0
       CHANGING
         ct_state = lt_state ).
@@ -354,7 +368,7 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
       mix_columns( CHANGING ct_state = lt_state ).
       add_round_key(
         EXPORTING
-          iv_w     = lt_w
+          iv_w     = it_w
           iv_round = lv_round
         CHANGING
           ct_state = lt_state ).
@@ -369,7 +383,7 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
     shift_rows( CHANGING ct_state = lt_state ).
     add_round_key(
       EXPORTING
-        iv_w     = lt_w
+        iv_w     = it_w
         iv_round = lv_nr
       CHANGING
         ct_state = lt_state ).
