@@ -1,0 +1,78 @@
+name: Start openssh-server
+description: >
+  Restore the linuxserver/openssh-server image from the Actions cache (or pull
+  it and populate the cache on a miss), then start it as a background container
+  on port 2222. Used instead of a `services:` block because service-container
+  images are pulled during job initialization, before any step runs, so they
+  cannot be served from actions/cache.
+
+inputs:
+  image:
+    description: Fully qualified image reference, pinned by @sha256 digest.
+    required: true
+  password-access:
+    description: Value for the container's PASSWORD_ACCESS env variable.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Derive cache key from image digest
+      id: image
+      shell: bash
+      run: echo "digest=${IMAGE##*@sha256:}" >> "$GITHUB_OUTPUT"
+      env:
+        IMAGE: ${{ inputs.image }}
+
+    - name: Restore openssh-server image
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: /tmp/openssh-image.tar
+        key: openssh-image-${{ steps.image.outputs.digest }}
+
+    - name: Load cached image
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: docker load -i /tmp/openssh-image.tar
+
+    - name: Pull and save image
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        docker pull "$IMAGE"
+        docker save "$IMAGE" -o /tmp/openssh-image.tar
+      env:
+        IMAGE: ${{ inputs.image }}
+
+    - name: Start openssh-server
+      shell: bash
+      run: |
+        docker run -d --name openssh -p 2222:2222 \
+          -e PUID=1000 \
+          -e PGID=1000 \
+          -e TZ=Etc/UTC \
+          -e USER_NAME=test \
+          -e USER_PASSWORD=test \
+          -e PASSWORD_ACCESS="$PASSWORD_ACCESS" \
+          -e SUDO_ACCESS=false \
+          "$IMAGE"
+      env:
+        IMAGE: ${{ inputs.image }}
+        PASSWORD_ACCESS: ${{ inputs.password-access }}
+
+    - name: Wait for openssh-server to accept connections
+      shell: bash
+      run: |
+        for i in $(seq 1 30); do
+          if (exec 3<>/dev/tcp/127.0.0.1/2222) 2>/dev/null; then
+            exec 3>&- 3<&-
+            echo "openssh-server is accepting connections"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "openssh-server did not become ready" >&2
+        docker logs openssh >&2 || true
+        exit 1
