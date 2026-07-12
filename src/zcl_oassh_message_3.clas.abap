@@ -40,7 +40,9 @@ CLASS zcl_oassh_message_3 IMPLEMENTATION.
 * SSH_MSG_UNIMPLEMENTED: carries the sequence number of the rejected packet
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-sequence_number = io_stream->uint32_decode( ).
 
   ENDMETHOD.

@@ -48,6 +48,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD transport_messages.
 * RFC 4253 section 11 control messages are handled centrally and consumed
     DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
 
     " IGNORE (02): string "x"
     lo_ssh = build_ssh( ).
@@ -72,6 +73,16 @@ CLASS ltcl_test IMPLEMENTATION.
     " a non-control message is not consumed
     lo_ssh = build_ssh( ).
     cl_abap_unit_assert=>assert_false( lo_ssh->handle_transport_message( '5E00000000' ) ).
+
+    " recognized control messages must not hide trailing bytes
+    TRY.
+        lo_ssh->handle_transport_message( '02000000017800' ).
+        cl_abap_unit_assert=>fail( 'trailing transport data accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
   ENDMETHOD.
 
   METHOD global_request.

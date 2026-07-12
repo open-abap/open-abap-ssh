@@ -66,13 +66,19 @@ CLASS zcl_oassh_message_50 IMPLEMENTATION.
 * SSH_MSG_USERAUTH_REQUEST, password method
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-user_name = io_stream->string_decode( ).
     rs_data-service_name = io_stream->string_decode( ).
     rs_data-method_name = io_stream->string_decode( ).
-    ASSERT zcl_oassh_ascii=>from_xstring( rs_data-method_name ) = 'password'.
+    IF zcl_oassh_ascii=>from_xstring( rs_data-method_name ) <> 'password'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
 * the boolean FALSE means "this is not a password change request"
-    ASSERT io_stream->boolean_decode( ) = abap_false.
+    IF io_stream->boolean_decode( ) <> abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-password = io_stream->string_decode( ).
 
   ENDMETHOD.

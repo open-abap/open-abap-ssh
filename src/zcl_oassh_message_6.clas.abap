@@ -40,7 +40,9 @@ CLASS zcl_oassh_message_6 IMPLEMENTATION.
 * SSH_MSG_SERVICE_ACCEPT
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-service_name = io_stream->string_decode( ).
 
   ENDMETHOD.

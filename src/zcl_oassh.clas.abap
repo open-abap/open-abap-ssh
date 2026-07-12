@@ -204,6 +204,9 @@ CLASS zcl_oassh IMPLEMENTATION.
       WHEN OTHERS.
         rv_handled = abap_false.
     ENDCASE.
+    IF rv_handled = abap_true AND lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -290,9 +293,11 @@ CLASS zcl_oassh IMPLEMENTATION.
       lv_payload = mo_plain_packet->decode( lv_wire ).
       lv_message_id = lv_payload(1).
       IF mo_transport->is_strict_kex( ) = abap_true
-          AND mo_transport->is_initial_kex( ) = abap_true.
-        ASSERT lv_message_id = 20 OR lv_message_id = 21
-          OR ( lv_message_id >= 30 AND lv_message_id <= 49 ).
+          AND mo_transport->is_initial_kex( ) = abap_true
+          AND lv_message_id <> 20
+          AND lv_message_id <> 21
+          AND ( lv_message_id < 30 OR lv_message_id > 49 ).
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
       ENDIF.
       IF handle_transport_message( lv_payload ) = abap_true.
         CONTINUE.
@@ -300,10 +305,11 @@ CLASS zcl_oassh IMPLEMENTATION.
       CASE mo_transport->get_state( ).
         WHEN zcl_oassh_transport=>c_state-kexinit_sent.
           lv_reply = mo_transport->receive_kexinit( lv_payload ).
-          IF mo_transport->is_strict_kex( ) = abap_true.
+          IF mo_transport->is_strict_kex( ) = abap_true
+              AND mo_plain_packet->get_receive_sequence( ) <> 1.
 * Strict KEX is negotiated by this packet, so verify retrospectively that it
 * was the server's first binary packet (sequence zero before decode).
-            ASSERT mo_plain_packet->get_receive_sequence( ) = 1.
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
           ENDIF.
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
@@ -399,7 +405,7 @@ CLASS zcl_oassh IMPLEMENTATION.
             mv_command_done = abap_true.
         ENDCASE.
       ELSE.
-        ASSERT 1 = 2.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
       ENDIF.
       IF lv_reply IS NOT INITIAL.
         mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).

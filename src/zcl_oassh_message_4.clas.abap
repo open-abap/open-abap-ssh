@@ -42,7 +42,9 @@ CLASS zcl_oassh_message_4 IMPLEMENTATION.
 * SSH_MSG_DEBUG: informational; display only if always_display is set
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-always_display = io_stream->boolean_decode( ).
     rs_data-message = io_stream->string_decode( ).
     rs_data-language_tag = io_stream->string_decode( ).

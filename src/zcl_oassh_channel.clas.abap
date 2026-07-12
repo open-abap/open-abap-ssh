@@ -37,6 +37,10 @@ CLASS zcl_oassh_channel DEFINITION
     DATA mv_stdout TYPE xstring.
     DATA mv_stderr TYPE xstring.
     DATA mv_exit_status TYPE i VALUE -1.
+    METHODS read_recipient
+      IMPORTING io_stream TYPE REF TO zcl_oassh_stream
+      RETURNING VALUE(rv_recipient) TYPE i
+      RAISING zcx_oassh_error.
 ENDCLASS.
 
 CLASS zcl_oassh_channel IMPLEMENTATION.
@@ -81,26 +85,24 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     lv_id = lo_stream->take( 1 ).
     CASE lv_id.
       WHEN '5B'. " CHANNEL_OPEN_CONFIRMATION (91)
-        ASSERT mv_state = c_state-open_sent.
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        IF mv_state <> c_state-open_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        lv_recipient = read_recipient( lo_stream ).
         mv_remote_channel = lo_stream->uint32_decode( ).
         mv_remote_window = lo_stream->uint32_decode( ).
         mv_remote_max_packet = lo_stream->uint32_decode( ).
         mv_state = c_state-open.
       WHEN '5D'. " WINDOW_ADJUST (93)
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         mv_remote_window = mv_remote_window + lo_stream->uint32_decode( ).
       WHEN '5E'. " DATA (94)
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         lv_data = lo_stream->string_decode( ).
         CONCATENATE mv_stdout lv_data INTO mv_stdout IN BYTE MODE.
         mv_local_window = mv_local_window - xstrlen( lv_data ).
       WHEN '5F'. " EXTENDED_DATA (95), type 1 is stderr
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         lv_type = lo_stream->uint32_decode( ).
         lv_data = lo_stream->string_decode( ).
         IF lv_type = 1.
@@ -108,36 +110,48 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         ENDIF.
         mv_local_window = mv_local_window - xstrlen( lv_data ).
       WHEN '63'. " CHANNEL_SUCCESS (99)
-        ASSERT mv_state = c_state-exec_sent.
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        IF mv_state <> c_state-exec_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        lv_recipient = read_recipient( lo_stream ).
         mv_state = c_state-running.
       WHEN '64'. " CHANNEL_FAILURE (100)
-        ASSERT 1 = 2.
+        lv_recipient = read_recipient( lo_stream ).
+        IF lo_stream->get_length( ) <> 0.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
       WHEN '62'. " server channel request: exit-status
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         lv_request = lo_stream->string_decode( ).
         lv_want_reply = lo_stream->boolean_decode( ).
         IF zcl_oassh_ascii=>from_xstring( lv_request ) = 'exit-status'.
           mv_exit_status = lo_stream->uint32_decode( ).
         ENDIF.
       WHEN '60'. " EOF (96)
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         mv_state = c_state-eof_received.
       WHEN '61'. " CLOSE (97): echo CLOSE exactly once
-        lv_recipient = lo_stream->uint32_decode( ).
-        ASSERT lv_recipient = c_local_channel.
+        lv_recipient = read_recipient( lo_stream ).
         lo_reply = NEW #( ).
         lo_reply->append( '61' ).
         lo_reply->uint32_encode( mv_remote_channel ).
         rv_payload = lo_reply->get( ).
         mv_state = c_state-closed.
       WHEN OTHERS.
-        ASSERT 1 = 2.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDCASE.
-    ASSERT lo_stream->get_length( ) = 0.
+    IF lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD read_recipient.
+    rv_recipient = io_stream->uint32_decode( ).
+    IF rv_recipient <> c_local_channel.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
   METHOD get_state.

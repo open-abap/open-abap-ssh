@@ -41,7 +41,9 @@ CLASS zcl_oassh_message_51 IMPLEMENTATION.
 * SSH_MSG_USERAUTH_FAILURE
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-authentications = io_stream->name_list_decode( ).
     rs_data-partial_success = io_stream->boolean_decode( ).
 

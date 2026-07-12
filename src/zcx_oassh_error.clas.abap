@@ -15,6 +15,8 @@ CLASS zcx_oassh_error DEFINITION
         host_key_rejected TYPE i VALUE 6,
         signature_invalid TYPE i VALUE 7,
         invalid_credentials TYPE i VALUE 8,
+        authentication_failed TYPE i VALUE 9,
+        channel_failed TYPE i VALUE 10,
       END OF c_reason.
     METHODS constructor
       IMPORTING

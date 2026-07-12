@@ -58,6 +58,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS negotiation_rejected FOR TESTING RAISING cx_static_check.
     METHODS invalid_private_seed FOR TESTING RAISING cx_static_check.
     METHODS invalid_group14_public FOR TESTING RAISING cx_static_check.
+    METHODS authentication_failure FOR TESTING RAISING cx_static_check.
     METHODS rekey FOR TESTING RAISING cx_static_check.
     METHODS strict_kex FOR TESTING RAISING cx_static_check.
     METHODS group14_fallback FOR TESTING RAISING cx_static_check.
@@ -320,6 +321,30 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD authentication_failure.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    ls_failure-message_id = zcl_oassh_message_51=>gc_message_id.
+    APPEND 'password' TO ls_failure-authentications.
+    TRY.
+        lo_transport->receive_auth( zcl_oassh_message_51=>serialize( ls_failure )->get( ) ).
+        cl_abap_unit_assert=>fail( 'authentication failure ignored' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-authentication_failed ).
     ENDTRY.
   ENDMETHOD.
 

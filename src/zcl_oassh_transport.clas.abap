@@ -600,13 +600,20 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
     DATA ls_request TYPE zcl_oassh_message_50=>ty_data.
+    IF iv_payload IS INITIAL.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_id = iv_payload(1).
     lo_stream = NEW #( iv_payload ).
     CASE lv_id.
       WHEN zcl_oassh_message_6=>gc_message_id.
-        ASSERT mv_auth_state = c_auth_state-service_requested.
+        IF mv_auth_state <> c_auth_state-service_requested.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         ls_accept = zcl_oassh_message_6=>parse( lo_stream ).
-        ASSERT zcl_oassh_ascii=>from_xstring( ls_accept-service_name ) = 'ssh-userauth'.
+        IF zcl_oassh_ascii=>from_xstring( ls_accept-service_name ) <> 'ssh-userauth'.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         IF mv_private_seed IS NOT INITIAL.
           rv_payload = publickey_request( ).
         ELSE.
@@ -627,10 +634,16 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       WHEN zcl_oassh_message_51=>gc_message_id.
 * USERAUTH_FAILURE: password rejected (or more methods required)
         zcl_oassh_message_51=>parse( lo_stream ).
-        ASSERT 1 = 2.
+        IF lo_stream->get_length( ) <> 0.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-authentication_failed ).
       WHEN OTHERS.
-        ASSERT 1 = 2.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDCASE.
+    IF lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
