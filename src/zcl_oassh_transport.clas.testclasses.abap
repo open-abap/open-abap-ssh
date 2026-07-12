@@ -411,6 +411,8 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_payload TYPE xstring.
     DATA lv_message_id TYPE x LENGTH 1.
     DATA lv_session_id TYPE xstring.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_client TYPE zcl_oassh_message_20=>ty_data.
 
     lo_transport = handshake( ).
     lo_packet = lo_transport->get_packet( ).
@@ -426,6 +428,19 @@ CLASS ltcl_test IMPLEMENTATION.
     DELETE ls_server-encryption_algorithms_s_to_c
       WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
     lv_payload = lo_transport->start_rekey( ).
+    lo_stream = NEW #( lv_payload ).
+    ls_client = zcl_oassh_message_20=>parse( lo_stream ).
+    cl_abap_unit_assert=>assert_false(
+      xsdbool( line_exists(
+        ls_client-kex_algorithms[ table_line = zcl_oassh_transport=>c_kex_group14 ] ) ) ).
+    cl_abap_unit_assert=>assert_false(
+      xsdbool( line_exists(
+        ls_client-encryption_algorithms_c_to_s[
+          table_line = zcl_oassh_transport=>c_cipher_chachapoly ] ) ) ).
+    cl_abap_unit_assert=>assert_false(
+      xsdbool( line_exists(
+        ls_client-server_host_key_algorithms[
+          table_line = zcl_oassh_transport=>c_host_ed25519 ] ) ) ).
     lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
       act = lv_message_id

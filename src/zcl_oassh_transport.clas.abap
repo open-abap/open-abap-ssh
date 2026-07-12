@@ -154,6 +154,13 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_host_key_algorithm TYPE string.
 
     METHODS derive_keys.
+    METHODS create_kexinit
+      IMPORTING iv_include_strict TYPE abap_bool
+      RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS select_cipher
+      IMPORTING it_algorithms TYPE string_table
+      RETURNING VALUE(rv_algorithm) TYPE string
+      RAISING zcx_oassh_error.
     METHODS select_host_key
       IMPORTING it_algorithms TYPE string_table
       RAISING zcx_oassh_error.
@@ -245,39 +252,18 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
 
   METHOD start_kex.
-    DATA ls_kexinit TYPE zcl_oassh_message_20=>ty_data.
     ASSERT mv_state = c_state-initial.
     mv_v_c = iv_client_version.
     mv_v_s = iv_server_version.
-    ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
-    IF mv_offer_group14 = abap_false.
-      DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
-    ENDIF.
-    IF mv_offer_chacha = abap_false.
-      DELETE ls_kexinit-encryption_algorithms_c_to_s WHERE table_line = c_cipher_chachapoly.
-      DELETE ls_kexinit-encryption_algorithms_s_to_c WHERE table_line = c_cipher_chachapoly.
-    ENDIF.
-    IF mv_offer_ed25519 = abap_false.
-      DELETE ls_kexinit-server_host_key_algorithms WHERE table_line = c_host_ed25519.
-    ENDIF.
-* Offer both the standard and widely deployed OpenSSH strict-KEX markers.
-    IF mv_offer_strict = abap_true.
-      APPEND 'kex-strict-c' TO ls_kexinit-kex_algorithms.
-      APPEND 'kex-strict-c-v00@openssh.com' TO ls_kexinit-kex_algorithms.
-    ENDIF.
-    rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
+    rv_payload = create_kexinit( abap_true ).
     mv_i_c = rv_payload.
     mv_initial_kex = abap_true.
     mv_state = c_state-kexinit_sent.
   ENDMETHOD.
 
 
-  METHOD start_rekey.
-* Server-initiated rekey: reply with a fresh client KEXINIT while the current
-* packet keys remain active. Version strings and the original session id stay.
+  METHOD create_kexinit.
     DATA ls_kexinit TYPE zcl_oassh_message_20=>ty_data.
-    ASSERT mv_state = c_state-encrypted.
-    ASSERT mv_session_id IS NOT INITIAL.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
     IF mv_offer_group14 = abap_false.
       DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
@@ -289,7 +275,21 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF mv_offer_ed25519 = abap_false.
       DELETE ls_kexinit-server_host_key_algorithms WHERE table_line = c_host_ed25519.
     ENDIF.
+* Strict-KEX extension negotiation is part of the initial key exchange only.
+    IF iv_include_strict = abap_true AND mv_offer_strict = abap_true.
+      APPEND 'kex-strict-c' TO ls_kexinit-kex_algorithms.
+      APPEND 'kex-strict-c-v00@openssh.com' TO ls_kexinit-kex_algorithms.
+    ENDIF.
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
+  ENDMETHOD.
+
+
+  METHOD start_rekey.
+* Server-initiated rekey: reply with a fresh client KEXINIT while the current
+* packet keys remain active. Version strings and the original session id stay.
+    ASSERT mv_state = c_state-encrypted.
+    ASSERT mv_session_id IS NOT INITIAL.
+    rv_payload = create_kexinit( abap_false ).
     mv_i_c = rv_payload.
     mv_rekey_in_progress = abap_true.
     mv_state = c_state-kexinit_sent.
@@ -317,22 +317,8 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
     select_host_key( ls_server-server_host_key_algorithms ).
-    IF line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_aes128_ctr ] ).
-      mv_cipher_c_to_s = c_cipher_aes128_ctr.
-    ELSEIF mv_offer_chacha = abap_true AND line_exists(
-        ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_chachapoly ] ).
-      mv_cipher_c_to_s = c_cipher_chachapoly.
-    ELSE.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
-    ENDIF.
-    IF line_exists( ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_aes128_ctr ] ).
-      mv_cipher_s_to_c = c_cipher_aes128_ctr.
-    ELSEIF mv_offer_chacha = abap_true AND line_exists(
-        ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_chachapoly ] ).
-      mv_cipher_s_to_c = c_cipher_chachapoly.
-    ELSE.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
-    ENDIF.
+    mv_cipher_c_to_s = select_cipher( ls_server-encryption_algorithms_c_to_s ).
+    mv_cipher_s_to_c = select_cipher( ls_server-encryption_algorithms_s_to_c ).
     IF NOT line_exists( ls_server-mac_algorithms_c_to_s[ table_line = 'hmac-sha2-256' ] )
         OR NOT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] )
         OR NOT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] )
@@ -372,6 +358,18 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       mv_host_key_algorithm = c_host_rsa.
     ELSEIF line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
       mv_host_key_algorithm = c_host_ed25519.
+    ELSE.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD select_cipher.
+    IF line_exists( it_algorithms[ table_line = c_cipher_aes128_ctr ] ).
+      rv_algorithm = c_cipher_aes128_ctr.
+    ELSEIF mv_offer_chacha = abap_true
+        AND line_exists( it_algorithms[ table_line = c_cipher_chachapoly ] ).
+      rv_algorithm = c_cipher_chachapoly.
     ELSE.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDIF.
