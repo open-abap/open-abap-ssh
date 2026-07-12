@@ -1,3 +1,6 @@
+CLASS ltcl_test DEFINITION DEFERRED.
+CLASS zcl_oassh_transport DEFINITION LOCAL FRIENDS ltcl_test.
+
 CLASS lcl_verifier DEFINITION FINAL.
   PUBLIC SECTION.
     INTERFACES zif_oassh_host_verifier.
@@ -265,9 +268,16 @@ CLASS ltcl_test IMPLEMENTATION.
 
 
   METHOD invalid_private_seed.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
     DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    lo_transport = handshake( ).
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
     TRY.
         lo_transport->start_auth(
           iv_user         = zcl_oassh_ascii=>to_xstring( 'test' )
