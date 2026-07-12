@@ -28,6 +28,9 @@ CLASS ltcl_test IMPLEMENTATION.
       act = ls_data-encryption_algorithms_c_to_s[ 1 ]
       exp = 'aes128-ctr' ).
     cl_abap_unit_assert=>assert_equals(
+      act = ls_data-encryption_algorithms_c_to_s[ 2 ]
+      exp = 'chacha20-poly1305@openssh.com' ).
+    cl_abap_unit_assert=>assert_equals(
       act = ls_data-mac_algorithms_s_to_c[ 1 ]
       exp = 'hmac-sha2-256' ).
   ENDMETHOD.

@@ -15,6 +15,9 @@ for (const module of [
   "zcl_oassh_rsa.clas.mjs",
   "zcl_oassh_aes.clas.mjs",
   "zcl_oassh_ctr.clas.mjs",
+  "zcl_oassh_chacha20.clas.mjs",
+  "zcl_oassh_poly1305.clas.mjs",
+  "zcl_oassh_chachapoly.clas.mjs",
   "zcl_oassh_packet.clas.mjs",
   "zcl_oassh_message_20.clas.mjs",
   "zcl_oassh_message_21.clas.mjs",
@@ -149,6 +152,7 @@ if (exitStatus !== 0) {
 const rekeyCount = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_rekey_count()).get();
 const strictKex = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().is_strict_kex()).get() === "X";
 const kexAlgorithm = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_kex_algorithm()).get();
+const cipherAlgorithm = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_cipher_algorithm()).get();
 if (process.env.OASSH_EXPECT_REKEY === "1" && rekeyCount < 1) {
   throw new Error("Expected the server to initiate rekeying");
 }
@@ -158,7 +162,11 @@ if (process.env.OASSH_EXPECT_STRICT_KEX === "1" && !strictKex) {
 if (process.env.OASSH_EXPECT_KEX && kexAlgorithm !== process.env.OASSH_EXPECT_KEX) {
   throw new Error(`Expected KEX ${process.env.OASSH_EXPECT_KEX}, got ${kexAlgorithm}`);
 }
+if (process.env.OASSH_EXPECT_CIPHER && cipherAlgorithm !== process.env.OASSH_EXPECT_CIPHER) {
+  throw new Error(`Expected cipher ${process.env.OASSH_EXPECT_CIPHER}, got ${cipherAlgorithm}`);
+}
 console.log(`exec succeeded: ${JSON.stringify(output)}`);
 if (rekeyCount > 0) console.log(`server-initiated rekey succeeded (${rekeyCount})`);
 if (strictKex) console.log("strict KEX negotiated");
 console.log(`KEX algorithm: ${kexAlgorithm}`);
+console.log(`cipher algorithm: ${cipherAlgorithm}`);

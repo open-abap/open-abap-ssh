@@ -1,0 +1,33 @@
+CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
+  PRIVATE SECTION.
+    METHODS rfc8439 FOR TESTING.
+    METHODS openssl_vectors FOR TESTING.
+ENDCLASS.
+
+
+CLASS ltcl_test IMPLEMENTATION.
+  METHOD rfc8439.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_poly1305=>auth(
+        iv_key  = '85D6BE7857556D337F4452FE42D506A80103808AFB0DB2FD4ABFF6AF4149F51B'
+        iv_data = '43727970746F6772617068696320466F72756D2052657365617263682047726F7570' )
+      exp = 'A8061DC1305136C6C22B8BAF0C0127A9' ).
+  ENDMETHOD.
+
+
+  METHOD openssl_vectors.
+    DATA lv_empty TYPE xstring.
+    DATA lv_data TYPE xstring VALUE
+      '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E'.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_poly1305=>auth(
+        iv_key  = '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'
+        iv_data = lv_empty )
+      exp = '101112131415161718191A1B1C1D1E1F' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_poly1305=>auth(
+        iv_key  = '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'
+        iv_data = lv_data )
+      exp = '7C57DAA799D3D38243034A4AF1F6ED2B' ).
+  ENDMETHOD.
+ENDCLASS.

@@ -325,22 +325,27 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA lv_rest TYPE xstring.
     DATA lv_mac TYPE xstring.
     DATA lv_remaining TYPE i.
+    DATA lv_auth_length TYPE i.
+    DATA lv_header_length TYPE i.
     DATA lv_payload TYPE xstring.
     DATA lv_reply TYPE xstring.
     WHILE mo_stream->get_length( ) > 0.
       IF mv_enc_packet_length = 0.
-        IF mo_stream->get_length( ) < 16.
+        lv_header_length = mo_transport->get_packet( )->get_header_length( ).
+        IF mo_stream->get_length( ) < lv_header_length.
           RETURN.
         ENDIF.
-        lv_block = mo_stream->take( 16 ).
+        lv_block = mo_stream->take( lv_header_length ).
         mv_enc_packet_length = mo_transport->get_packet( )->decode_length( lv_block ).
       ENDIF.
-      lv_remaining = mv_enc_packet_length + 4 - 16 + 32.
+      lv_auth_length = mo_transport->get_packet( )->get_auth_length( ).
+      lv_header_length = mo_transport->get_packet( )->get_header_length( ).
+      lv_remaining = mv_enc_packet_length + 4 - lv_header_length + lv_auth_length.
       IF mo_stream->get_length( ) < lv_remaining.
         RETURN.
       ENDIF.
-      lv_rest = mo_stream->take( mv_enc_packet_length + 4 - 16 ).
-      lv_mac = mo_stream->take( 32 ).
+      lv_rest = mo_stream->take( mv_enc_packet_length + 4 - lv_header_length ).
+      lv_mac = mo_stream->take( lv_auth_length ).
       lv_payload = mo_transport->get_packet( )->decode_remainder(
         iv_rest = lv_rest
         iv_mac  = lv_mac ).

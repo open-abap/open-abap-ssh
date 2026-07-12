@@ -56,7 +56,8 @@
 - [ ] `ssh-ed25519` host keys (SHA-512 + edwards)
 - [ ] `publickey` auth
 - [x] `diffie-hellman-group14-sha256`
-- [ ] `chacha20-poly1305@openssh.com`
+- [x] `chacha20-poly1305@openssh.com` — RFC 8439/OpenSSH vectors,
+  authenticated streaming packets, forced OpenSSH integration, A4H/NPL ABAP Unit
 - [ ] interactive shell, sftp, port forwarding
 
 ## Testing infrastructure (cross-cutting)

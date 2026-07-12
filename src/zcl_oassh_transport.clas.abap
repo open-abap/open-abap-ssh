@@ -6,6 +6,8 @@ CLASS zcl_oassh_transport DEFINITION
   PUBLIC SECTION.
     CONSTANTS c_kex_curve25519 TYPE string VALUE 'curve25519-sha256'.
     CONSTANTS c_kex_group14 TYPE string VALUE 'diffie-hellman-group14-sha256'.
+    CONSTANTS c_cipher_aes128_ctr TYPE string VALUE 'aes128-ctr'.
+    CONSTANTS c_cipher_chachapoly TYPE string VALUE 'chacha20-poly1305@openssh.com'.
     CONSTANTS:
       BEGIN OF c_state,
         initial      TYPE i VALUE 0,
@@ -27,7 +29,8 @@ CLASS zcl_oassh_transport DEFINITION
         ii_random        TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
         iv_offer_strict  TYPE abap_bool DEFAULT abap_true
-        iv_offer_group14 TYPE abap_bool DEFAULT abap_true.
+        iv_offer_group14 TYPE abap_bool DEFAULT abap_true
+        iv_offer_chacha  TYPE abap_bool DEFAULT abap_true.
     CLASS-METHODS verify_server_signature
       IMPORTING
         iv_host_key       TYPE xstring
@@ -88,6 +91,8 @@ CLASS zcl_oassh_transport DEFINITION
         VALUE(rv_count) TYPE i.
     METHODS get_kex_algorithm
       RETURNING VALUE(rv_algorithm) TYPE string.
+    METHODS get_cipher_algorithm
+      RETURNING VALUE(rv_algorithm) TYPE string.
     METHODS is_strict_kex
       RETURNING
         VALUE(rv_strict) TYPE abap_bool.
@@ -127,7 +132,10 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_initial_kex TYPE abap_bool.
     DATA mv_offer_strict TYPE abap_bool.
     DATA mv_offer_group14 TYPE abap_bool.
+    DATA mv_offer_chacha TYPE abap_bool.
     DATA mv_kex_algorithm TYPE string.
+    DATA mv_cipher_c_to_s TYPE string.
+    DATA mv_cipher_s_to_c TYPE string.
 
     METHODS derive_keys.
 ENDCLASS.
@@ -140,6 +148,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     mi_host_verifier = ii_host_verifier.
     mv_offer_strict = iv_offer_strict.
     mv_offer_group14 = iv_offer_group14.
+    mv_offer_chacha = iv_offer_chacha.
   ENDMETHOD.
 
 
@@ -187,6 +196,10 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF mv_offer_group14 = abap_false.
       DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
     ENDIF.
+    IF mv_offer_chacha = abap_false.
+      DELETE ls_kexinit-encryption_algorithms_c_to_s WHERE table_line = c_cipher_chachapoly.
+      DELETE ls_kexinit-encryption_algorithms_s_to_c WHERE table_line = c_cipher_chachapoly.
+    ENDIF.
 * Offer both the standard and widely deployed OpenSSH strict-KEX markers.
     IF mv_offer_strict = abap_true.
       APPEND 'kex-strict-c' TO ls_kexinit-kex_algorithms.
@@ -208,6 +221,10 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ls_kexinit = zcl_oassh_message_20=>create( mi_random ).
     IF mv_offer_group14 = abap_false.
       DELETE ls_kexinit-kex_algorithms WHERE table_line = c_kex_group14.
+    ENDIF.
+    IF mv_offer_chacha = abap_false.
+      DELETE ls_kexinit-encryption_algorithms_c_to_s WHERE table_line = c_cipher_chachapoly.
+      DELETE ls_kexinit-encryption_algorithms_s_to_c WHERE table_line = c_cipher_chachapoly.
     ENDIF.
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
     mv_i_c = rv_payload.
@@ -235,8 +252,22 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       ASSERT 1 = 2.
     ENDIF.
     ASSERT line_exists( ls_server-server_host_key_algorithms[ table_line = 'rsa-sha2-256' ] ).
-    ASSERT line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = 'aes128-ctr' ] ).
-    ASSERT line_exists( ls_server-encryption_algorithms_s_to_c[ table_line = 'aes128-ctr' ] ).
+    IF line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_aes128_ctr ] ).
+      mv_cipher_c_to_s = c_cipher_aes128_ctr.
+    ELSEIF mv_offer_chacha = abap_true AND line_exists(
+        ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_chachapoly ] ).
+      mv_cipher_c_to_s = c_cipher_chachapoly.
+    ELSE.
+      ASSERT 1 = 2.
+    ENDIF.
+    IF line_exists( ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_aes128_ctr ] ).
+      mv_cipher_s_to_c = c_cipher_aes128_ctr.
+    ELSEIF mv_offer_chacha = abap_true AND line_exists(
+        ls_server-encryption_algorithms_s_to_c[ table_line = c_cipher_chachapoly ] ).
+      mv_cipher_s_to_c = c_cipher_chachapoly.
+    ELSE.
+      ASSERT 1 = 2.
+    ENDIF.
     ASSERT line_exists( ls_server-mac_algorithms_c_to_s[ table_line = 'hmac-sha2-256' ] ).
     ASSERT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] ).
     ASSERT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] ).
@@ -270,42 +301,63 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
 
   METHOD derive_keys.
-    mv_iv_c_to_s = zcl_oassh_kdf=>derive_key(
-      iv_k          = mv_k
-      iv_h          = mv_h
-      iv_letter     = 'A'
-      iv_session_id = mv_session_id
-      iv_length     = 16 ).
-    mv_iv_s_to_c = zcl_oassh_kdf=>derive_key(
-      iv_k          = mv_k
-      iv_h          = mv_h
-      iv_letter     = 'B'
-      iv_session_id = mv_session_id
-      iv_length     = 16 ).
+    DATA lv_key_length TYPE i.
+    IF mv_cipher_c_to_s = c_cipher_chachapoly.
+      CLEAR mv_iv_c_to_s.
+      lv_key_length = 64.
+    ELSE.
+      mv_iv_c_to_s = zcl_oassh_kdf=>derive_key(
+        iv_k          = mv_k
+        iv_h          = mv_h
+        iv_letter     = 'A'
+        iv_session_id = mv_session_id
+        iv_length     = 16 ).
+      lv_key_length = 16.
+    ENDIF.
     mv_key_c_to_s = zcl_oassh_kdf=>derive_key(
       iv_k          = mv_k
       iv_h          = mv_h
       iv_letter     = 'C'
       iv_session_id = mv_session_id
-      iv_length     = 16 ).
+      iv_length     = lv_key_length ).
+    IF mv_cipher_s_to_c = c_cipher_chachapoly.
+      CLEAR mv_iv_s_to_c.
+      lv_key_length = 64.
+    ELSE.
+      mv_iv_s_to_c = zcl_oassh_kdf=>derive_key(
+        iv_k          = mv_k
+        iv_h          = mv_h
+        iv_letter     = 'B'
+        iv_session_id = mv_session_id
+        iv_length     = 16 ).
+      lv_key_length = 16.
+    ENDIF.
     mv_key_s_to_c = zcl_oassh_kdf=>derive_key(
       iv_k          = mv_k
       iv_h          = mv_h
       iv_letter     = 'D'
       iv_session_id = mv_session_id
-      iv_length     = 16 ).
-    mv_mac_c_to_s = zcl_oassh_kdf=>derive_key(
-      iv_k          = mv_k
-      iv_h          = mv_h
-      iv_letter     = 'E'
-      iv_session_id = mv_session_id
-      iv_length     = 32 ).
-    mv_mac_s_to_c = zcl_oassh_kdf=>derive_key(
-      iv_k          = mv_k
-      iv_h          = mv_h
-      iv_letter     = 'F'
-      iv_session_id = mv_session_id
-      iv_length     = 32 ).
+      iv_length     = lv_key_length ).
+    IF mv_cipher_c_to_s = c_cipher_chachapoly.
+      CLEAR mv_mac_c_to_s.
+    ELSE.
+      mv_mac_c_to_s = zcl_oassh_kdf=>derive_key(
+        iv_k          = mv_k
+        iv_h          = mv_h
+        iv_letter     = 'E'
+        iv_session_id = mv_session_id
+        iv_length     = 32 ).
+    ENDIF.
+    IF mv_cipher_s_to_c = c_cipher_chachapoly.
+      CLEAR mv_mac_s_to_c.
+    ELSE.
+      mv_mac_s_to_c = zcl_oassh_kdf=>derive_key(
+        iv_k          = mv_k
+        iv_h          = mv_h
+        iv_letter     = 'F'
+        iv_session_id = mv_session_id
+        iv_length     = 32 ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -383,9 +435,10 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ASSERT lo_stream->get_length( ) = 0.
     ASSERT mo_packet IS BOUND.
     mo_packet->rekey_decrypt(
-      iv_decrypt_key = mv_key_s_to_c
-      iv_decrypt_iv  = mv_iv_s_to_c
-      iv_decrypt_mac = mv_mac_s_to_c ).
+      iv_decrypt_key       = mv_key_s_to_c
+      iv_decrypt_iv        = mv_iv_s_to_c
+      iv_decrypt_mac       = mv_mac_s_to_c
+      iv_decrypt_algorithm = mv_cipher_s_to_c ).
     IF mv_strict_kex = abap_true.
       mo_packet->reset_receive_sequence( ).
     ENDIF.
@@ -410,17 +463,20 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ENDIF.
     IF mo_packet IS NOT BOUND.
       mo_packet = NEW #(
-        ii_random           = mi_random
-        iv_encrypt_key      = mv_key_c_to_s
-        iv_encrypt_iv       = mv_iv_c_to_s
-        iv_encrypt_mac      = mv_mac_c_to_s
-        iv_send_sequence    = lv_sequence
-        iv_receive_sequence = lv_sequence ).
+        ii_random            = mi_random
+        iv_encrypt_key       = mv_key_c_to_s
+        iv_encrypt_iv        = mv_iv_c_to_s
+        iv_encrypt_mac       = mv_mac_c_to_s
+        iv_encrypt_algorithm = mv_cipher_c_to_s
+        iv_decrypt_algorithm = mv_cipher_s_to_c
+        iv_send_sequence     = lv_sequence
+        iv_receive_sequence  = lv_sequence ).
     ELSE.
       mo_packet->rekey_encrypt(
-        iv_encrypt_key = mv_key_c_to_s
-        iv_encrypt_iv  = mv_iv_c_to_s
-        iv_encrypt_mac = mv_mac_c_to_s ).
+        iv_encrypt_key       = mv_key_c_to_s
+        iv_encrypt_iv        = mv_iv_c_to_s
+        iv_encrypt_mac       = mv_mac_c_to_s
+        iv_encrypt_algorithm = mv_cipher_c_to_s ).
       IF mv_strict_kex = abap_true.
         mo_packet->reset_send_sequence( ).
       ENDIF.
@@ -505,6 +561,11 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD get_kex_algorithm.
     rv_algorithm = mv_kex_algorithm.
+  ENDMETHOD.
+
+
+  METHOD get_cipher_algorithm.
+    rv_algorithm = mv_cipher_c_to_s.
   ENDMETHOD.
 
 

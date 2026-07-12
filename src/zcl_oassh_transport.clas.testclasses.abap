@@ -54,6 +54,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS rekey FOR TESTING RAISING cx_static_check.
     METHODS strict_kex FOR TESTING RAISING cx_static_check.
     METHODS group14_fallback FOR TESTING RAISING cx_static_check.
+    METHODS chacha_fallback FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
     METHODS signature_bytes RETURNING VALUE(rv_signature) TYPE xstring.
     METHODS signature_blob RETURNING VALUE(rv_signature) TYPE xstring.
@@ -93,12 +94,17 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
       iv_offer_strict  = abap_false
-      iv_offer_group14 = abap_false ).
+      iv_offer_group14 = abap_false
+      iv_offer_chacha  = abap_false ).
     ro_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
     ls_server = zcl_oassh_message_20=>create( lo_random ).
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
+    DELETE ls_server-encryption_algorithms_c_to_s
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
+    DELETE ls_server-encryption_algorithms_s_to_c
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
     ro_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
     ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
     ls_reply-k_s = host_key( ).
@@ -229,7 +235,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
       iv_offer_strict  = abap_false
-      iv_offer_group14 = abap_false ).
+      iv_offer_group14 = abap_false
+      iv_offer_chacha  = abap_false ).
     lv_payload = lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
@@ -245,6 +252,10 @@ CLASS ltcl_test IMPLEMENTATION.
 
     ls_server = zcl_oassh_message_20=>create( lo_random ).
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
+    DELETE ls_server-encryption_algorithms_c_to_s
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
+    DELETE ls_server-encryption_algorithms_s_to_c
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
     lv_payload = lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
     lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
@@ -310,6 +321,10 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_server_random = NEW #( iv_pattern = '0102030405060708' ).
     ls_server = zcl_oassh_message_20=>create( lo_server_random ).
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
+    DELETE ls_server-encryption_algorithms_c_to_s
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
+    DELETE ls_server-encryption_algorithms_s_to_c
+      WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
     lv_payload = lo_transport->start_rekey( ).
     lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
@@ -424,5 +439,31 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_stream->get_length( )
       exp = 0 ).
+  ENDMETHOD.
+
+
+  METHOD chacha_fallback.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    DELETE ls_server-encryption_algorithms_c_to_s
+      WHERE table_line = zcl_oassh_transport=>c_cipher_aes128_ctr.
+    DELETE ls_server-encryption_algorithms_s_to_c
+      WHERE table_line = zcl_oassh_transport=>c_cipher_aes128_ctr.
+    lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_cipher_algorithm( )
+      exp = zcl_oassh_transport=>c_cipher_chachapoly ).
   ENDMETHOD.
 ENDCLASS.

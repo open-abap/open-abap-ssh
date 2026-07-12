@@ -3,6 +3,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS plain_framing FOR TESTING RAISING cx_static_check.
     METHODS encrypted_roundtrip FOR TESTING RAISING cx_static_check.
     METHODS encrypted_streaming FOR TESTING RAISING cx_static_check.
+    METHODS chachapoly_roundtrip FOR TESTING RAISING cx_static_check.
+    METHODS chachapoly_streaming FOR TESTING RAISING cx_static_check.
     METHODS sequence_numbers FOR TESTING RAISING cx_static_check.
     METHODS initial_sequence FOR TESTING RAISING cx_static_check.
     METHODS rekey_keeps_sequence FOR TESTING RAISING cx_static_check.
@@ -97,6 +99,76 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_rest = lv_rest
         iv_mac  = lv_mac )
       exp = '32000000047465737400' ).
+  ENDMETHOD.
+
+
+  METHOD chachapoly_roundtrip.
+    CONSTANTS:
+      lc_key_1 TYPE xstring VALUE '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F',
+      lc_key_2 TYPE xstring VALUE '202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F'.
+    DATA lv_key TYPE xstring.
+    DATA lv_wire TYPE xstring.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    CONCATENATE lc_key_1 lc_key_2 INTO lv_key IN BYTE MODE.
+    lo_sender = NEW #(
+      ii_random            = NEW zcl_oassh_random_fixed( iv_pattern = 'AA' )
+      iv_encrypt_key       = lv_key
+      iv_encrypt_algorithm = zcl_oassh_packet=>c_cipher_chachapoly
+      iv_send_sequence     = 7 ).
+    lo_receiver = NEW #(
+      ii_random            = NEW zcl_oassh_random_fixed( iv_pattern = 'AA' )
+      iv_decrypt_key       = lv_key
+      iv_decrypt_algorithm = zcl_oassh_packet=>c_cipher_chachapoly
+      iv_receive_sequence  = 7 ).
+    lv_wire = lo_sender->encode( '14' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode( lv_wire )
+      exp = '14' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = xstrlen( lv_wire )
+      exp = 28 ).
+  ENDMETHOD.
+
+
+  METHOD chachapoly_streaming.
+    CONSTANTS:
+      lc_key_1 TYPE xstring VALUE '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F',
+      lc_key_2 TYPE xstring VALUE '202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F'.
+    DATA lv_key TYPE xstring.
+    DATA lv_wire TYPE xstring.
+    DATA lv_packet_length TYPE i.
+    DATA lv_rest_length TYPE i.
+    DATA lv_mac_offset TYPE i.
+    DATA lv_header TYPE xstring.
+    DATA lv_rest TYPE xstring.
+    DATA lv_mac TYPE xstring.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    CONCATENATE lc_key_1 lc_key_2 INTO lv_key IN BYTE MODE.
+    lo_sender = NEW #(
+      ii_random            = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' )
+      iv_encrypt_key       = lv_key
+      iv_encrypt_algorithm = zcl_oassh_packet=>c_cipher_chachapoly ).
+    lo_receiver = NEW #(
+      ii_random            = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' )
+      iv_decrypt_key       = lv_key
+      iv_decrypt_algorithm = zcl_oassh_packet=>c_cipher_chachapoly ).
+    lv_wire = lo_sender->encode( '32000000047465737400' ).
+    lv_header = lv_wire(4).
+    lv_packet_length = lo_receiver->decode_length( lv_header ).
+    lv_rest_length = lv_packet_length.
+    lv_mac_offset = lv_packet_length + 4.
+    lv_rest = lv_wire+4(lv_rest_length).
+    lv_mac = lv_wire+lv_mac_offset(16).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode_remainder(
+        iv_rest = lv_rest
+        iv_mac  = lv_mac )
+      exp = '32000000047465737400' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_auth_length( )
+      exp = 16 ).
   ENDMETHOD.
 
 
