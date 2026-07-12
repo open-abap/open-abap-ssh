@@ -135,10 +135,10 @@ export function findPlatformDependencyViolations(files) {
 }
 
 async function checkRepository() {
-  const names = (await readdir(SOURCE_DIRECTORY))
+  const names = (await readdir(SOURCE_DIRECTORY, { recursive: true }))
     .filter((name) => name.endsWith(".abap"));
   const files = await Promise.all(names.map(async (name) => ({
-    name,
+    name: path.basename(name),
     source: await readFile(path.join(SOURCE_DIRECTORY, name), "utf8"),
   })));
   const violations = findPlatformDependencyViolations(files);
