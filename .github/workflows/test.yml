@@ -196,6 +196,19 @@ jobs:
         OASSH_EXPECT_HOST_KEY: ssh-ed25519
         OASSH_EXPECT_STRICT_KEX: "1"
 
+  # Interop smoke test against the public Rebex test server, an independent
+  # non-OpenSSH implementation. Non-blocking: third-party uptime and rate
+  # limits are outside our control.
+  rebex-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - run: npm run integration:rebex
+
   publickey-auth-exec:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -127,6 +127,12 @@ generator, but its accept-all host verifier is suitable only for local tests.
 Additional live checks are available as `npm run integration:transport` and
 `npm run integration:auth`.
 
+`npm run integration:rebex` runs all three scenarios against the public
+[Rebex test server](https://test.rebex.net) (`demo`/`password`), an
+independent non-OpenSSH implementation, with no local setup required. It
+needs internet access and depends on third-party uptime, so CI runs it as a
+non-blocking job.
+
 ## Supported protocol features
 
 - Key exchange: `curve25519-sha256`, `diffie-hellman-group14-sha256`
