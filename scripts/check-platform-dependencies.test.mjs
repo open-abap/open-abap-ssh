@@ -4,10 +4,16 @@ import test from "node:test";
 import { findPlatformDependencyViolations } from "./check-platform-dependencies.mjs";
 
 test("allows the documented portable digest dependency in its adapter", () => {
-  const violations = findPlatformDependencyViolations([{
-    name: "zcl_oassh_sha256.clas.abap",
-    source: "cl_abap_message_digest=>calculate_hash_for_raw( ).",
-  }]);
+  const violations = findPlatformDependencyViolations([
+    {
+      name: "zcl_oassh_sha256.clas.abap",
+      source: "cl_abap_message_digest=>calculate_hash_for_raw( ).",
+    },
+    {
+      name: "zcl_oassh_sha512.clas.abap",
+      source: "cl_abap_message_digest=>calculate_hash_for_raw( ).",
+    },
+  ]);
 
   assert.deepEqual(violations, []);
 });

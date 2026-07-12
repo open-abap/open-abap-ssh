@@ -25,6 +25,9 @@ CLASS ltcl_test IMPLEMENTATION.
       act = ls_data-server_host_key_algorithms[ 1 ]
       exp = 'rsa-sha2-256' ).
     cl_abap_unit_assert=>assert_equals(
+      act = ls_data-server_host_key_algorithms[ 2 ]
+      exp = 'ssh-ed25519' ).
+    cl_abap_unit_assert=>assert_equals(
       act = ls_data-encryption_algorithms_c_to_s[ 1 ]
       exp = 'aes128-ctr' ).
     cl_abap_unit_assert=>assert_equals(

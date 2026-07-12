@@ -95,11 +95,14 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = lo_verifier
       iv_offer_strict  = abap_false
       iv_offer_group14 = abap_false
-      iv_offer_chacha  = abap_false ).
+      iv_offer_chacha  = abap_false
+      iv_offer_ed25519 = abap_false ).
     ro_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
     ls_server = zcl_oassh_message_20=>create( lo_random ).
+    DELETE ls_server-server_host_key_algorithms
+      WHERE table_line = zcl_oassh_transport=>c_host_ed25519.
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
     DELETE ls_server-encryption_algorithms_c_to_s
       WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
@@ -236,7 +239,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = lo_verifier
       iv_offer_strict  = abap_false
       iv_offer_group14 = abap_false
-      iv_offer_chacha  = abap_false ).
+      iv_offer_chacha  = abap_false
+      iv_offer_ed25519 = abap_false ).
     lv_payload = lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
@@ -251,6 +255,8 @@ CLASS ltcl_test IMPLEMENTATION.
       msg = 'state after initial KEXINIT' ).
 
     ls_server = zcl_oassh_message_20=>create( lo_random ).
+    DELETE ls_server-server_host_key_algorithms
+      WHERE table_line = zcl_oassh_transport=>c_host_ed25519.
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
     DELETE ls_server-encryption_algorithms_c_to_s
       WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
@@ -320,6 +326,8 @@ CLASS ltcl_test IMPLEMENTATION.
 
     lo_server_random = NEW #( iv_pattern = '0102030405060708' ).
     ls_server = zcl_oassh_message_20=>create( lo_server_random ).
+    DELETE ls_server-server_host_key_algorithms
+      WHERE table_line = zcl_oassh_transport=>c_host_ed25519.
     DELETE ls_server-kex_algorithms WHERE table_line = zcl_oassh_transport=>c_kex_group14.
     DELETE ls_server-encryption_algorithms_c_to_s
       WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.

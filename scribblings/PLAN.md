@@ -180,7 +180,7 @@ This is the highest-value test: it exercises the whole state machine
 deterministically in plain `npm test`.
 
 Implemented with a capture from the pinned OpenSSH 10.3 CI container: the test
-replays all 3,134 inbound bytes and verifies the exact 734-byte client stream.
+replays all 3,134 inbound bytes and verifies the exact 750-byte client stream.
 
 ### Tier 3 — live integration (CI job, real network)
 
@@ -268,7 +268,8 @@ the remaining cross-cutting tasks.
       deterministic malformed/MAC/oversize packet fixtures
 
 ### M9 — Nice-to-haves (post-1.0, order by demand)
-- [ ] `ssh-ed25519` host keys (needs SHA-512 + edwards arithmetic)
+- [x] `ssh-ed25519` host keys (RFC 8032 cofactored verification, RFC 8709
+  key/signature wrappers, forced OpenSSH integration, A4H/NPL ABAP Unit)
 - [ ] `publickey` auth (client-side RSA signing — needs private-key ops + key file parsing)
 - [x] `diffie-hellman-group14-sha256` fallback kex (RFC 3526 group 14,
       RFC 8268 peer-value validation and SHA-256 exchange hash; live OpenSSH proof)

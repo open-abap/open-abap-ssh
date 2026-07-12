@@ -58,6 +58,7 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
     APPEND 'curve25519-sha256' TO rs_data-kex_algorithms.
     APPEND 'diffie-hellman-group14-sha256' TO rs_data-kex_algorithms.
     APPEND 'rsa-sha2-256' TO rs_data-server_host_key_algorithms.
+    APPEND 'ssh-ed25519' TO rs_data-server_host_key_algorithms.
     APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_c_to_s.
     APPEND 'chacha20-poly1305@openssh.com' TO rs_data-encryption_algorithms_c_to_s.
     APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_s_to_c.

@@ -21,6 +21,10 @@ const ALLOWED_BY_FILE = new Map([
     "cl_abap_message_digest",
     "cx_abap_message_digest",
   ])],
+  ["zcl_oassh_sha512.clas.abap", new Set([
+    "cl_abap_message_digest",
+    "cx_abap_message_digest",
+  ])],
   ["zcl_oassh_socket_apc.clas.abap", new Set([
     "apc_tcp_frame",
     "cl_apc_tcp_client_manager",

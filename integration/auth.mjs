@@ -13,6 +13,8 @@ for (const module of [
   "zcl_oassh_group14.clas.mjs",
   "zcl_oassh_kdf.clas.mjs",
   "zcl_oassh_rsa.clas.mjs",
+  "zcl_oassh_sha512.clas.mjs",
+  "zcl_oassh_ed25519.clas.mjs",
   "zcl_oassh_aes.clas.mjs",
   "zcl_oassh_ctr.clas.mjs",
   "zcl_oassh_chacha20.clas.mjs",

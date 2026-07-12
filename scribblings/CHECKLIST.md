@@ -53,7 +53,8 @@
       deterministic malformed/MAC/oversize packet fixtures
 
 ## M9 — Post-1.0
-- [ ] `ssh-ed25519` host keys (SHA-512 + edwards)
+- [x] `ssh-ed25519` host keys — SHA-512, canonical Edwards decoding,
+  cofactored verification, forced OpenSSH integration, A4H/NPL ABAP Unit
 - [ ] `publickey` auth
 - [x] `diffie-hellman-group14-sha256`
 - [x] `chacha20-poly1305@openssh.com` — RFC 8439/OpenSSH vectors,

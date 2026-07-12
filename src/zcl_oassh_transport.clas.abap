@@ -8,6 +8,8 @@ CLASS zcl_oassh_transport DEFINITION
     CONSTANTS c_kex_group14 TYPE string VALUE 'diffie-hellman-group14-sha256'.
     CONSTANTS c_cipher_aes128_ctr TYPE string VALUE 'aes128-ctr'.
     CONSTANTS c_cipher_chachapoly TYPE string VALUE 'chacha20-poly1305@openssh.com'.
+    CONSTANTS c_host_rsa TYPE string VALUE 'rsa-sha2-256'.
+    CONSTANTS c_host_ed25519 TYPE string VALUE 'ssh-ed25519'.
     CONSTANTS:
       BEGIN OF c_state,
         initial      TYPE i VALUE 0,
@@ -30,7 +32,8 @@ CLASS zcl_oassh_transport DEFINITION
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
         iv_offer_strict  TYPE abap_bool DEFAULT abap_true
         iv_offer_group14 TYPE abap_bool DEFAULT abap_true
-        iv_offer_chacha  TYPE abap_bool DEFAULT abap_true.
+        iv_offer_chacha  TYPE abap_bool DEFAULT abap_true
+        iv_offer_ed25519 TYPE abap_bool DEFAULT abap_true.
     CLASS-METHODS verify_server_signature
       IMPORTING
         iv_host_key       TYPE xstring
@@ -93,6 +96,8 @@ CLASS zcl_oassh_transport DEFINITION
       RETURNING VALUE(rv_algorithm) TYPE string.
     METHODS get_cipher_algorithm
       RETURNING VALUE(rv_algorithm) TYPE string.
+    METHODS get_host_key_algorithm
+      RETURNING VALUE(rv_algorithm) TYPE string.
     METHODS is_strict_kex
       RETURNING
         VALUE(rv_strict) TYPE abap_bool.
@@ -133,11 +138,15 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mv_offer_strict TYPE abap_bool.
     DATA mv_offer_group14 TYPE abap_bool.
     DATA mv_offer_chacha TYPE abap_bool.
+    DATA mv_offer_ed25519 TYPE abap_bool.
     DATA mv_kex_algorithm TYPE string.
     DATA mv_cipher_c_to_s TYPE string.
     DATA mv_cipher_s_to_c TYPE string.
+    DATA mv_host_key_algorithm TYPE string.
 
     METHODS derive_keys.
+    METHODS select_host_key
+      IMPORTING it_algorithms TYPE string_table.
 ENDCLASS.
 
 
@@ -149,6 +158,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     mv_offer_strict = iv_offer_strict.
     mv_offer_group14 = iv_offer_group14.
     mv_offer_chacha = iv_offer_chacha.
+    mv_offer_ed25519 = iv_offer_ed25519.
   ENDMETHOD.
 
 
@@ -160,30 +170,47 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lv_e TYPE xstring.
     DATA lv_n TYPE xstring.
     DATA lv_signature TYPE xstring.
+    DATA lv_host_name TYPE string.
+    DATA lv_signature_name TYPE string.
+    DATA lv_public_key TYPE xstring.
     lo_host = NEW #( iv_host_key ).
     lv_host_algorithm = lo_host->string_decode( ).
-    IF zcl_oassh_ascii=>from_xstring( lv_host_algorithm ) <> 'ssh-rsa'.
-      RETURN.
-    ENDIF.
-    lv_e = lo_host->mpint_decode( ).
-    lv_n = lo_host->mpint_decode( ).
-    IF lo_host->get_length( ) <> 0.
-      RETURN.
-    ENDIF.
+    lv_host_name = zcl_oassh_ascii=>from_xstring( lv_host_algorithm ).
     lo_signature = NEW #( iv_signature ).
     lv_signature_algorithm = lo_signature->string_decode( ).
-    IF zcl_oassh_ascii=>from_xstring( lv_signature_algorithm ) <> 'rsa-sha2-256'.
-      RETURN.
-    ENDIF.
+    lv_signature_name = zcl_oassh_ascii=>from_xstring( lv_signature_algorithm ).
     lv_signature = lo_signature->string_decode( ).
     IF lo_signature->get_length( ) <> 0.
       RETURN.
     ENDIF.
-    rv_verified = zcl_oassh_rsa=>verify_pkcs1_sha256(
-      iv_n         = lv_n
-      iv_e         = lv_e
-      iv_signature = lv_signature
-      iv_message   = iv_exchange_hash ).
+    CASE lv_host_name.
+      WHEN 'ssh-rsa'.
+        IF lv_signature_name <> c_host_rsa.
+          RETURN.
+        ENDIF.
+        lv_e = lo_host->mpint_decode( ).
+        lv_n = lo_host->mpint_decode( ).
+        IF lo_host->get_length( ) <> 0.
+          RETURN.
+        ENDIF.
+        rv_verified = zcl_oassh_rsa=>verify_pkcs1_sha256(
+          iv_n         = lv_n
+          iv_e         = lv_e
+          iv_signature = lv_signature
+          iv_message   = iv_exchange_hash ).
+      WHEN c_host_ed25519.
+        IF lv_signature_name <> c_host_ed25519.
+          RETURN.
+        ENDIF.
+        lv_public_key = lo_host->string_decode( ).
+        IF lo_host->get_length( ) <> 0.
+          RETURN.
+        ENDIF.
+        rv_verified = zcl_oassh_ed25519=>verify(
+          iv_public_key = lv_public_key
+          iv_message    = iv_exchange_hash
+          iv_signature  = lv_signature ).
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -199,6 +226,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF mv_offer_chacha = abap_false.
       DELETE ls_kexinit-encryption_algorithms_c_to_s WHERE table_line = c_cipher_chachapoly.
       DELETE ls_kexinit-encryption_algorithms_s_to_c WHERE table_line = c_cipher_chachapoly.
+    ENDIF.
+    IF mv_offer_ed25519 = abap_false.
+      DELETE ls_kexinit-server_host_key_algorithms WHERE table_line = c_host_ed25519.
     ENDIF.
 * Offer both the standard and widely deployed OpenSSH strict-KEX markers.
     IF mv_offer_strict = abap_true.
@@ -226,6 +256,9 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       DELETE ls_kexinit-encryption_algorithms_c_to_s WHERE table_line = c_cipher_chachapoly.
       DELETE ls_kexinit-encryption_algorithms_s_to_c WHERE table_line = c_cipher_chachapoly.
     ENDIF.
+    IF mv_offer_ed25519 = abap_false.
+      DELETE ls_kexinit-server_host_key_algorithms WHERE table_line = c_host_ed25519.
+    ENDIF.
     rv_payload = zcl_oassh_message_20=>serialize( ls_kexinit )->get( ).
     mv_i_c = rv_payload.
     mv_rekey_in_progress = abap_true.
@@ -251,7 +284,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ELSE.
       ASSERT 1 = 2.
     ENDIF.
-    ASSERT line_exists( ls_server-server_host_key_algorithms[ table_line = 'rsa-sha2-256' ] ).
+    select_host_key( ls_server-server_host_key_algorithms ).
     IF line_exists( ls_server-encryption_algorithms_c_to_s[ table_line = c_cipher_aes128_ctr ] ).
       mv_cipher_c_to_s = c_cipher_aes128_ctr.
     ELSEIF mv_offer_chacha = abap_true AND line_exists(
@@ -297,6 +330,17 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       rv_payload = zcl_oassh_message_dh_30=>serialize( ls_dh )->get( ).
     ENDIF.
     mv_state = c_state-ecdh_sent.
+  ENDMETHOD.
+
+
+  METHOD select_host_key.
+    IF line_exists( it_algorithms[ table_line = c_host_rsa ] ).
+      mv_host_key_algorithm = c_host_rsa.
+    ELSEIF line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
+      mv_host_key_algorithm = c_host_ed25519.
+    ELSE.
+      ASSERT 1 = 2.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -566,6 +610,11 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 
   METHOD get_cipher_algorithm.
     rv_algorithm = mv_cipher_c_to_s.
+  ENDMETHOD.
+
+
+  METHOD get_host_key_algorithm.
+    rv_algorithm = mv_host_key_algorithm.
   ENDMETHOD.
 
 
