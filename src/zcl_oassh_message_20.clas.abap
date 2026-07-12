@@ -99,7 +99,7 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
 
   METHOD serialize.
 
-    CREATE OBJECT ro_stream.
+    ro_stream = NEW #( ).
     ro_stream->append( gc_message_id ).
     ro_stream->append( is_data-cookie ).
     ro_stream->name_list_encode( is_data-kex_algorithms ).

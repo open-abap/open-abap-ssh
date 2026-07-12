@@ -54,7 +54,7 @@ CLASS ZCL_OASSH_MESSAGE_ECDH_31 IMPLEMENTATION.
 
   METHOD serialize.
 
-    CREATE OBJECT ro_stream.
+    ro_stream = NEW #( ).
     ro_stream->append( gc_message_id ).
     ro_stream->string_encode( is_data-k_s ).
     ro_stream->string_encode( is_data-q_s ).

@@ -79,7 +79,7 @@ CLASS zcl_oassh_kdf IMPLEMENTATION.
 * "mpint".
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
 
-    CREATE OBJECT lo_stream.
+    lo_stream = NEW #( ).
     lo_stream->string_encode( iv_v_c ).
     lo_stream->string_encode( iv_v_s ).
     lo_stream->string_encode( iv_i_c ).
@@ -110,7 +110,7 @@ CLASS zcl_oassh_kdf IMPLEMENTATION.
     DATA lv_block   TYPE xstring.
 
 * K || H is common to every block; precompute it once
-    CREATE OBJECT lo_stream.
+    lo_stream = NEW #( ).
     lo_stream->mpint_encode( iv_k ).
     lv_k = lo_stream->get( ).
     CONCATENATE lv_k iv_h INTO lv_prefix IN BYTE MODE.
