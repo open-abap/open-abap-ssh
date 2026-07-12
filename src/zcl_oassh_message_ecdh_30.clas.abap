@@ -17,7 +17,8 @@ CLASS zcl_oassh_message_ecdh_30 DEFINITION
       IMPORTING
         io_stream     TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data.
+        VALUE(rs_data) TYPE ty_data
+      RAISING zcx_oassh_error.
 
     CLASS-METHODS serialize
       IMPORTING
@@ -39,7 +40,9 @@ CLASS ZCL_OASSH_MESSAGE_ECDH_30 IMPLEMENTATION.
 * https://datatracker.ietf.org/doc/html/rfc5656#section-4
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-q_c = io_stream->string_decode( ).
 
   ENDMETHOD.

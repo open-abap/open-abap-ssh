@@ -68,6 +68,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS connect FOR TESTING RAISING cx_static_check.
     METHODS send_accumulates FOR TESTING RAISING cx_static_check.
     METHODS events_reach_handler FOR TESTING RAISING cx_static_check.
+    METHODS wait_replays FOR TESTING RAISING cx_static_check.
     METHODS close FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -101,15 +102,25 @@ CLASS ltcl_test IMPLEMENTATION.
 
   ENDMETHOD.
 
+
+  METHOD wait_replays.
+    mo_mock->set_replay( 'AABBCCDD' ).
+    mi_socket->wait( 1 ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_handler->received( )
+      exp = 'AABBCCDD' ).
+  ENDMETHOD.
+
   METHOD events_reach_handler.
 
     mo_mock->simulate_open( ).
     mo_mock->simulate_message( '1122' ).
     mo_mock->simulate_message( '3344' ).
 
-    cl_abap_unit_assert=>assert_true( mo_handler->mv_opened ).
+    cl_abap_unit_assert=>assert_true( mo_handler->opened( ) ).
     cl_abap_unit_assert=>assert_equals(
-      act = mo_handler->mv_received
+      act = mo_handler->received( )
       exp = '11223344' ).
 
   ENDMETHOD.
@@ -119,7 +130,7 @@ CLASS ltcl_test IMPLEMENTATION.
     mi_socket->connect( ).
     mo_mock->simulate_close( ).
 
-    cl_abap_unit_assert=>assert_true( mo_handler->mv_closed ).
+    cl_abap_unit_assert=>assert_true( mo_handler->closed( ) ).
     cl_abap_unit_assert=>assert_false( mo_mock->is_connected( ) ).
 
   ENDMETHOD.

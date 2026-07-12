@@ -16,5 +16,7 @@ INTERFACE zif_oassh_socket
     RAISING
       cx_static_check.
   METHODS close.
-  METHODS wait.
+  METHODS wait
+    IMPORTING
+      iv_timeout_seconds TYPE i DEFAULT 300.
 ENDINTERFACE.

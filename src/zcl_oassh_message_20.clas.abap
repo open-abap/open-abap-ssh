@@ -27,7 +27,8 @@ CLASS zcl_oassh_message_20 DEFINITION
       IMPORTING
         io_stream     TYPE REF TO zcl_oassh_stream
       RETURNING
-        VALUE(rs_data) TYPE ty_data.
+        VALUE(rs_data) TYPE ty_data
+      RAISING zcx_oassh_error.
 
     CLASS-METHODS serialize
       IMPORTING
@@ -56,9 +57,13 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
     rs_data-message_id = gc_message_id.
     rs_data-cookie = ii_random->bytes( 16 ).
     APPEND 'curve25519-sha256' TO rs_data-kex_algorithms.
+    APPEND 'diffie-hellman-group14-sha256' TO rs_data-kex_algorithms.
     APPEND 'rsa-sha2-256' TO rs_data-server_host_key_algorithms.
+    APPEND 'ssh-ed25519' TO rs_data-server_host_key_algorithms.
     APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_c_to_s.
+    APPEND 'chacha20-poly1305@openssh.com' TO rs_data-encryption_algorithms_c_to_s.
     APPEND 'aes128-ctr' TO rs_data-encryption_algorithms_s_to_c.
+    APPEND 'chacha20-poly1305@openssh.com' TO rs_data-encryption_algorithms_s_to_c.
     APPEND 'hmac-sha2-256' TO rs_data-mac_algorithms_c_to_s.
     APPEND 'hmac-sha2-256' TO rs_data-mac_algorithms_s_to_c.
     APPEND 'none' TO rs_data-compression_algorithms_c_to_s.
@@ -72,7 +77,9 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
 * SSH_MSG_KEXINIT
 
     rs_data-message_id = io_stream->take( 1 ).
-    ASSERT rs_data-message_id = gc_message_id.
+    IF rs_data-message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rs_data-cookie = io_stream->take( 16 ).
     rs_data-kex_algorithms = io_stream->name_list_decode( ).
     rs_data-server_host_key_algorithms = io_stream->name_list_decode( ).

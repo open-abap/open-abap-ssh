@@ -21,6 +21,9 @@ CLASS zcl_oassh_socket_mock DEFINITION
         cx_static_check.
     METHODS simulate_close.
     METHODS simulate_error.
+    METHODS set_replay
+      IMPORTING
+        iv_data TYPE xstring.
     METHODS get_sent
       RETURNING
         VALUE(rv_data) TYPE xstring.
@@ -33,6 +36,7 @@ CLASS zcl_oassh_socket_mock DEFINITION
     DATA mi_handler   TYPE REF TO zif_oassh_socket_handler.
     DATA mv_sent      TYPE xstring.
     DATA mv_connected TYPE abap_bool.
+    DATA mv_replay    TYPE xstring.
 ENDCLASS.
 
 
@@ -47,6 +51,11 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
 
   METHOD is_connected.
     rv_connected = mv_connected.
+  ENDMETHOD.
+
+
+  METHOD set_replay.
+    mv_replay = iv_data.
   ENDMETHOD.
 
 
@@ -94,7 +103,18 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
 
 
   METHOD zif_oassh_socket~wait.
-    RETURN.
+    DATA lv_replay TYPE xstring.
+    IF mv_replay IS INITIAL OR mi_handler IS NOT BOUND.
+      RETURN.
+    ENDIF.
+* Clear before dispatch so a callback cannot replay the same stream twice.
+    lv_replay = mv_replay.
+    CLEAR mv_replay.
+    TRY.
+        mi_handler->on_message( lv_replay ).
+      CATCH cx_static_check.
+        ASSERT 1 = 2.
+    ENDTRY.
   ENDMETHOD.
 
 

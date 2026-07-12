@@ -18,6 +18,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
       c_h   TYPE xstring VALUE 'D64476A12B1D36F87157B2A328205BB8071B15CDF3076361F00E80518CA44545'.
 
     METHODS exchange_hash FOR TESTING RAISING cx_static_check.
+    METHODS exchange_hash_dh FOR TESTING RAISING cx_static_check.
     METHODS derive_key_a FOR TESTING RAISING cx_static_check.
     METHODS derive_key_b FOR TESTING RAISING cx_static_check.
     METHODS derive_key_c FOR TESTING RAISING cx_static_check.
@@ -60,6 +61,22 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_q_s = c_q_s
         iv_k   = c_k )
       exp = c_h ).
+  ENDMETHOD.
+
+
+  METHOD exchange_hash_dh.
+* Independent Node crypto vector; 0x80 and 0xFF exercise mpint sign padding.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_kdf=>exchange_hash_dh(
+        iv_v_c = c_v_c
+        iv_v_s = c_v_s
+        iv_i_c = c_i_c
+        iv_i_s = c_i_s
+        iv_k_s = c_k_s
+        iv_e   = '80'
+        iv_f   = '7F'
+        iv_k   = 'FF' )
+      exp = '433037EB4C89853CF66ED5C479CAA3134B166DF51171960C3224C3A94F73359D' ).
   ENDMETHOD.
 
   METHOD derive_key_a.

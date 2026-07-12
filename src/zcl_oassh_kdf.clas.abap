@@ -32,6 +32,18 @@ CLASS zcl_oassh_kdf DEFINITION
         iv_length     TYPE i
       RETURNING
         VALUE(rv_key) TYPE xstring.
+
+    CLASS-METHODS exchange_hash_dh
+      IMPORTING
+        iv_v_c TYPE xstring
+        iv_v_s TYPE xstring
+        iv_i_c TYPE xstring
+        iv_i_s TYPE xstring
+        iv_k_s TYPE xstring
+        iv_e   TYPE xstring
+        iv_f   TYPE xstring
+        iv_k   TYPE xstring
+      RETURNING VALUE(rv_hash) TYPE xstring.
   PROTECTED SECTION.
   PRIVATE SECTION.
 ENDCLASS.
@@ -39,6 +51,24 @@ ENDCLASS.
 
 
 CLASS zcl_oassh_kdf IMPLEMENTATION.
+
+
+  METHOD exchange_hash_dh.
+* RFC 4253 section 8:
+*   H = HASH(string V_C || string V_S || string I_C || string I_S ||
+*            string K_S || mpint e || mpint f || mpint K)
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    lo_stream = NEW #( ).
+    lo_stream->string_encode( iv_v_c ).
+    lo_stream->string_encode( iv_v_s ).
+    lo_stream->string_encode( iv_i_c ).
+    lo_stream->string_encode( iv_i_s ).
+    lo_stream->string_encode( iv_k_s ).
+    lo_stream->mpint_encode( iv_e ).
+    lo_stream->mpint_encode( iv_f ).
+    lo_stream->mpint_encode( iv_k ).
+    rv_hash = zcl_oassh_sha256=>hash( lo_stream->get( ) ).
+  ENDMETHOD.
 
 
   METHOD exchange_hash.

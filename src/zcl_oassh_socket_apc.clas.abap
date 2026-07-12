@@ -150,6 +150,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD zif_oassh_socket~wait.
 * APC events are delivered only while the ABAP session is idle or explicitly
 * waiting for push channels. Generic WAIT UNTIL is not sufficient on ECC.
-    WAIT FOR PUSH CHANNELS UNTIL mv_complete = abap_true UP TO 300 SECONDS.
+    ASSERT iv_timeout_seconds > 0.
+    WAIT FOR PUSH CHANNELS UNTIL mv_complete = abap_true UP TO iv_timeout_seconds SECONDS.
   ENDMETHOD.
 ENDCLASS.

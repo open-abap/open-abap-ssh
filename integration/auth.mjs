@@ -4,20 +4,29 @@ import crypto from "node:crypto";
 await import("../output/init.mjs");
 for (const module of [
   "zcl_oassh_ascii.clas.mjs",
+  "zcx_oassh_error.clas.mjs",
   "zcl_oassh_stream.clas.mjs",
   "zcl_oassh_sha256.clas.mjs",
   "zcl_oassh_hmac.clas.mjs",
   "zcl_oassh_bigint.clas.mjs",
   "zcl_oassh_x25519.clas.mjs",
+  "zcl_oassh_group14.clas.mjs",
   "zcl_oassh_kdf.clas.mjs",
   "zcl_oassh_rsa.clas.mjs",
+  "zcl_oassh_sha512.clas.mjs",
+  "zcl_oassh_ed25519.clas.mjs",
   "zcl_oassh_aes.clas.mjs",
   "zcl_oassh_ctr.clas.mjs",
+  "zcl_oassh_chacha20.clas.mjs",
+  "zcl_oassh_poly1305.clas.mjs",
+  "zcl_oassh_chachapoly.clas.mjs",
   "zcl_oassh_packet.clas.mjs",
   "zcl_oassh_message_20.clas.mjs",
   "zcl_oassh_message_21.clas.mjs",
   "zcl_oassh_message_ecdh_30.clas.mjs",
   "zcl_oassh_message_ecdh_31.clas.mjs",
+  "zcl_oassh_message_dh_30.clas.mjs",
+  "zcl_oassh_message_dh_31.clas.mjs",
   "zcl_oassh_message_5.clas.mjs",
   "zcl_oassh_message_6.clas.mjs",
   "zcl_oassh_message_50.clas.mjs",
@@ -34,6 +43,7 @@ const host = process.argv[2] ?? process.env.OASSH_HOST ?? "127.0.0.1";
 const port = Number(process.argv[3] ?? process.env.OASSH_PORT ?? "2222");
 const user = process.env.OASSH_USER ?? "test";
 const password = process.env.OASSH_PASSWORD ?? "test";
+const privateSeed = process.env.OASSH_PRIVATE_SEED;
 const debug = process.env.OASSH_DEBUG === "1" || process.argv.includes("--debug");
 
 // SSH_MSG_USERAUTH_SUCCESS moves the transport auth state machine to this value.
@@ -117,6 +127,7 @@ const client = await new abap.Classes.ZCL_OASSH().constructor_({
   ii_host_verifier: verifierRef,
   iv_user: new abap.types.String().set(user),
   iv_password: new abap.types.String().set(password),
+  iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),
 });
 const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});

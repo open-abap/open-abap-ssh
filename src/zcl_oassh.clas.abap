@@ -11,7 +11,8 @@ CLASS zcl_oassh DEFINITION
         iv_host TYPE string
         iv_port TYPE string
         iv_user TYPE string
-        iv_password TYPE string
+        iv_password TYPE string OPTIONAL
+        iv_private_seed TYPE xstring OPTIONAL
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RETURNING
@@ -21,7 +22,8 @@ CLASS zcl_oassh DEFINITION
 
     METHODS execute
       IMPORTING
-        iv_command TYPE string
+        iv_command         TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
         VALUE(rv_output) TYPE string
       RAISING
@@ -43,7 +45,8 @@ CLASS zcl_oassh DEFINITION
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
         iv_user TYPE string
-        iv_password TYPE string.
+        iv_password TYPE string OPTIONAL
+        iv_private_seed TYPE xstring OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -62,6 +65,7 @@ CLASS zcl_oassh DEFINITION
     DATA mv_client_version TYPE xstring.
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
+    DATA mv_private_seed TYPE xstring.
     DATA mv_enc_packet_length TYPE i.
     DATA mo_channel TYPE REF TO zcl_oassh_channel.
     DATA mv_command TYPE string.
@@ -73,7 +77,8 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_payload         TYPE xstring
       RETURNING
-        VALUE(rv_handled)  TYPE abap_bool.
+        VALUE(rv_handled)  TYPE abap_bool
+      RAISING zcx_oassh_error.
     METHODS handle
       RAISING
         cx_static_check.
@@ -93,7 +98,8 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_payload) TYPE xstring.
+        VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
 ENDCLASS.
 
 
@@ -115,7 +121,8 @@ CLASS zcl_oassh IMPLEMENTATION.
         ii_random        = ii_random
         ii_host_verifier = ii_host_verifier
         iv_user          = iv_user
-        iv_password      = iv_password.
+        iv_password      = iv_password
+        iv_private_seed  = iv_private_seed.
 
     li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
@@ -128,11 +135,16 @@ CLASS zcl_oassh IMPLEMENTATION.
 * transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
 * drive the channel until the peer closes it.
     ASSERT mv_command IS INITIAL.
+    ASSERT iv_timeout_seconds > 0.
     mv_command = iv_command.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( ).
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_command_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
     ASSERT mo_channel IS BOUND.
     ASSERT mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
     rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
@@ -192,6 +204,9 @@ CLASS zcl_oassh IMPLEMENTATION.
       WHEN OTHERS.
         rv_handled = abap_false.
     ENDCASE.
+    IF rv_handled = abap_true AND lo_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -200,6 +215,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     mi_random = ii_random.
     mv_user = zcl_oassh_ascii=>to_xstring( iv_user ).
     mv_password = zcl_oassh_ascii=>to_xstring( iv_password ).
+    mv_private_seed = iv_private_seed.
     CREATE OBJECT mo_stream.
     mo_plain_packet = NEW #( ii_random = mi_random ).
     mo_transport = NEW #(
@@ -258,30 +274,56 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA lv_wire TYPE xstring.
     DATA lv_payload TYPE xstring.
     DATA lv_reply TYPE xstring.
+    DATA lv_message_id TYPE i.
+    DATA lv_max_length TYPE i.
+    lv_max_length = zcl_oassh_packet=>c_max_packet_length - 4.
     WHILE mo_stream->get_length( ) >= 8.
       lv_length = mo_stream->uint32_decode_peek( ).
+      IF lv_length < 12.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      IF lv_length > lv_max_length.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      ENDIF.
       lv_total_length = lv_length + 4.
       IF mo_stream->get_length( ) < lv_total_length.
         RETURN.
       ENDIF.
       lv_wire = mo_stream->take( lv_total_length ).
       lv_payload = mo_plain_packet->decode( lv_wire ).
+      lv_message_id = lv_payload(1).
+      IF mo_transport->is_strict_kex( ) = abap_true
+          AND mo_transport->is_initial_kex( ) = abap_true
+          AND lv_message_id <> 20
+          AND lv_message_id <> 21
+          AND ( lv_message_id < 30 OR lv_message_id > 49 ).
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
       IF handle_transport_message( lv_payload ) = abap_true.
         CONTINUE.
       ENDIF.
       CASE mo_transport->get_state( ).
         WHEN zcl_oassh_transport=>c_state-kexinit_sent.
           lv_reply = mo_transport->receive_kexinit( lv_payload ).
+          IF mo_transport->is_strict_kex( ) = abap_true
+              AND mo_plain_packet->get_receive_sequence( ) <> 1.
+* Strict KEX is negotiated by this packet, so verify retrospectively that it
+* was the server's first binary packet (sequence zero before decode).
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          ENDIF.
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
-          lv_reply = mo_transport->receive_ecdh_reply( lv_payload ).
+          lv_reply = mo_transport->receive_kex_reply( lv_payload ).
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
+          mo_transport->activate_outbound_keys( ).
         WHEN zcl_oassh_transport=>c_state-newkeys_sent.
           mo_transport->receive_newkeys( lv_payload ).
           mv_state = gc_state-encrypted.
           lv_reply = mo_transport->start_auth(
-            iv_user     = mv_user
-            iv_password = mv_password ).
+            iv_user         = mv_user
+            iv_password     = mv_password
+            iv_private_seed = mv_private_seed ).
+          CLEAR mv_private_seed.
           mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
           RETURN.
         WHEN OTHERS.
@@ -298,22 +340,27 @@ CLASS zcl_oassh IMPLEMENTATION.
     DATA lv_rest TYPE xstring.
     DATA lv_mac TYPE xstring.
     DATA lv_remaining TYPE i.
+    DATA lv_auth_length TYPE i.
+    DATA lv_header_length TYPE i.
     DATA lv_payload TYPE xstring.
     DATA lv_reply TYPE xstring.
     WHILE mo_stream->get_length( ) > 0.
       IF mv_enc_packet_length = 0.
-        IF mo_stream->get_length( ) < 16.
+        lv_header_length = mo_transport->get_packet( )->get_header_length( ).
+        IF mo_stream->get_length( ) < lv_header_length.
           RETURN.
         ENDIF.
-        lv_block = mo_stream->take( 16 ).
+        lv_block = mo_stream->take( lv_header_length ).
         mv_enc_packet_length = mo_transport->get_packet( )->decode_length( lv_block ).
       ENDIF.
-      lv_remaining = mv_enc_packet_length + 4 - 16 + 32.
+      lv_auth_length = mo_transport->get_packet( )->get_auth_length( ).
+      lv_header_length = mo_transport->get_packet( )->get_header_length( ).
+      lv_remaining = mv_enc_packet_length + 4 - lv_header_length + lv_auth_length.
       IF mo_stream->get_length( ) < lv_remaining.
         RETURN.
       ENDIF.
-      lv_rest = mo_stream->take( mv_enc_packet_length + 4 - 16 ).
-      lv_mac = mo_stream->take( 32 ).
+      lv_rest = mo_stream->take( mv_enc_packet_length + 4 - lv_header_length ).
+      lv_mac = mo_stream->take( lv_auth_length ).
       lv_payload = mo_transport->get_packet( )->decode_remainder(
         iv_rest = lv_rest
         iv_mac  = lv_mac ).
@@ -321,6 +368,26 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF handle_transport_message( lv_payload ) = abap_true.
         CONTINUE.
       ENDIF.
+      CASE mo_transport->get_state( ).
+        WHEN zcl_oassh_transport=>c_state-encrypted.
+          IF lv_payload(1) = zcl_oassh_message_20=>gc_message_id.
+* RFC 4253 section 9: the server may begin a fresh key exchange at any time.
+* KEXINIT and ECDH_INIT are still protected by the current packet keys.
+            lv_reply = mo_transport->start_rekey( ).
+            mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+            lv_reply = mo_transport->receive_kexinit( lv_payload ).
+            mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+            CONTINUE.
+          ENDIF.
+        WHEN zcl_oassh_transport=>c_state-ecdh_sent.
+          lv_reply = mo_transport->receive_kex_reply( lv_payload ).
+          mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
+          mo_transport->activate_outbound_keys( ).
+          CONTINUE.
+        WHEN zcl_oassh_transport=>c_state-newkeys_sent.
+          mo_transport->receive_newkeys( lv_payload ).
+          CONTINUE.
+      ENDCASE.
       IF mo_transport->get_auth_state( ) <> zcl_oassh_transport=>c_auth_state-authenticated.
         lv_reply = mo_transport->receive_auth( lv_payload ).
         IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated
@@ -338,7 +405,7 @@ CLASS zcl_oassh IMPLEMENTATION.
             mv_command_done = abap_true.
         ENDCASE.
       ELSE.
-        ASSERT 1 = 2.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
       ENDIF.
       IF lv_reply IS NOT INITIAL.
         mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
@@ -398,7 +465,7 @@ CLASS zcl_oassh IMPLEMENTATION.
 * https://datatracker.ietf.org/doc/html/rfc4253#section-4.2
 
     DATA lv_xstr TYPE xstring.
-    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ).
+    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ). "#EC NOTEXT
     lv_xstr = mv_client_version && zcl_oassh_ascii=>c_cr_lf.
 
     mi_socket->send( lv_xstr ).

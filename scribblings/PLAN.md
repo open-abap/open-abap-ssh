@@ -179,6 +179,9 @@ the full client runs VERSION → KEX → NEWKEYS → AUTH → EXEC against canne
 This is the highest-value test: it exercises the whole state machine
 deterministically in plain `npm test`.
 
+Implemented with a capture from the pinned OpenSSH 10.3 CI container: the test
+replays all 3,134 inbound bytes and verifies the exact 750-byte client stream.
+
 ### Tier 3 — live integration (CI job, real network)
 
 GitHub Actions workflow (`.github/workflows/test.yml`, extend):
@@ -196,8 +199,9 @@ Local dev loop: `docker run -p 2222:2222 ...` + `npm run integration`.
 
 ### Quality gates
 
-- `abaplint` strict (already configured) — add rules forbidding SAP-standard
-  object usage outside the two platform adapter classes
+- `abaplint` strict (already configured) plus a repository dependency gate
+  forbidding SAP-standard object usage outside the documented adapters and
+  portable kernel-backed exceptions
 - CI green = tiers 1+2+3 all pass
 - every crypto class lands **with its vectors in the same PR** — no untested crypto
 
@@ -208,60 +212,70 @@ Local dev loop: `docker run -p 2222:2222 ...` + `npm run integration`.
 Ordered so every milestone ends with something demonstrably working under
 `npm test`.
 
+Current completion is tracked below; `CHECKLIST.md` contains the concise view and
+the remaining cross-cutting tasks.
+
 ### M0 — Foundations (repo mostly has this)
-- [ ] finish `zcl_oassh_stream`: mpint, byte, fix `boolean_decode`, full testclass
-- [ ] `zcl_oassh_ascii` (drop `cl_abap_char_utilities`, convert via `cl_abap_codepage`)
-- [ ] define `zif_oassh_socket`, `zif_oassh_random` + mock/fixed implementations
-- [ ] restructure `zcl_oassh` to depend only on the interfaces; move APC code to
+- [x] finish `zcl_oassh_stream`: mpint, byte, fix `boolean_decode`, full testclass
+- [x] `zcl_oassh_ascii` (drop `cl_abap_char_utilities`, convert via `cl_abap_codepage`)
+- [x] define `zif_oassh_socket`, `zif_oassh_random` + mock/fixed implementations
+- [x] restructure `zcl_oassh` to depend only on the interfaces; move APC code to
       `zcl_oassh_socket_apc` (kept compiling on ECC via abaplint target version,
       excluded from transpilation)
-- [ ] CI runs tier 1 on push
+- [x] CI runs tier 1 on push
 
 ### M1 — Hashing
-- [ ] `zcl_oassh_sha256` + NIST vectors
-- [ ] `zcl_oassh_hmac` + RFC 4231 vectors
+- [x] `zcl_oassh_sha256` + NIST vectors
+- [x] `zcl_oassh_hmac` + RFC 4231 vectors
 
 ### M2 — Big integers & key exchange math
-- [ ] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
-- [ ] `zcl_oassh_x25519` + RFC 7748 vectors
-- [ ] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
+- [x] `zcl_oassh_bigint`: add/sub/cmp/mul/mod/modpow + tests
+- [x] `zcl_oassh_x25519` + RFC 7748 vectors
+- [x] `zcl_oassh_kdf` (exchange hash + key derivation) + captured-session vectors
 
 ### M3 — Symmetric crypto
-- [ ] `zcl_oassh_aes` (FIPS 197 vectors), `zcl_oassh_ctr` (SP 800-38A vectors)
+- [x] `zcl_oassh_aes` (FIPS 197 vectors), `zcl_oassh_ctr` (SP 800-38A vectors)
 
 ### M4 — Binary packet protocol & full kex  ⭐ first big demo
-- [ ] `zcl_oassh_packet`: framing, padding rules (§6), MAC, seq numbers
-- [ ] complete messages 20/21/30/31 (KEXINIT currently echoes the server's list —
+- [x] `zcl_oassh_packet`: framing, padding rules (§6), MAC, seq numbers
+- [x] complete messages 20/21/30/31 (KEXINIT currently echoes the server's list —
       replace with our own algorithm proposal + real random cookie)
-- [ ] `zcl_oassh_transport` state machine through NEWKEYS
-- [ ] **Demo: encrypted transport established with real OpenSSH** (tier 3 test:
+- [x] `zcl_oassh_transport` state machine through NEWKEYS
+- [x] **Demo: encrypted transport established with real OpenSSH** (tier 3 test:
       handshake completes, server log shows no errors)
 
 ### M5 — Host key verification
-- [ ] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
-- [ ] verify server signature over exchange hash `H`; known-hosts callback in API
+- [x] `zcl_oassh_rsa` PKCS#1 v1.5 verify + vectors
+- [x] verify server signature over exchange hash `H`; known-hosts callback in API
 
 ### M6 — Authentication (RFC 4252)
-- [ ] messages 50–53, `password` method, SERVICE_REQUEST/ACCEPT (5/6)
-- [ ] tier 3: authenticate against the Docker server
+- [x] messages 50–53, `password` method, SERVICE_REQUEST/ACCEPT (5/6)
+- [x] tier 3: authenticate against the Docker server
 
 ### M7 — Connection layer (RFC 4254)  ⭐ v1.0
-- [ ] session channel open, window management, `exec` request, stdout/stderr
+- [x] session channel open, window management, `exec` request, stdout/stderr
       collection, exit-status, channel close
-- [ ] public API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
+- [x] public API: `zcl_oassh=>connect( )->execute( 'uname -a' )`
 - [ ] **Demo: run a command on a real server from transpiled ABAP — and from ECC**
+      (transpiled and NPL SAP_BASIS 750 APC runs pass; an actual ECC run remains)
 
 ### M8 — Hardening & performance
-- [ ] stream/packet buffers → table-of-xstring to kill O(n²) concat
-- [ ] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
-- [ ] strict-kex (`kex-strict-c-v00@openssh.com`) — modern OpenSSH expects it
-- [ ] timeouts, max packet sizes, fuzz the packet parser with malformed fixtures
+- [x] stream/packet buffers → table-of-xstring to kill O(n²) concat
+- [x] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
+- [x] strict-kex (standard + OpenSSH markers, initial-KEX message discipline,
+      first-packet enforcement, and directional sequence resets after every NEWKEYS)
+- [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
+      deterministic malformed/MAC/oversize packet fixtures
 
 ### M9 — Nice-to-haves (post-1.0, order by demand)
-- [ ] `ssh-ed25519` host keys (needs SHA-512 + edwards arithmetic)
-- [ ] `publickey` auth (client-side RSA signing — needs private-key ops + key file parsing)
-- [ ] `diffie-hellman-group14-sha256` fallback kex
-- [ ] `chacha20-poly1305@openssh.com`
+- [x] `ssh-ed25519` host keys (RFC 8032 cofactored verification, RFC 8709
+  key/signature wrappers, forced OpenSSH integration, A4H/NPL ABAP Unit)
+- [x] `publickey` auth (Ed25519 seed derivation/signing, session-bound RFC 4252
+  request, password-disabled OpenSSH integration, A4H/NPL ABAP Unit)
+- [x] `diffie-hellman-group14-sha256` fallback kex (RFC 3526 group 14,
+      RFC 8268 peer-value validation and SHA-256 exchange hash; live OpenSSH proof)
+- [x] `chacha20-poly1305@openssh.com` (OpenSSH two-key construction,
+  encrypted length, Poly1305-before-decrypt, streaming framing, and forced-cipher CI)
 - [ ] interactive shell channel, `sftp` subsystem, port forwarding
 
 ---

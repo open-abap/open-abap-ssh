@@ -7,7 +7,8 @@ CLASS zcl_oassh_message_52 DEFINITION
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '34'. " is 52 in decimal
     CLASS-METHODS parse
       IMPORTING
-        io_stream TYPE REF TO zcl_oassh_stream.
+        io_stream TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
     CLASS-METHODS serialize
       RETURNING
         VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
@@ -21,7 +22,9 @@ CLASS zcl_oassh_message_52 IMPLEMENTATION.
 * SSH_MSG_USERAUTH_SUCCESS
     DATA lv_message_id TYPE x LENGTH 1.
     lv_message_id = io_stream->take( 1 ).
-    ASSERT lv_message_id = gc_message_id.
+    IF lv_message_id <> gc_message_id.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 

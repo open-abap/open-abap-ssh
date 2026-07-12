@@ -4,20 +4,29 @@ import crypto from "node:crypto";
 await import("../output/init.mjs");
 for (const module of [
   "zcl_oassh_ascii.clas.mjs",
+  "zcx_oassh_error.clas.mjs",
   "zcl_oassh_stream.clas.mjs",
   "zcl_oassh_sha256.clas.mjs",
   "zcl_oassh_hmac.clas.mjs",
   "zcl_oassh_bigint.clas.mjs",
   "zcl_oassh_x25519.clas.mjs",
+  "zcl_oassh_group14.clas.mjs",
   "zcl_oassh_kdf.clas.mjs",
   "zcl_oassh_rsa.clas.mjs",
+  "zcl_oassh_sha512.clas.mjs",
+  "zcl_oassh_ed25519.clas.mjs",
   "zcl_oassh_aes.clas.mjs",
   "zcl_oassh_ctr.clas.mjs",
+  "zcl_oassh_chacha20.clas.mjs",
+  "zcl_oassh_poly1305.clas.mjs",
+  "zcl_oassh_chachapoly.clas.mjs",
   "zcl_oassh_packet.clas.mjs",
   "zcl_oassh_message_20.clas.mjs",
   "zcl_oassh_message_21.clas.mjs",
   "zcl_oassh_message_ecdh_30.clas.mjs",
   "zcl_oassh_message_ecdh_31.clas.mjs",
+  "zcl_oassh_message_dh_30.clas.mjs",
+  "zcl_oassh_message_dh_31.clas.mjs",
   "zcl_oassh_message_5.clas.mjs",
   "zcl_oassh_message_6.clas.mjs",
   "zcl_oassh_message_50.clas.mjs",
@@ -37,11 +46,13 @@ const user = process.env.OASSH_USER ?? "test";
 const password = process.env.OASSH_PASSWORD ?? "test";
 const command = process.env.OASSH_COMMAND ?? "printf open-abap-ssh";
 const expected = process.env.OASSH_EXPECTED ?? "open-abap-ssh";
+const privateSeed = process.env.OASSH_PRIVATE_SEED;
 
 let handler;
 let socket;
 let callbackQueue = Promise.resolve();
 let rejectSocket;
+let executionComplete = false;
 const debug = process.env.OASSH_DEBUG === "1";
 const socketFailure = new Promise((_, reject) => { rejectSocket = reject; });
 
@@ -75,19 +86,22 @@ const socketAdapter = {
           iv_data: new abap.types.XString().set(data.toString("hex").toUpperCase()),
         }))
         .then(() => {
-          if (!debug) return;
           const core = client.FRIENDS_ACCESS_INSTANCE;
           const transport = core.mo_transport.get();
           const auth = transport?.FRIENDS_ACCESS_INSTANCE.mv_auth_state.get();
+          const transportState = transport?.FRIENDS_ACCESS_INSTANCE.mv_state.get();
+          if (!debug) return;
           const channel = core.mo_channel.get();
           const channelState = channel?.FRIENDS_ACCESS_INSTANCE.mv_state.get();
-          console.error(`processed auth=${auth} channel=${channelState}`);
+          console.error(`processed transport=${transportState} auth=${auth} channel=${channelState}`);
         })
         .catch(rejectSocket);
     });
     socket.once("error", rejectSocket);
     socket.once("close", hadError => {
-      if (hadError) rejectSocket(new Error("OpenSSH socket closed with an error"));
+      if (hadError || !executionComplete) {
+        rejectSocket(new Error("OpenSSH socket closed before SSH exec completed"));
+      }
     });
   },
   async zif_oassh_socket$send({iv_data}) {
@@ -97,8 +111,10 @@ const socketAdapter = {
   async zif_oassh_socket$close() {
     socket.end();
   },
-  async zif_oassh_socket$wait() {
-    while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() === "") {
+  async zif_oassh_socket$wait({iv_timeout_seconds}) {
+    const deadline = Date.now() + iv_timeout_seconds.get() * 1000;
+    while ((await handler.get().zif_oassh_socket_handler$is_complete()).get() !== "X") {
+      if (Date.now() >= deadline) return;
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   },
@@ -113,16 +129,26 @@ const client = await new abap.Classes.ZCL_OASSH().constructor_({
   ii_host_verifier: verifierRef,
   iv_user: new abap.types.String().set(user),
   iv_password: new abap.types.String().set(password),
+  iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),
 });
 const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});
 await socketAdapter.zif_oassh_socket$connect();
 
-const execution = client.execute({iv_command: new abap.types.String().set(command)});
-const timeout = new Promise((_, reject) => {
-  setTimeout(() => reject(new Error("Timed out waiting for SSH exec")), 300000);
+const execution = client.execute({iv_command: new abap.types.String().set(command)}).then(value => {
+  executionComplete = true;
+  return value;
 });
-const outputValue = await Promise.race([execution, socketFailure, timeout]);
+let timer;
+const timeout = new Promise((_, reject) => {
+  timer = setTimeout(() => reject(new Error("Timed out waiting for SSH exec")), 300000);
+});
+let outputValue;
+try {
+  outputValue = await Promise.race([execution, socketFailure, timeout]);
+} finally {
+  clearTimeout(timer);
+}
 const output = outputValue.get();
 const exitStatus = (await client.get_exit_status()).get();
 await client.close();
@@ -133,4 +159,29 @@ if (output !== expected) {
 if (exitStatus !== 0) {
   throw new Error(`Expected exit status 0, got ${exitStatus}`);
 }
+const rekeyCount = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_rekey_count()).get();
+const strictKex = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().is_strict_kex()).get() === "X";
+const kexAlgorithm = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_kex_algorithm()).get();
+const cipherAlgorithm = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_cipher_algorithm()).get();
+const hostKeyAlgorithm = (await client.FRIENDS_ACCESS_INSTANCE.mo_transport.get().get_host_key_algorithm()).get();
+if (process.env.OASSH_EXPECT_REKEY === "1" && rekeyCount < 1) {
+  throw new Error("Expected the server to initiate rekeying");
+}
+if (process.env.OASSH_EXPECT_STRICT_KEX === "1" && !strictKex) {
+  throw new Error("Expected strict KEX negotiation");
+}
+if (process.env.OASSH_EXPECT_KEX && kexAlgorithm !== process.env.OASSH_EXPECT_KEX) {
+  throw new Error(`Expected KEX ${process.env.OASSH_EXPECT_KEX}, got ${kexAlgorithm}`);
+}
+if (process.env.OASSH_EXPECT_CIPHER && cipherAlgorithm !== process.env.OASSH_EXPECT_CIPHER) {
+  throw new Error(`Expected cipher ${process.env.OASSH_EXPECT_CIPHER}, got ${cipherAlgorithm}`);
+}
+if (process.env.OASSH_EXPECT_HOST_KEY && hostKeyAlgorithm !== process.env.OASSH_EXPECT_HOST_KEY) {
+  throw new Error(`Expected host key ${process.env.OASSH_EXPECT_HOST_KEY}, got ${hostKeyAlgorithm}`);
+}
 console.log(`exec succeeded: ${JSON.stringify(output)}`);
+if (rekeyCount > 0) console.log(`server-initiated rekey succeeded (${rekeyCount})`);
+if (strictKex) console.log("strict KEX negotiated");
+console.log(`KEX algorithm: ${kexAlgorithm}`);
+console.log(`cipher algorithm: ${cipherAlgorithm}`);
+console.log(`host key algorithm: ${hostKeyAlgorithm}`);

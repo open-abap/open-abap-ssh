@@ -5,6 +5,8 @@ CLASS zcl_oassh_stream DEFINITION
 
   PUBLIC SECTION.
 
+    TYPES ty_byte TYPE x LENGTH 1.
+
     METHODS constructor
       IMPORTING
         iv_hex TYPE xstring OPTIONAL.
@@ -15,7 +17,9 @@ CLASS zcl_oassh_stream DEFINITION
       IMPORTING
         iv_length    TYPE i
       RETURNING
-        VALUE(rv_hex) TYPE xstring.
+        VALUE(rv_hex) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS append
       IMPORTING
         iv_hex TYPE xsequence.
@@ -27,31 +31,48 @@ CLASS zcl_oassh_stream DEFINITION
         iv_boolean TYPE abap_bool.
     METHODS boolean_decode
       RETURNING
-        VALUE(rv_boolean) TYPE abap_bool.
+        VALUE(rv_boolean) TYPE abap_bool
+      RAISING
+        zcx_oassh_error.
     METHODS byte_encode
       IMPORTING
         iv_byte TYPE x.
     METHODS byte_decode
       RETURNING
-        VALUE(rv_byte) TYPE x.
+        VALUE(rv_byte) TYPE ty_byte
+      RAISING
+        zcx_oassh_error.
     METHODS mpint_encode
       IMPORTING
         iv_int TYPE xsequence.
     METHODS mpint_decode
       RETURNING
-        VALUE(rv_int) TYPE xstring.
+        VALUE(rv_int) TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS mpint_decode_positive
+      RETURNING
+        VALUE(rv_int) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS name_list_decode
       RETURNING
-        VALUE(rt_list) TYPE string_table.
+        VALUE(rt_list) TYPE string_table
+      RAISING
+        zcx_oassh_error.
     METHODS uint32_encode
       IMPORTING
         iv_int TYPE i.
     METHODS uint32_decode
       RETURNING
-        VALUE(rv_int) TYPE i.
+        VALUE(rv_int) TYPE i
+      RAISING
+        zcx_oassh_error.
     METHODS uint32_decode_peek
       RETURNING
-        VALUE(rv_int) TYPE i.
+        VALUE(rv_int) TYPE i
+      RAISING
+        zcx_oassh_error.
     METHODS get_length
       RETURNING
         VALUE(rv_length) TYPE i.
@@ -61,7 +82,9 @@ CLASS zcl_oassh_stream DEFINITION
         iv_string TYPE xstring.
     METHODS string_decode
       RETURNING
-        VALUE(rv_string) TYPE xstring.
+        VALUE(rv_string) TYPE xstring
+      RAISING
+        zcx_oassh_error.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -136,6 +159,34 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
       rv_int = rv_int+1.
     ENDIF.
 
+  ENDMETHOD.
+
+
+  METHOD mpint_decode_positive.
+* Decode the non-negative, canonical subset of RFC 4251 mpint used by
+* fixed-group Diffie-Hellman. Negative and redundant encodings are malformed.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_second TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+    rv_int = string_decode( ).
+    IF xstrlen( rv_int ) = 0.
+      RETURN.
+    ENDIF.
+    lv_first = rv_int(1).
+    GET BIT 1 OF lv_first INTO lv_bit.
+    IF lv_first = '00'.
+      IF xstrlen( rv_int ) = 1.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      lv_second = rv_int+1(1).
+      GET BIT 1 OF lv_second INTO lv_bit.
+      IF lv_bit <> '1'.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      rv_int = rv_int+1.
+    ELSEIF lv_bit = '1'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -254,7 +305,15 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD take.
+    DATA lv_available TYPE i.
     materialize( ).
+    lv_available = xstrlen( mv_hex ) - mv_pos.
+    IF iv_length < 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    IF iv_length > lv_available.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     rv_hex = mv_hex+mv_pos(iv_length).
     mv_pos = mv_pos + iv_length.
   ENDMETHOD.
@@ -270,7 +329,8 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
   METHOD uint32_decode_peek.
 
     materialize( ).
-    rv_int = mv_hex+mv_pos(4).
+    rv_int = take( 4 ).
+    mv_pos = mv_pos - 4.
 
   ENDMETHOD.
 

@@ -1,6 +1,8 @@
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
-    METHODS full_session FOR TESTING.
+    METHODS full_session FOR TESTING RAISING cx_static_check.
+    METHODS wrong_recipient FOR TESTING RAISING cx_static_check.
+    METHODS channel_failure FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 CLASS ltcl_test IMPLEMENTATION.
@@ -45,5 +47,35 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->get_state( )
       exp = zcl_oassh_channel=>c_state-closed ).
+  ENDMETHOD.
+
+
+  METHOD wrong_recipient.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_channel = NEW #( ).
+    TRY.
+        lo_channel->receive( '5E0000000100000000' ).
+        cl_abap_unit_assert=>fail( 'foreign channel data accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD channel_failure.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_channel = NEW #( ).
+    TRY.
+        lo_channel->receive( '6400000000' ).
+        cl_abap_unit_assert=>fail( 'channel failure ignored' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-channel_failed ).
+    ENDTRY.
   ENDMETHOD.
 ENDCLASS.
