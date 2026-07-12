@@ -12,6 +12,14 @@ CLASS zcl_oassh_ed25519 DEFINITION
         iv_message    TYPE xstring
         iv_signature  TYPE xstring
       RETURNING VALUE(rv_verified) TYPE abap_bool.
+    CLASS-METHODS public_key
+      IMPORTING iv_seed TYPE xstring
+      RETURNING VALUE(rv_public_key) TYPE xstring.
+    CLASS-METHODS sign_message
+      IMPORTING
+        iv_seed TYPE xstring
+        iv_message TYPE xstring
+      RETURNING VALUE(rv_signature) TYPE xstring.
   PRIVATE SECTION.
     TYPES ty_field TYPE STANDARD TABLE OF i WITH EMPTY KEY.
     TYPES:
@@ -44,6 +52,9 @@ CLASS zcl_oassh_ed25519 DEFINITION
     CLASS-METHODS field_from_big
       IMPORTING iv_data TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
+    CLASS-METHODS field_to_little
+      IMPORTING it_field TYPE ty_field
+      RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS field_modulus
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_normalize
@@ -101,6 +112,12 @@ CLASS zcl_oassh_ed25519 DEFINITION
     CLASS-METHODS point_small_order
       IMPORTING is_point TYPE ty_point
       RETURNING VALUE(rv_small) TYPE abap_bool.
+    CLASS-METHODS point_encode
+      IMPORTING is_point TYPE ty_point
+      RETURNING VALUE(rv_encoded) TYPE xstring.
+    CLASS-METHODS secret_scalar
+      IMPORTING iv_hash TYPE xstring
+      RETURNING VALUE(rv_scalar) TYPE xstring.
     CLASS-METHODS point_decode
       IMPORTING iv_encoded TYPE xstring
       EXPORTING
@@ -157,6 +174,37 @@ CLASS zcl_oassh_ed25519 IMPLEMENTATION.
 
   METHOD field_from_big.
     rt_field = field_from_little( reverse_bytes( iv_data ) ).
+  ENDMETHOD.
+
+
+  METHOD field_to_little.
+    DATA lv_acc TYPE i.
+    DATA lv_bits TYPE i.
+    DATA lv_factor TYPE i.
+    DATA lv_limb TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_zero TYPE x LENGTH 1 VALUE '00'.
+    LOOP AT it_field INTO lv_limb.
+      lv_factor = 1.
+      DO lv_bits TIMES.
+        lv_factor = lv_factor * 2.
+      ENDDO.
+      lv_acc = lv_acc + lv_limb * lv_factor.
+      lv_bits = lv_bits + 10.
+      WHILE lv_bits >= 8.
+        lv_byte = lv_acc MOD 256.
+        CONCATENATE rv_data lv_byte INTO rv_data IN BYTE MODE.
+        lv_acc = lv_acc DIV 256.
+        lv_bits = lv_bits - 8.
+      ENDWHILE.
+    ENDLOOP.
+    IF lv_acc > 0.
+      lv_byte = lv_acc.
+      CONCATENATE rv_data lv_byte INTO rv_data IN BYTE MODE.
+    ENDIF.
+    WHILE xstrlen( rv_data ) < 32.
+      CONCATENATE rv_data lv_zero INTO rv_data IN BYTE MODE.
+    ENDWHILE.
   ENDMETHOD.
 
 
@@ -469,6 +517,58 @@ CLASS zcl_oassh_ed25519 IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD point_encode.
+    DATA lt_z_inverse TYPE ty_field.
+    DATA lt_x TYPE ty_field.
+    DATA lt_y TYPE ty_field.
+    DATA lv_y TYPE xstring.
+    DATA lv_offset TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_out TYPE x LENGTH 1.
+    lt_z_inverse = field_pow(
+      it_base = is_point-z
+      iv_exp  = '7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEB' ).
+    lt_x = field_mul(
+      it_a = is_point-x
+      it_b = lt_z_inverse ).
+    lt_y = field_mul(
+      it_a = is_point-y
+      it_b = lt_z_inverse ).
+    lv_y = field_to_little( lt_y ).
+    DO 32 TIMES.
+      lv_offset = sy-index - 1.
+      lv_byte = lv_y+lv_offset(1).
+      lv_out = lv_byte.
+      IF lv_offset = 31 AND lt_x[ 1 ] MOD 2 = 1.
+        lv_out = lv_byte + 128.
+      ENDIF.
+      CONCATENATE rv_encoded lv_out INTO rv_encoded IN BYTE MODE.
+    ENDDO.
+  ENDMETHOD.
+
+
+  METHOD secret_scalar.
+    DATA lv_offset TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_out TYPE x LENGTH 1.
+    DATA lv_little TYPE xstring.
+    ASSERT xstrlen( iv_hash ) = 64.
+    DO 32 TIMES.
+      lv_offset = sy-index - 1.
+      lv_byte = iv_hash+lv_offset(1).
+      lv_out = lv_byte.
+      CASE lv_offset.
+        WHEN 0.
+          lv_out = ( lv_byte DIV 8 ) * 8.
+        WHEN 31.
+          lv_out = lv_byte MOD 64 + 64.
+      ENDCASE.
+      CONCATENATE lv_little lv_out INTO lv_little IN BYTE MODE.
+    ENDDO.
+    rv_scalar = reverse_bytes( lv_little ).
+  ENDMETHOD.
+
+
   METHOD point_decode.
     DATA lv_offset TYPE i.
     DATA lv_byte TYPE x LENGTH 1.
@@ -608,5 +708,69 @@ CLASS zcl_oassh_ed25519 IMPLEMENTATION.
     ENDDO.
     rv_verified = point_equal( is_a = ls_left
                                is_b = ls_right ).
+  ENDMETHOD.
+
+
+  METHOD public_key.
+    DATA lv_hash TYPE xstring.
+    DATA lv_scalar TYPE xstring.
+    ASSERT xstrlen( iv_seed ) = 32.
+    lv_hash = zcl_oassh_sha512=>hash( iv_seed ).
+    lv_scalar = secret_scalar( lv_hash ).
+    rv_public_key = point_encode(
+      point_mul(
+        iv_scalar = lv_scalar
+        is_point  = point_base( ) ) ).
+  ENDMETHOD.
+
+
+  METHOD sign_message.
+    DATA lv_hash TYPE xstring.
+    DATA lv_scalar TYPE xstring.
+    DATA lv_prefix TYPE xstring.
+    DATA lv_nonce_input TYPE xstring.
+    DATA lv_nonce_hash TYPE xstring.
+    DATA lv_r TYPE xstring.
+    DATA lv_r_encoded TYPE xstring.
+    DATA lv_public_key TYPE xstring.
+    DATA lv_challenge_input TYPE xstring.
+    DATA lv_k TYPE xstring.
+    DATA lv_s TYPE xstring.
+    DATA lv_s_little TYPE xstring.
+    DATA lv_zero TYPE x LENGTH 1 VALUE '00'.
+    ASSERT xstrlen( iv_seed ) = 32.
+    lv_hash = zcl_oassh_sha512=>hash( iv_seed ).
+    lv_scalar = secret_scalar( lv_hash ).
+    lv_prefix = lv_hash+32(32).
+    CONCATENATE lv_prefix iv_message INTO lv_nonce_input IN BYTE MODE.
+    lv_nonce_hash = zcl_oassh_sha512=>hash( lv_nonce_input ).
+    lv_r = zcl_oassh_bigint=>modulo(
+      iv_a = reverse_bytes( lv_nonce_hash )
+      iv_m = c_l ).
+    lv_r_encoded = point_encode(
+      point_mul(
+        iv_scalar = lv_r
+        is_point  = point_base( ) ) ).
+    lv_public_key = point_encode(
+      point_mul(
+        iv_scalar = lv_scalar
+        is_point  = point_base( ) ) ).
+    CONCATENATE lv_r_encoded lv_public_key iv_message
+      INTO lv_challenge_input IN BYTE MODE.
+    lv_k = zcl_oassh_bigint=>modulo(
+      iv_a = reverse_bytes( zcl_oassh_sha512=>hash( lv_challenge_input ) )
+      iv_m = c_l ).
+    lv_s = zcl_oassh_bigint=>modulo(
+      iv_a = zcl_oassh_bigint=>add(
+        iv_a = lv_r
+        iv_b = zcl_oassh_bigint=>multiply(
+          iv_a = lv_k
+          iv_b = lv_scalar ) )
+      iv_m = c_l ).
+    lv_s_little = reverse_bytes( lv_s ).
+    WHILE xstrlen( lv_s_little ) < 32.
+      CONCATENATE lv_s_little lv_zero INTO lv_s_little IN BYTE MODE.
+    ENDWHILE.
+    CONCATENATE lv_r_encoded lv_s_little INTO rv_signature IN BYTE MODE.
   ENDMETHOD.
 ENDCLASS.

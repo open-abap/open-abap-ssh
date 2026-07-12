@@ -195,3 +195,36 @@ jobs:
         OASSH_PASSWORD: test
         OASSH_EXPECT_HOST_KEY: ssh-ed25519
         OASSH_EXPECT_STRICT_KEX: "1"
+
+  publickey-auth-exec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      openssh:
+        image: lscr.io/linuxserver/openssh-server@sha256:deec9e402eb9a656de1749c3ea93e99478a565cf187ecfb051f8446d93b12483
+        env:
+          PUID: 1000
+          PGID: 1000
+          TZ: Etc/UTC
+          USER_NAME: test
+          PASSWORD_ACCESS: "false"
+          SUDO_ACCESS: "false"
+        ports:
+          - 2222:2222
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - name: Authorize RFC 8032 Ed25519 test key
+      run: |
+        container=$(docker ps --filter publish=2222 -q)
+        docker exec "$container" mkdir -p /config/.ssh
+        docker exec "$container" sh -c "echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINdamAGCsQq31Uv+08lkBzoO4XLz2qYjJa8CGmj3B1Ea' > /config/.ssh/authorized_keys"
+        docker exec "$container" chmod 600 /config/.ssh/authorized_keys
+        docker restart "$container"
+    - run: npm run integration:exec
+      env:
+        OASSH_USER: test
+        OASSH_PASSWORD: ""
+        OASSH_PRIVATE_SEED: 9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60
+        OASSH_EXPECT_STRICT_KEX: "1"

@@ -69,7 +69,8 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS start_auth
       IMPORTING
         iv_user           TYPE xstring
-        iv_password       TYPE xstring
+        iv_password       TYPE xstring OPTIONAL
+        iv_private_seed   TYPE xstring OPTIONAL
       RETURNING
         VALUE(rv_payload) TYPE xstring.
     METHODS receive_auth
@@ -130,6 +131,7 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mo_packet TYPE REF TO zcl_oassh_packet.
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
+    DATA mv_private_seed TYPE xstring.
     DATA mv_auth_state TYPE i.
     DATA mv_rekey_in_progress TYPE abap_bool.
     DATA mv_rekey_count TYPE i.
@@ -147,6 +149,8 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS derive_keys.
     METHODS select_host_key
       IMPORTING it_algorithms TYPE string_table.
+    METHODS publickey_request
+      RETURNING VALUE(rv_payload) TYPE xstring.
 ENDCLASS.
 
 
@@ -535,6 +539,8 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ASSERT mv_state = c_state-encrypted.
     mv_user = iv_user.
     mv_password = iv_password.
+    mv_private_seed = iv_private_seed.
+    ASSERT mv_password IS NOT INITIAL OR xstrlen( mv_private_seed ) = 32.
     ls_data-message_id = zcl_oassh_message_5=>gc_message_id.
     ls_data-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
     rv_payload = zcl_oassh_message_5=>serialize( ls_data )->get( ).
@@ -555,12 +561,16 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         ASSERT mv_auth_state = c_auth_state-service_requested.
         ls_accept = zcl_oassh_message_6=>parse( lo_stream ).
         ASSERT zcl_oassh_ascii=>from_xstring( ls_accept-service_name ) = 'ssh-userauth'.
-        ls_request-message_id = zcl_oassh_message_50=>gc_message_id.
-        ls_request-user_name = mv_user.
-        ls_request-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-connection' ).
-        ls_request-method_name = zcl_oassh_ascii=>to_xstring( 'password' ).
-        ls_request-password = mv_password.
-        rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
+        IF mv_private_seed IS NOT INITIAL.
+          rv_payload = publickey_request( ).
+        ELSE.
+          ls_request-message_id = zcl_oassh_message_50=>gc_message_id.
+          ls_request-user_name = mv_user.
+          ls_request-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-connection' ).
+          ls_request-method_name = zcl_oassh_ascii=>to_xstring( 'password' ).
+          ls_request-password = mv_password.
+          rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
+        ENDIF.
         mv_auth_state = c_auth_state-request_sent.
       WHEN zcl_oassh_message_53=>gc_message_id.
 * USERAUTH_BANNER: informational only, no reply
@@ -575,6 +585,15 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       WHEN OTHERS.
         ASSERT 1 = 2.
     ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD publickey_request.
+    rv_payload = zcl_oassh_message_50=>signed_publickey_request(
+      iv_user         = mv_user
+      iv_session_id   = mv_session_id
+      iv_private_seed = mv_private_seed ).
+    CLEAR mv_private_seed.
   ENDMETHOD.
 
 

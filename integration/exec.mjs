@@ -46,6 +46,7 @@ const user = process.env.OASSH_USER ?? "test";
 const password = process.env.OASSH_PASSWORD ?? "test";
 const command = process.env.OASSH_COMMAND ?? "printf open-abap-ssh";
 const expected = process.env.OASSH_EXPECTED ?? "open-abap-ssh";
+const privateSeed = process.env.OASSH_PRIVATE_SEED;
 
 let handler;
 let socket;
@@ -125,6 +126,7 @@ const client = await new abap.Classes.ZCL_OASSH().constructor_({
   ii_host_verifier: verifierRef,
   iv_user: new abap.types.String().set(user),
   iv_password: new abap.types.String().set(password),
+  iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),
 });
 const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});

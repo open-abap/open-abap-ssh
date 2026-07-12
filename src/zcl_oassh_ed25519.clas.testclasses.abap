@@ -12,6 +12,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS rfc8032_one_byte FOR TESTING.
     METHODS rejects_modified FOR TESTING.
     METHODS rejects_small_order FOR TESTING.
+    METHODS sign_rfc8032 FOR TESTING.
 ENDCLASS.
 
 
@@ -70,5 +71,23 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_public_key = lv_public
         iv_message    = lv_empty
         iv_signature  = lv_signature ) ).
+  ENDMETHOD.
+
+
+  METHOD sign_rfc8032.
+    DATA lv_empty TYPE xstring.
+    DATA lv_signature TYPE xstring.
+    DATA lv_seed TYPE xstring VALUE
+      '9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60'.
+    CONCATENATE c_sig1_a c_sig1_b INTO lv_signature IN BYTE MODE.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_ed25519=>public_key(
+        lv_seed )
+      exp = 'D75A980182B10AB7D54BFED3C964073A0EE172F3DAA62325AF021A68F707511A' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_ed25519=>sign_message(
+        iv_seed    = lv_seed
+        iv_message = lv_empty )
+      exp = lv_signature ).
   ENDMETHOD.
 ENDCLASS.

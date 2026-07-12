@@ -11,7 +11,8 @@ CLASS zcl_oassh DEFINITION
         iv_host TYPE string
         iv_port TYPE string
         iv_user TYPE string
-        iv_password TYPE string
+        iv_password TYPE string OPTIONAL
+        iv_private_seed TYPE xstring OPTIONAL
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RETURNING
@@ -44,7 +45,8 @@ CLASS zcl_oassh DEFINITION
         ii_random TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
         iv_user TYPE string
-        iv_password TYPE string.
+        iv_password TYPE string OPTIONAL
+        iv_private_seed TYPE xstring OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -63,6 +65,7 @@ CLASS zcl_oassh DEFINITION
     DATA mv_client_version TYPE xstring.
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
+    DATA mv_private_seed TYPE xstring.
     DATA mv_enc_packet_length TYPE i.
     DATA mo_channel TYPE REF TO zcl_oassh_channel.
     DATA mv_command TYPE string.
@@ -116,7 +119,8 @@ CLASS zcl_oassh IMPLEMENTATION.
         ii_random        = ii_random
         ii_host_verifier = ii_host_verifier
         iv_user          = iv_user
-        iv_password      = iv_password.
+        iv_password      = iv_password
+        iv_private_seed  = iv_private_seed.
 
     li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
@@ -206,6 +210,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     mi_random = ii_random.
     mv_user = zcl_oassh_ascii=>to_xstring( iv_user ).
     mv_password = zcl_oassh_ascii=>to_xstring( iv_password ).
+    mv_private_seed = iv_private_seed.
     CREATE OBJECT mo_stream.
     mo_plain_packet = NEW #( ii_random = mi_random ).
     mo_transport = NEW #(
@@ -307,8 +312,9 @@ CLASS zcl_oassh IMPLEMENTATION.
           mo_transport->receive_newkeys( lv_payload ).
           mv_state = gc_state-encrypted.
           lv_reply = mo_transport->start_auth(
-            iv_user     = mv_user
-            iv_password = mv_password ).
+            iv_user         = mv_user
+            iv_password     = mv_password
+            iv_private_seed = mv_private_seed ).
           mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
           RETURN.
         WHEN OTHERS.

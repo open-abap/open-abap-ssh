@@ -270,7 +270,8 @@ the remaining cross-cutting tasks.
 ### M9 — Nice-to-haves (post-1.0, order by demand)
 - [x] `ssh-ed25519` host keys (RFC 8032 cofactored verification, RFC 8709
   key/signature wrappers, forced OpenSSH integration, A4H/NPL ABAP Unit)
-- [ ] `publickey` auth (client-side RSA signing — needs private-key ops + key file parsing)
+- [x] `publickey` auth (Ed25519 seed derivation/signing, session-bound RFC 4252
+  request, password-disabled OpenSSH integration, A4H/NPL ABAP Unit)
 - [x] `diffie-hellman-group14-sha256` fallback kex (RFC 3526 group 14,
       RFC 8268 peer-value validation and SHA-256 exchange hash; live OpenSSH proof)
 - [x] `chacha20-poly1305@openssh.com` (OpenSSH two-key construction,

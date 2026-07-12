@@ -55,7 +55,8 @@
 ## M9 — Post-1.0
 - [x] `ssh-ed25519` host keys — SHA-512, canonical Edwards decoding,
   cofactored verification, forced OpenSSH integration, A4H/NPL ABAP Unit
-- [ ] `publickey` auth
+- [x] `publickey` auth — Ed25519 seed signing, RFC 4252 session binding,
+  password-disabled OpenSSH integration, A4H/NPL ABAP Unit
 - [x] `diffie-hellman-group14-sha256`
 - [x] `chacha20-poly1305@openssh.com` — RFC 8439/OpenSSH vectors,
   authenticated streaming packets, forced OpenSSH integration, A4H/NPL ABAP Unit

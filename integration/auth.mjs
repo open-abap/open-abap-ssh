@@ -43,6 +43,7 @@ const host = process.argv[2] ?? process.env.OASSH_HOST ?? "127.0.0.1";
 const port = Number(process.argv[3] ?? process.env.OASSH_PORT ?? "2222");
 const user = process.env.OASSH_USER ?? "test";
 const password = process.env.OASSH_PASSWORD ?? "test";
+const privateSeed = process.env.OASSH_PRIVATE_SEED;
 const debug = process.env.OASSH_DEBUG === "1" || process.argv.includes("--debug");
 
 // SSH_MSG_USERAUTH_SUCCESS moves the transport auth state machine to this value.
@@ -126,6 +127,7 @@ const client = await new abap.Classes.ZCL_OASSH().constructor_({
   ii_host_verifier: verifierRef,
   iv_user: new abap.types.String().set(user),
   iv_password: new abap.types.String().set(password),
+  iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),
 });
 const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
 await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});
