@@ -11,9 +11,10 @@ ENDCLASS.
 CLASS ltcl_test IMPLEMENTATION.
 
   METHOD empty.
+    DATA lv_empty TYPE xstring.
 * NIST: SHA-256 of the empty message
     cl_abap_unit_assert=>assert_equals(
-      act = zcl_oassh_sha256=>hash( '' )
+      act = zcl_oassh_sha256=>hash( lv_empty )
       exp = 'E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855' ).
   ENDMETHOD.
 
