@@ -22,7 +22,14 @@ CLASS zcl_oassh_ctr DEFINITION
     DATA mv_counter   TYPE x LENGTH 16.
     DATA mv_keystream TYPE xstring.
 
+    TYPES ty_blocks TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
+
     METHODS increment_counter.
+    CLASS-METHODS join_blocks
+      IMPORTING
+        it_blocks     TYPE ty_blocks
+      RETURNING
+        VALUE(rv_data) TYPE xstring.
 ENDCLASS.
 
 
@@ -57,6 +64,38 @@ CLASS zcl_oassh_ctr IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD join_blocks.
+* CONCATENATE LINES OF xstring uses the character path in open-abap (see
+* ANORMALIES.md). Pairwise byte concatenation is portable and limits each
+* generated block to logarithmically many copies.
+    DATA lt_current TYPE ty_blocks.
+    DATA lt_next TYPE ty_blocks.
+    DATA lv_index TYPE i.
+    DATA lv_count TYPE i.
+    DATA lv_joined TYPE xstring.
+    lt_current = it_blocks.
+    WHILE lines( lt_current ) > 1.
+      CLEAR lt_next.
+      lv_index = 1.
+      lv_count = lines( lt_current ).
+      WHILE lv_index <= lv_count.
+        IF lv_index = lv_count.
+          APPEND lt_current[ lv_index ] TO lt_next.
+        ELSE.
+          CONCATENATE lt_current[ lv_index ] lt_current[ lv_index + 1 ]
+            INTO lv_joined IN BYTE MODE.
+          APPEND lv_joined TO lt_next.
+        ENDIF.
+        lv_index = lv_index + 2.
+      ENDWHILE.
+      lt_current = lt_next.
+    ENDWHILE.
+    IF lt_current IS NOT INITIAL.
+      rv_data = lt_current[ 1 ].
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD crypt.
 * XOR the data against the counter keystream a whole block at a time. The
 * keystream blocks are folded into a single xstring so the final XOR is one
@@ -67,7 +106,7 @@ CLASS zcl_oassh_ctr IMPLEMENTATION.
     DATA lv_block    TYPE xstring.
     DATA lv_ks       TYPE xstring.
     DATA lv_used     TYPE xstring.
-    DATA lt_blocks   TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
+    DATA lt_blocks   TYPE ty_blocks.
 
     lv_length = xstrlen( iv_data ).
     IF lv_length = 0.
@@ -87,7 +126,7 @@ CLASS zcl_oassh_ctr IMPLEMENTATION.
       APPEND lv_block TO lt_blocks.
       lv_have = lv_have + 16.
     ENDWHILE.
-    CONCATENATE LINES OF lt_blocks INTO lv_ks IN BYTE MODE.
+    lv_ks = join_blocks( lt_blocks ).
 
     lv_used = lv_ks(lv_length).
     rv_data = iv_data BIT-XOR lv_used.

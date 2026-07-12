@@ -49,6 +49,11 @@
 - [x] rekeying (server-initiated KEXINIT while ENCRYPTED; reuse session id, keep sequence numbers, swap keys)
 - [x] strict-kex (`kex-strict-c` + `kex-strict-c-v00@openssh.com`; initial-KEX message discipline,
       retrospective first-packet check, and directional sequence resets after every NEWKEYS)
+- [x] uint32 packet sequence rollover without signed ABAP integer overflow
+- [x] channel receive-window replenishment and chunked large-output accumulation
+- [x] byte-safe balanced CTR keystream joining across SAP and open-abap
+- [x] balanced stream materialization for high chunk counts
+- [x] strict canonical RFC 4251 name-list validation before negotiation
 - [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
       deterministic malformed/MAC/oversize packet fixtures
 

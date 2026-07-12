@@ -264,6 +264,11 @@ the remaining cross-cutting tasks.
 - [x] rekeying (RFC 4253 §9), IGNORE/DEBUG/UNIMPLEMENTED handling, disconnect codes
 - [x] strict-kex (standard + OpenSSH markers, initial-KEX message discipline,
       first-packet enforcement, and directional sequence resets after every NEWKEYS)
+- [x] packet sequence numbers wrap modulo 2^32 across ABAP's signed integer boundary
+- [x] replenish channel receive windows and accumulate large output in balanced chunks
+- [x] replace runtime-specific CTR table concatenation with byte-safe balanced joining
+- [x] materialize stream chunk tables with balanced byte concatenation
+- [x] reject malformed, non-ASCII, or non-canonical SSH name-lists
 - [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
       deterministic malformed/MAC/oversize packet fixtures
 

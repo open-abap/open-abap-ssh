@@ -4,12 +4,15 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     DATA mo_stream TYPE REF TO zcl_oassh_stream.
     METHODS setup.
     METHODS name_list FOR TESTING RAISING cx_static_check.
+    METHODS empty_name_list FOR TESTING RAISING cx_static_check.
+    METHODS malformed_name_lists FOR TESTING RAISING cx_static_check.
     METHODS unit32 FOR TESTING RAISING cx_static_check.
     METHODS uint32_peek FOR TESTING RAISING cx_static_check.
     METHODS constructs_empty FOR TESTING RAISING cx_static_check.
     METHODS append_take FOR TESTING RAISING cx_static_check.
     METHODS interleaved_append_take FOR TESTING RAISING cx_static_check.
     METHODS append_after_consume FOR TESTING RAISING cx_static_check.
+    METHODS many_chunks FOR TESTING RAISING cx_static_check.
     METHODS clear FOR TESTING RAISING cx_static_check.
     METHODS boolean_true FOR TESTING RAISING cx_static_check.
     METHODS boolean_false FOR TESTING RAISING cx_static_check.
@@ -174,6 +177,75 @@ CLASS ltcl_test IMPLEMENTATION.
       act = lo_stream->take( 2 )
       exp = 'CCDD' ).
 
+  ENDMETHOD.
+
+
+  METHOD empty_name_list.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lt_names TYPE string_table.
+    lo_stream = NEW #( '00000000' ).
+    lt_names = lo_stream->name_list_decode( ).
+    cl_abap_unit_assert=>assert_initial( lt_names ).
+  ENDMETHOD.
+
+
+  METHOD malformed_name_lists.
+    DATA lt_fixtures TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
+    DATA lv_fixture TYPE xstring.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lo_builder TYPE REF TO zcl_oassh_stream.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+* Leading, trailing, and repeated separators; whitespace/control bytes; and a
+* 65-character name all violate RFC 4251's canonical name-list syntax.
+    APPEND '000000022C61' TO lt_fixtures.
+    APPEND '00000002612C' TO lt_fixtures.
+    APPEND '00000004612C2C62' TO lt_fixtures.
+    APPEND '00000003612062' TO lt_fixtures.
+    APPEND '00000003610A62' TO lt_fixtures.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '61' ).
+    lo_builder = NEW #( ).
+    lo_builder->string_encode( li_random->bytes( 65 ) ).
+    APPEND lo_builder->get( ) TO lt_fixtures.
+    LOOP AT lt_fixtures INTO lv_fixture.
+      CLEAR lv_reason.
+      lo_stream = NEW #( lv_fixture ).
+      TRY.
+          lo_stream->name_list_decode( ).
+        CATCH zcx_oassh_error INTO lx_error.
+          lv_reason = lx_error->get_reason( ).
+      ENDTRY.
+      cl_abap_unit_assert=>assert_equals(
+        act = lv_reason
+        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDLOOP.
+
+* The upper canonical boundary remains valid.
+    lo_builder = NEW #( ).
+    lo_builder->string_encode( li_random->bytes( 64 ) ).
+    lo_stream = NEW #( lo_builder->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( lo_stream->name_list_decode( ) )
+      exp = 1 ).
+  ENDMETHOD.
+
+
+  METHOD many_chunks.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_chunk TYPE xstring VALUE '0011223344556677'.
+    DATA lv_expected TYPE xstring.
+    DO 1024 TIMES.
+      mo_stream->append( lv_chunk ).
+    ENDDO.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = lv_chunk ).
+    lv_expected = li_random->bytes( 8192 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = lv_expected ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get_length( )
+      exp = 8192 ).
   ENDMETHOD.
 
   METHOD clear.

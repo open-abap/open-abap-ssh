@@ -14,6 +14,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS sp800_38a_encrypt FOR TESTING RAISING cx_static_check.
     METHODS decrypt_is_symmetric FOR TESTING RAISING cx_static_check.
     METHODS split_calls_keep_stream FOR TESTING RAISING cx_static_check.
+    METHODS large_stream_matches FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -70,6 +71,35 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_actual
       exp = lv_cipher ).
+  ENDMETHOD.
+
+
+  METHOD large_stream_matches.
+    DATA lo_whole TYPE REF TO zcl_oassh_ctr.
+    DATA lo_split TYPE REF TO zcl_oassh_ctr.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_plain TYPE xstring.
+    DATA lv_expected TYPE xstring.
+    DATA lv_actual TYPE xstring.
+    DATA lv_part TYPE xstring.
+    DATA lv_offset TYPE i.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '0011223344556677' ).
+    lv_plain = li_random->bytes( 4096 ).
+    lo_whole = NEW #(
+      iv_key     = c_key
+      iv_counter = c_ctr ).
+    lo_split = NEW #(
+      iv_key     = c_key
+      iv_counter = c_ctr ).
+    lv_expected = lo_whole->crypt( lv_plain ).
+    DO 64 TIMES.
+      lv_offset = ( sy-index - 1 ) * 64.
+      lv_part = lo_split->crypt( lv_plain+lv_offset(64) ).
+      CONCATENATE lv_actual lv_part INTO lv_actual IN BYTE MODE.
+    ENDDO.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_actual
+      exp = lv_expected ).
   ENDMETHOD.
 
 ENDCLASS.
