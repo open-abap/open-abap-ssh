@@ -22,30 +22,30 @@ Activate the imported objects. The APC socket adapter requires the target SAP
 system to support outbound TCP connections through APC and to permit the SSH
 host and port in its network configuration.
 
-The library deliberately does not choose the following security policies for
-the application:
+The library deliberately does not choose the following security policy for the
+application:
 
-- Implement `zif_oassh_random` using a cryptographically secure random source.
 - Implement `zif_oassh_host_verifier` to validate or pin the server host key.
 
-`zcl_oassh_random_fixed` is deterministic and exists for tests. Do not use it
+On SAP, `zcl_oassh_random_secure` is used by default and obtains bytes from the
+kernel-backed `GENERATE_SEC_RANDOM` function module. A caller can still inject a
+different `zif_oassh_random` implementation for another runtime.
+`zcl_oassh_random_fixed` is deterministic and exists for tests; do not use it
 for production connections. Likewise, do not use an accept-all host verifier
 outside an isolated test environment.
 
 ## ABAP usage
 
-Pass your secure random and host-verification implementations to
-`zcl_oassh=>connect`, then execute a command:
+Pass a host-verification implementation to `zcl_oassh=>connect`, then execute a
+command. Supplying `ii_random` is optional on SAP:
 
 ```abap
-DATA lo_random TYPE REF TO zif_oassh_random.
 DATA lo_host_verifier TYPE REF TO zif_oassh_host_verifier.
 DATA lo_ssh TYPE REF TO zcl_oassh.
 DATA lv_stdout TYPE string.
 DATA lv_stderr TYPE string.
 DATA lv_exit_status TYPE i.
 
-lo_random = NEW zcl_my_secure_random( ).
 lo_host_verifier = NEW zcl_my_known_hosts_verifier( ).
 
 lo_ssh = zcl_oassh=>connect(
@@ -53,7 +53,6 @@ lo_ssh = zcl_oassh=>connect(
   iv_port          = '22'
   iv_user          = 'deploy'
   iv_password      = 'secret'
-  ii_random        = lo_random
   ii_host_verifier = lo_host_verifier ).
 
 TRY.
@@ -68,10 +67,11 @@ ENDTRY.
 lo_ssh->close( ).
 ```
 
-Replace `zcl_my_secure_random` and `zcl_my_known_hosts_verifier` with
-application-specific classes implementing the two interfaces. The verifier is
-called during key exchange and must return `abap_true` only for a trusted host
-key.
+Replace `zcl_my_known_hosts_verifier` with an application-specific class
+implementing `zif_oassh_host_verifier`. The verifier is called during key
+exchange and must return `abap_true` only for a trusted host key. Pass
+`ii_random` explicitly only when a platform-specific implementation or a
+deterministic test source is required.
 
 For public-key authentication, supply a 32-byte Ed25519 seed instead of a
 password:

@@ -13,7 +13,7 @@ CLASS zcl_oassh DEFINITION
         iv_user TYPE string
         iv_password TYPE string OPTIONAL
         iv_private_seed TYPE xstring OPTIONAL
-        ii_random TYPE REF TO zif_oassh_random
+        ii_random TYPE REF TO zif_oassh_random OPTIONAL
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RETURNING
         VALUE(ro_ssh) TYPE REF TO zcl_oassh
@@ -110,6 +110,13 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD connect.
 
     DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+
+    IF ii_random IS BOUND.
+      li_random = ii_random.
+    ELSE.
+      li_random = NEW zcl_oassh_random_secure( ).
+    ENDIF.
 
     li_socket = NEW zcl_oassh_socket_apc(
       iv_host = iv_host
@@ -118,7 +125,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     CREATE OBJECT ro_ssh
       EXPORTING
         ii_socket        = li_socket
-        ii_random        = ii_random
+        ii_random        = li_random
         ii_host_verifier = ii_host_verifier
         iv_user          = iv_user
         iv_password      = iv_password
