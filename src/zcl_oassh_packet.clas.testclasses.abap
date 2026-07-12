@@ -6,6 +6,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS chachapoly_roundtrip FOR TESTING RAISING cx_static_check.
     METHODS chachapoly_streaming FOR TESTING RAISING cx_static_check.
     METHODS sequence_numbers FOR TESTING RAISING cx_static_check.
+    METHODS sequence_wrap FOR TESTING RAISING cx_static_check.
     METHODS initial_sequence FOR TESTING RAISING cx_static_check.
     METHODS rekey_keeps_sequence FOR TESTING RAISING cx_static_check.
     METHODS strict_resets_sequence FOR TESTING RAISING cx_static_check.
@@ -198,6 +199,47 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->decode( lv_second )
       exp = '01' ).
+  ENDMETHOD.
+
+
+  METHOD sequence_wrap.
+    CONSTANTS lc_mac TYPE xstring VALUE '00112233445566778899AABBCCDDEEFF'.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA lv_wire TYPE xstring.
+    DATA lv_min_i TYPE i.
+    lv_min_i = -2147483647 - 1.
+    lo_sender = NEW #(
+      ii_random        = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_encrypt_mac   = lc_mac
+      iv_send_sequence = 2147483647 ).
+    lo_receiver = NEW #(
+      ii_random           = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_decrypt_mac      = lc_mac
+      iv_receive_sequence = 2147483647 ).
+
+* The packet at 0x7fffffff authenticates normally, then both directions must
+* continue at 0x80000000 rather than overflowing ABAP's signed integer.
+    lv_wire = lo_sender->encode( '01' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode( lv_wire )
+      exp = '01' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_sender->get_send_sequence( )
+      exp = lv_min_i ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_receive_sequence( )
+      exp = lv_min_i ).
+
+* Exercise the upper unsigned half as well: its signed representation must
+* still serialize into the same uint32 for MAC input on both peers.
+    lv_wire = lo_sender->encode( '02' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode( lv_wire )
+      exp = '02' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_sender->get_send_sequence( )
+      exp = lv_min_i + 1 ).
   ENDMETHOD.
 
 

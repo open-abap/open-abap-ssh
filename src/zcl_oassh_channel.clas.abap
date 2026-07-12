@@ -34,13 +34,25 @@ CLASS zcl_oassh_channel DEFINITION
     DATA mv_remote_window TYPE i.
     DATA mv_remote_max_packet TYPE i.
     DATA mv_local_window TYPE i VALUE c_window_size.
-    DATA mv_stdout TYPE xstring.
-    DATA mv_stderr TYPE xstring.
+    TYPES ty_chunks TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
+    DATA mt_stdout TYPE ty_chunks.
+    DATA mt_stderr TYPE ty_chunks.
     DATA mv_exit_status TYPE i VALUE -1.
     METHODS read_recipient
       IMPORTING io_stream TYPE REF TO zcl_oassh_stream
       RETURNING VALUE(rv_recipient) TYPE i
       RAISING zcx_oassh_error.
+    METHODS consume_local_window
+      IMPORTING
+        iv_length        TYPE i
+      RETURNING
+        VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
+    CLASS-METHODS join_chunks
+      IMPORTING
+        it_chunks     TYPE ty_chunks
+      RETURNING
+        VALUE(rv_data) TYPE xstring.
 ENDCLASS.
 
 CLASS zcl_oassh_channel IMPLEMENTATION.
@@ -99,16 +111,16 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       WHEN '5E'. " DATA (94)
         lv_recipient = read_recipient( lo_stream ).
         lv_data = lo_stream->string_decode( ).
-        CONCATENATE mv_stdout lv_data INTO mv_stdout IN BYTE MODE.
-        mv_local_window = mv_local_window - xstrlen( lv_data ).
+        rv_payload = consume_local_window( xstrlen( lv_data ) ).
+        APPEND lv_data TO mt_stdout.
       WHEN '5F'. " EXTENDED_DATA (95), type 1 is stderr
         lv_recipient = read_recipient( lo_stream ).
         lv_type = lo_stream->uint32_decode( ).
         lv_data = lo_stream->string_decode( ).
+        rv_payload = consume_local_window( xstrlen( lv_data ) ).
         IF lv_type = 1.
-          CONCATENATE mv_stderr lv_data INTO mv_stderr IN BYTE MODE.
+          APPEND lv_data TO mt_stderr.
         ENDIF.
-        mv_local_window = mv_local_window - xstrlen( lv_data ).
       WHEN '63'. " CHANNEL_SUCCESS (99)
         IF mv_state <> c_state-exec_sent.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
@@ -147,6 +159,61 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD consume_local_window.
+* RFC 4254 sections 5.2 and 5.4: peers may not consume more than the
+* advertised window. Restore it when half is consumed so large command output
+* cannot stall waiting for credit that this client never returns.
+    DATA lo_reply TYPE REF TO zcl_oassh_stream.
+    DATA lv_adjust TYPE i.
+    DATA lv_threshold TYPE i.
+    IF iv_length > mv_local_window.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    mv_local_window = mv_local_window - iv_length.
+    lv_threshold = c_window_size DIV 2.
+    IF mv_local_window <= lv_threshold.
+      lv_adjust = c_window_size - mv_local_window.
+      lo_reply = NEW #( ).
+      lo_reply->append( '5D' ).
+      lo_reply->uint32_encode( mv_remote_channel ).
+      lo_reply->uint32_encode( lv_adjust ).
+      rv_payload = lo_reply->get( ).
+      mv_local_window = c_window_size.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD join_chunks.
+* Pairwise joining bounds each byte to logarithmically many copies instead of
+* repeatedly copying the complete output for every received packet.
+    DATA lt_current TYPE ty_chunks.
+    DATA lt_next TYPE ty_chunks.
+    DATA lv_index TYPE i.
+    DATA lv_count TYPE i.
+    DATA lv_joined TYPE xstring.
+    lt_current = it_chunks.
+    WHILE lines( lt_current ) > 1.
+      CLEAR lt_next.
+      lv_index = 1.
+      lv_count = lines( lt_current ).
+      WHILE lv_index <= lv_count.
+        IF lv_index = lv_count.
+          APPEND lt_current[ lv_index ] TO lt_next.
+        ELSE.
+          CONCATENATE lt_current[ lv_index ] lt_current[ lv_index + 1 ]
+            INTO lv_joined IN BYTE MODE.
+          APPEND lv_joined TO lt_next.
+        ENDIF.
+        lv_index = lv_index + 2.
+      ENDWHILE.
+      lt_current = lt_next.
+    ENDWHILE.
+    IF lt_current IS NOT INITIAL.
+      rv_data = lt_current[ 1 ].
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD read_recipient.
     rv_recipient = io_stream->uint32_decode( ).
     IF rv_recipient <> c_local_channel.
@@ -160,12 +227,12 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 
 
   METHOD get_stdout.
-    rv_data = mv_stdout.
+    rv_data = join_chunks( mt_stdout ).
   ENDMETHOD.
 
 
   METHOD get_stderr.
-    rv_data = mv_stderr.
+    rv_data = join_chunks( mt_stderr ).
   ENDMETHOD.
 
 

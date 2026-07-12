@@ -61,6 +61,8 @@ CLASS ltcl_test IMPLEMENTATION.
 
   METHOD multiply.
 
+    DATA lv_zero TYPE xstring.
+
     cl_abap_unit_assert=>assert_equals(
       act = zcl_oassh_bigint=>multiply( iv_a = 'FF' iv_b = 'FF' )
       exp = 'FE01' ).
@@ -71,7 +73,7 @@ CLASS ltcl_test IMPLEMENTATION.
 
     " multiplying by zero gives zero
     cl_abap_unit_assert=>assert_equals(
-      act = zcl_oassh_bigint=>multiply( iv_a = 'ABCDEF' iv_b = '' )
+      act = zcl_oassh_bigint=>multiply( iv_a = 'ABCDEF' iv_b = lv_zero )
       exp = '' ).
 
   ENDMETHOD.
@@ -94,6 +96,8 @@ CLASS ltcl_test IMPLEMENTATION.
 
   METHOD mod_pow.
 
+    DATA lv_zero TYPE xstring.
+
     " 2^10 mod 1000 = 24
     cl_abap_unit_assert=>assert_equals(
       act = zcl_oassh_bigint=>mod_pow( iv_base = '02' iv_exp = '0A' iv_m = '03E8' )
@@ -106,7 +110,7 @@ CLASS ltcl_test IMPLEMENTATION.
 
     " x^0 = 1
     cl_abap_unit_assert=>assert_equals(
-      act = zcl_oassh_bigint=>mod_pow( iv_base = '05' iv_exp = '' iv_m = '07' )
+      act = zcl_oassh_bigint=>mod_pow( iv_base = '05' iv_exp = lv_zero iv_m = '07' )
       exp = '01' ).
 
   ENDMETHOD.

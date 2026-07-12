@@ -100,6 +100,11 @@ CLASS zcl_oassh_packet DEFINITION
         iv_length   TYPE i
         iv_expected TYPE i DEFAULT -1
       RAISING zcx_oassh_error.
+    CLASS-METHODS next_sequence
+      IMPORTING
+        iv_sequence        TYPE i
+      RETURNING
+        VALUE(rv_sequence) TYPE i.
 ENDCLASS.
 
 
@@ -220,6 +225,18 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD next_sequence.
+* RFC 4253 section 6.4: the packet sequence number is an unsigned uint32 and
+* wraps modulo 2^32. ABAP type i is signed, so cross its positive boundary
+* explicitly instead of triggering an arithmetic overflow.
+    IF iv_sequence = 2147483647.
+      rv_sequence = -2147483647 - 1.
+    ELSE.
+      rv_sequence = iv_sequence + 1.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD validate_packet_length.
     IF iv_expected >= 0 AND iv_length <> iv_expected.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
@@ -289,7 +306,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     IF xstrlen( rv_packet ) > c_max_packet_length.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
     ENDIF.
-    mv_send_sequence = mv_send_sequence + 1.
+    mv_send_sequence = next_sequence( mv_send_sequence ).
   ENDMETHOD.
 
 
@@ -378,7 +395,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
-    mv_receive_sequence = mv_receive_sequence + 1.
+    mv_receive_sequence = next_sequence( mv_receive_sequence ).
   ENDMETHOD.
 
 
@@ -486,7 +503,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
-    mv_receive_sequence = mv_receive_sequence + 1.
+    mv_receive_sequence = next_sequence( mv_receive_sequence ).
     CLEAR mv_recv_plain.
   ENDMETHOD.
 ENDCLASS.

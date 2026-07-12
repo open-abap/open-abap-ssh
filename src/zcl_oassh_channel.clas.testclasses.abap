@@ -3,6 +3,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS full_session FOR TESTING RAISING cx_static_check.
     METHODS wrong_recipient FOR TESTING RAISING cx_static_check.
     METHODS channel_failure FOR TESTING RAISING cx_static_check.
+    METHODS replenishes_window FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 CLASS ltcl_test IMPLEMENTATION.
@@ -77,5 +78,41 @@ CLASS ltcl_test IMPLEMENTATION.
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-channel_failed ).
     ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD replenishes_window.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_chunk TYPE xstring.
+    DATA lv_message TYPE xstring.
+    DATA lv_reply TYPE xstring.
+    DATA lv_expected TYPE xstring.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' ).
+    lv_chunk = li_random->bytes( 32768 ).
+    lo_stream = NEW #( ).
+    lo_stream->append( '5E' ).
+    lo_stream->uint32_encode( 0 ).
+    lo_stream->string_encode( lv_chunk ).
+    lv_message = lo_stream->get( ).
+
+* Sixteen maximum-sized chunks consume exactly half the advertised MiB.
+    DO 16 TIMES.
+      lv_reply = lo_channel->receive( lv_message ).
+      IF sy-index < 16.
+        cl_abap_unit_assert=>assert_initial( lv_reply ).
+      ENDIF.
+    ENDDO.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reply
+      exp = '5D0000000700080000' ).
+    lv_expected = li_random->bytes( 524288 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_stdout( )
+      exp = lv_expected ).
   ENDMETHOD.
 ENDCLASS.

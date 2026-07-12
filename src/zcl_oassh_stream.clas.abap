@@ -99,6 +99,11 @@ CLASS zcl_oassh_stream DEFINITION
     DATA mt_pending TYPE ty_chunks.
 
     METHODS materialize.
+    CLASS-METHODS join_chunks
+      IMPORTING
+        it_chunks     TYPE ty_chunks
+      RETURNING
+        VALUE(rv_data) TYPE xstring.
 ENDCLASS.
 
 
@@ -114,9 +119,10 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD materialize.
-* fold buffered append chunks into mv_hex in a single pass, dropping the
-* already-consumed prefix so it is not re-copied on every append
-    DATA lv_chunk TYPE xstring.
+* Drop the consumed prefix, then join pending bytes as a balanced tree. This
+* prevents a long series of appends from repeatedly copying the complete
+* accumulated stream.
+    DATA lt_chunks TYPE ty_chunks.
     IF mt_pending IS INITIAL.
       RETURN.
     ENDIF.
@@ -124,10 +130,43 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
       mv_hex = mv_hex+mv_pos.
       mv_pos = 0.
     ENDIF.
-    LOOP AT mt_pending INTO lv_chunk.
-      mv_hex = mv_hex && lv_chunk.
-    ENDLOOP.
+    IF mv_hex IS NOT INITIAL.
+      APPEND mv_hex TO lt_chunks.
+    ENDIF.
+    APPEND LINES OF mt_pending TO lt_chunks.
+    mv_hex = join_chunks( lt_chunks ).
     CLEAR mt_pending.
+  ENDMETHOD.
+
+
+  METHOD join_chunks.
+* Two-operand byte concatenation is portable on SAP and open-abap; the table
+* form is not (see ANORMALIES.md). Pairwise joining also bounds copying.
+    DATA lt_current TYPE ty_chunks.
+    DATA lt_next TYPE ty_chunks.
+    DATA lv_index TYPE i.
+    DATA lv_count TYPE i.
+    DATA lv_joined TYPE xstring.
+    lt_current = it_chunks.
+    WHILE lines( lt_current ) > 1.
+      CLEAR lt_next.
+      lv_index = 1.
+      lv_count = lines( lt_current ).
+      WHILE lv_index <= lv_count.
+        IF lv_index = lv_count.
+          APPEND lt_current[ lv_index ] TO lt_next.
+        ELSE.
+          CONCATENATE lt_current[ lv_index ] lt_current[ lv_index + 1 ]
+            INTO lv_joined IN BYTE MODE.
+          APPEND lv_joined TO lt_next.
+        ENDIF.
+        lv_index = lv_index + 2.
+      ENDWHILE.
+      lt_current = lt_next.
+    ENDWHILE.
+    IF lt_current IS NOT INITIAL.
+      rv_data = lt_current[ 1 ].
+    ENDIF.
   ENDMETHOD.
 
 
@@ -263,9 +302,41 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     DATA lv_length TYPE i.
     DATA lv_hex TYPE xstring.
     DATA lv_text TYPE string.
+    DATA lv_offset TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_code TYPE i.
+    DATA lv_name_length TYPE i.
 
     lv_length = uint32_decode( ).
     lv_hex = take( lv_length ).
+    IF lv_length = 0.
+      RETURN.
+    ENDIF.
+* RFC 4251 sections 4.2 and 5: each name is 1..64 printable, non-whitespace
+* US-ASCII characters and list elements are separated by single commas.
+* Validate bytes before from_xstring can filter malformed control characters.
+    DO lv_length TIMES.
+      lv_offset = sy-index - 1.
+      lv_byte = lv_hex+lv_offset(1).
+      lv_code = lv_byte.
+      IF lv_byte = '2C'.
+        IF lv_name_length = 0.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        CLEAR lv_name_length.
+      ELSE.
+        IF lv_code < 33 OR lv_code > 126.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        lv_name_length = lv_name_length + 1.
+        IF lv_name_length > 64.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+      ENDIF.
+    ENDDO.
+    IF lv_name_length = 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
     lv_text = zcl_oassh_ascii=>from_xstring( lv_hex ).
     SPLIT lv_text AT ',' INTO TABLE rt_list.
 

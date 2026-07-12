@@ -212,6 +212,10 @@ in the runtime (`XString.set` over the hex representation). Two-operand
 `CONCATENATE a b INTO c IN BYTE MODE` is fine; only the `LINES OF` table form is
 affected.
 
+For buffers with many chunks, use two-operand byte concatenation pairwise in a
+balanced tree instead of a left-to-right fold. It preserves the same portable
+byte semantics while avoiding quadratic copying of the accumulated prefix.
+
 ## Transpiled `WAIT UNTIL ... UP TO` ignores the timeout
 
 **Found in:** M7 — synchronous `execute( )` facade over socket callbacks
