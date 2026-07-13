@@ -95,16 +95,22 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S1 — SFTP framing + INIT/VERSION
 
-- [ ] `zcl_oassh_sftp`: packet reassembly (length-prefix framing over a chunk
+- [x] `zcl_oassh_sftp`: packet reassembly (length-prefix framing over a chunk
       buffer), request-id allocation, response dispatch. Reject: length < 1,
       length above a documented ceiling (OpenSSH uses 256 KiB — pick and
       assert one), response id mismatch, unknown response type.
-- [ ] `SSH_FXP_INIT (version=3)` → parse `VERSION`; require version 3, store
+      Uses the chunked stream buffer with a cached frame length and 256 KiB
+      packet-body ceiling; multiple outstanding int4-safe request IDs are
+      matched independently.
+- [x] `SSH_FXP_INIT (version=3)` → parse `VERSION`; require version 3, store
       but ignore extension pairs. INIT/VERSION carry **no** request-id —
       keep that special case isolated.
-- [ ] Tests: exact INIT bytes; VERSION with and without extensions; VERSION
+      VERSION publishes state only after all extension name/data pairs parse.
+- [x] Tests: exact INIT bytes; VERSION with and without extensions; VERSION
       split across two data chunks; two responses in one chunk; garbage type;
       version 6 rejected with a typed error.
+      Ten tier-1 tests also cover zero/oversized lengths, echoed-id mismatch,
+      request-id wire allocation, and a truncated extension pair.
 
 ## S2 — Download slice ⭐ first shippable
 

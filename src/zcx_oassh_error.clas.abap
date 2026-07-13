@@ -17,6 +17,7 @@ CLASS zcx_oassh_error DEFINITION
         invalid_credentials TYPE i VALUE 8,
         authentication_failed TYPE i VALUE 9,
         channel_failed TYPE i VALUE 10,
+        sftp_protocol TYPE i VALUE 11,
       END OF c_reason.
     METHODS constructor
       IMPORTING
