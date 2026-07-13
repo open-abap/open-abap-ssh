@@ -118,10 +118,10 @@ draft before implementing; the list above is orientation, not the spec.
       → HANDLE → READ loop → SSH_FX_EOF → CLOSE(handle) → STATUS → channel
       close`. Chunked READ at 32768 bytes per request (interop-safe under
       OpenSSH limits); the server may return **less** than requested — advance
-      the offset by what actually arrived. `SSH_FXP_DATA` on a short final
-      read and `SSH_FX_EOF` are both normal termination paths.
-      Binary chunks are accumulated in a balanced table; full reads advance
-      the uint64 offset and short DATA closes the handle immediately.
+      the offset by what actually arrived and continue until explicit
+      `SSH_FX_EOF`. Binary chunks are accumulated in a balanced table; both
+      full and short DATA advance the uint64 offset. Zero-length DATA is
+      rejected to prevent a no-progress loop.
 - [x] Any STATUS other than OK/EOF at the step that expects it → typed
       `zcx_oassh_error` carrying the SFTP status code; still CLOSE the handle
       and the channel on the error path (no leaked handles).
@@ -134,7 +134,8 @@ draft before implementing; the list above is orientation, not the spec.
       Execute and SFTP now share an explicit operation selector/completion
       lifecycle while channel framing remains generic.
 - [x] Tier 1: full-download happy path against a scripted response sequence;
-      short reads; zero-byte file; NO_SUCH_FILE; DATA for a stale request id;
+      continuing short reads; zero-length DATA rejection; zero-byte file;
+      NO_SUCH_FILE; DATA for a stale request id;
       READ response arriving after EOF.
       Also covers exact OPEN/READ/CLOSE bytes, a full 32768-byte read and
       offset advance, typed status propagation, and remote channel credit.

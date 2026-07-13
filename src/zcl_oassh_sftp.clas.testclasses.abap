@@ -16,6 +16,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS version_six FOR TESTING RAISING cx_static_check.
     METHODS truncated_extension FOR TESTING RAISING cx_static_check.
     METHODS download_short FOR TESTING RAISING cx_static_check.
+    METHODS download_empty_data FOR TESTING RAISING cx_static_check.
     METHODS download_full_chunk FOR TESTING RAISING cx_static_check.
     METHODS download_eof FOR TESTING RAISING cx_static_check.
     METHODS download_open_error FOR TESTING RAISING cx_static_check.
@@ -226,7 +227,7 @@ CLASS ltcl_test IMPLEMENTATION.
 
 
   METHOD download_short.
-* INIT -> VERSION -> OPEN -> HANDLE -> short DATA -> CLOSE -> STATUS OK.
+* Short DATA advances by its actual length; only explicit EOF ends the read loop.
     DATA lv_out TYPE xstring.
     lv_out = mo_sftp->start_download( 'a' ).
     cl_abap_unit_assert=>assert_equals(
@@ -243,11 +244,15 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_out = mo_sftp->receive( '0000000C670000000200000003616263' ).
     cl_abap_unit_assert=>assert_equals(
       act = lv_out
-      exp = '0000000A04000000030000000148' ).
+      exp = '0000001605000000030000000148000000000000000300008000' ).
     cl_abap_unit_assert=>assert_equals(
       act = mo_sftp->get_data( )
       exp = '616263' ).
-    lv_out = mo_sftp->receive( '000000116500000003000000000000000000000000' ).
+    lv_out = mo_sftp->receive( '000000116500000003000000010000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000040000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000004000000000000000000000000' ).
     cl_abap_unit_assert=>assert_initial( lv_out ).
     cl_abap_unit_assert=>assert_equals(
       act = mo_sftp->get_state( )
@@ -255,6 +260,24 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = mo_sftp->get_error_status( )
       exp = -1 ).
+  ENDMETHOD.
+
+
+  METHOD download_empty_data.
+* A zero-length DATA response makes no offset progress and would otherwise loop.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_download( 'a' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    TRY.
+        mo_sftp->receive( '00000009670000000200000000' ).
+        cl_abap_unit_assert=>fail( 'zero-length DATA accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
   ENDMETHOD.
 
 

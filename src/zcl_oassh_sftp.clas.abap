@@ -686,23 +686,19 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN c_state-read_pending.
         CASE iv_type.
           WHEN '67'. " SSH_FXP_DATA
+* draft-ietf-secsh-filexfer-02 section 7 permits short DATA for non-regular
+* files. Only STATUS EOF ends the loop; empty DATA cannot advance the offset.
             lv_data = io_packet->string_decode( ).
             ensure_consumed( io_packet ).
             lv_length = xstrlen( lv_data ).
             lv_max_offset = 2147483647 - lv_length.
-            IF lv_length > c_read_length OR mv_offset > lv_max_offset.
+            IF lv_length <= 0 OR lv_length > c_read_length
+                OR mv_offset > lv_max_offset.
               zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
             ENDIF.
-            IF lv_data IS NOT INITIAL.
-              APPEND lv_data TO mt_data.
-            ENDIF.
+            APPEND lv_data TO mt_data.
             mv_offset = mv_offset + lv_length.
-            IF lv_length < c_read_length.
-              mv_outbound = close_request( ).
-              mv_state = c_state-close_pending.
-            ELSE.
-              mv_outbound = read_request( ).
-            ENDIF.
+            mv_outbound = read_request( ).
           WHEN '65'. " EOF is normal; other status is retained through CLOSE
             lv_status = parse_status( io_packet ).
             IF lv_status <> 1.
