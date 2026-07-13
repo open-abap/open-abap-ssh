@@ -16,12 +16,16 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS exec
       IMPORTING iv_command TYPE string
       RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS subsystem
+      IMPORTING iv_name TYPE string
+      RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS receive
       IMPORTING iv_payload TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS get_state RETURNING VALUE(rv_state) TYPE i.
     METHODS get_stdout RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS drain_stdout RETURNING VALUE(rv_data) TYPE xstring.
     METHODS get_stderr RETURNING VALUE(rv_data) TYPE xstring.
     METHODS get_exit_status RETURNING VALUE(rv_status) TYPE i.
 
@@ -107,6 +111,23 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     lo_stream->boolean_encode( abap_true ).
 * The exec command is application text, not an ASCII protocol identifier.
     lo_stream->string_encode( zcl_oassh_ascii=>to_xstring_text( iv_command ) ).
+    rv_payload = lo_stream->get( ).
+    mv_state = c_state-exec_sent.
+  ENDMETHOD.
+
+  METHOD subsystem.
+* SSH_MSG_CHANNEL_REQUEST "subsystem", RFC 4254 section 6.5. This shares the
+* exact request/reply cycle with exec (want_reply true, answered by
+* CHANNEL_SUCCESS/FAILURE), so it reuses the exec_sent state and the existing
+* reply handling in receive( ) unchanged. The subsystem name is an ASCII token.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    ASSERT mv_state = c_state-open.
+    lo_stream = NEW #( ).
+    lo_stream->append( '62' ). " 98
+    lo_stream->uint32_encode( mv_remote_channel ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'subsystem' ) ).
+    lo_stream->boolean_encode( abap_true ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( iv_name ) ).
     rv_payload = lo_stream->get( ).
     mv_state = c_state-exec_sent.
   ENDMETHOD.
@@ -399,6 +420,18 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 
   METHOD get_stdout.
     rv_data = join_chunks( mt_stdout ).
+  ENDMETHOD.
+
+
+  METHOD drain_stdout.
+* Incremental inbound hand-off for owners that must react to CHANNEL_DATA while
+* the channel is still open (e.g. the SFTP client reassembling its own framing),
+* rather than reading everything once at close via get_stdout( ). Returns the
+* bytes buffered since the previous drain and clears them, so a long transfer
+* does not accumulate the whole stream in the channel. execute( ) never calls
+* this, so its get_stdout( )-at-close behaviour is unchanged.
+    rv_data = join_chunks( mt_stdout ).
+    CLEAR mt_stdout.
   ENDMETHOD.
 
 

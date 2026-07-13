@@ -14,6 +14,9 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS malformed_running_is_atomic FOR TESTING RAISING cx_static_check.
     METHODS uint32_window FOR TESTING RAISING cx_static_check.
     METHODS utf8_command FOR TESTING RAISING cx_static_check.
+    METHODS subsystem_request FOR TESTING RAISING cx_static_check.
+    METHODS subsystem_failure FOR TESTING RAISING cx_static_check.
+    METHODS drains_incrementally FOR TESTING RAISING cx_static_check.
     METHODS maximum_data_packets FOR TESTING RAISING cx_static_check.
     METHODS empty_data_not_retained FOR TESTING RAISING cx_static_check.
 ENDCLASS.
@@ -429,6 +432,73 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = zcx_oassh_error=>c_reason-malformed_packet ).
+  ENDMETHOD.
+
+
+  METHOD subsystem_request.
+* RFC 4254 section 6.5: byte 98, recipient channel 7, "subsystem", want_reply
+* TRUE, then the subsystem name "sftp". CHANNEL_SUCCESS advances to running.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->subsystem( 'sftp' )
+      exp = '62000000070000000973756273797374656D010000000473667470' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-exec_sent ).
+    lo_channel->receive( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-running ).
+  ENDMETHOD.
+
+
+  METHOD subsystem_failure.
+* A server that lacks the subsystem answers CHANNEL_FAILURE; surface it typed.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_channel->subsystem( 'sftp' ).
+    TRY.
+        lo_channel->receive( '6400000000' ).
+        cl_abap_unit_assert=>fail( 'subsystem failure ignored' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-channel_failed ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD drains_incrementally.
+* An owner draining after each receive gets only the newly arrived bytes while
+* the channel is still open, and nothing remains buffered afterwards.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_channel->subsystem( 'sftp' ).
+    lo_channel->receive( '6300000000' ).
+
+    lo_channel->receive( '5E00000000000000026869' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->drain_stdout( )
+      exp = '6869' ).
+
+* A second drain with no new data returns nothing.
+    cl_abap_unit_assert=>assert_initial( lo_channel->drain_stdout( ) ).
+
+    lo_channel->receive( '5E00000000000000010A' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->drain_stdout( )
+      exp = '0A' ).
+
+* Drained bytes are not returned again by get_stdout( ) at close.
+    cl_abap_unit_assert=>assert_initial( lo_channel->get_stdout( ) ).
   ENDMETHOD.
 
 

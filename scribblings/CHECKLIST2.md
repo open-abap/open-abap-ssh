@@ -65,21 +65,33 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S0 — Groundwork
 
-- [ ] `zcl_oassh_stream`: `uint64_encode`/`uint64_decode`. ABAP has no
+- [x] `zcl_oassh_stream`: `uint64_encode`/`uint64_decode`. ABAP has no
       unsigned 64-bit type and `int8` may behave differently under the
       transpiler — represent the value as `x LENGTH 8` (or two uint32 halves)
       internally, and cap accepted sizes/offsets at a documented int4-safe
       ceiling (2 GiB is far beyond realistic APC use). Tests: zero, small,
       0x00000000FFFFFFFF boundary, high-half rejection, truncation.
-- [ ] `zcl_oassh_channel=>subsystem( iv_name )` — same shape as `exec`
+      Implemented as two 4-byte halves; the high half must be zero and the low
+      word must have its top bit clear (`<= 0x7FFFFFFF`), both enforced on
+      decode. Seven tier-1 tests (zero, small, max int4, low boundary,
+      high-half, truncation, negative-encode).
+- [x] `zcl_oassh_channel=>subsystem( iv_name )` — same shape as `exec`
       (`want_reply` true, wait for CHANNEL_SUCCESS/FAILURE); either reuse the
       `exec_sent` state or add a dedicated one, but keep the state machine
       explicit. Test: exact wire bytes for `subsystem "sftp"`, and
       CHANNEL_FAILURE surfaces a typed error.
-- [ ] Incremental inbound data hand-off from channel to owner (SFTP must
+      Reuses `exec_sent` (same want_reply/CHANNEL_SUCCESS-FAILURE cycle); the
+      name is encoded as an ASCII token. Two tier-1 tests: exact wire bytes for
+      `subsystem "sftp"` + running transition, and typed CHANNEL_FAILURE.
+- [x] Incremental inbound data hand-off from channel to owner (SFTP must
       react to data while the channel is still open; `get_stdout( )` at
       close is not enough). Keep `execute( )` behavior unchanged — regression
       via existing tier-2 replay.
+      `zcl_oassh_channel=>drain_stdout( )` returns the CHANNEL_DATA buffered
+      since the previous drain and clears it, so an owner can react per-receive
+      and a large transfer never accumulates the whole stream. `execute( )`
+      never drains, so `get_stdout( )`-at-close is unchanged (tier-2 replay
+      still green). Tier-1 test `drains_incrementally`.
 
 ## S1 — SFTP framing + INIT/VERSION
 

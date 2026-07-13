@@ -73,6 +73,16 @@ CLASS zcl_oassh_stream DEFINITION
         VALUE(rv_int) TYPE i
       RAISING
         zcx_oassh_error.
+    METHODS uint64_encode
+      IMPORTING
+        iv_int TYPE i
+      RAISING
+        zcx_oassh_error.
+    METHODS uint64_decode
+      RETURNING
+        VALUE(rv_int) TYPE i
+      RAISING
+        zcx_oassh_error.
     METHODS get_length
       RETURNING
         VALUE(rv_length) TYPE i.
@@ -488,6 +498,48 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     DATA lv_hex TYPE x LENGTH 4.
     lv_hex = iv_int.
     append( lv_hex ).
+
+  ENDMETHOD.
+
+
+  METHOD uint64_encode.
+* SFTP READ/WRITE offsets and file sizes are uint64 (draft-ietf-secsh-filexfer-02).
+* ABAP has no unsigned 64-bit type. Sizes and offsets on any realistic APC
+* transfer stay well below 2 GiB, so we accept only non-negative int4 values and
+* place them in the low 32 bits; the high 32 bits are always zero on the wire.
+    DATA lv_high TYPE x LENGTH 4.
+    DATA lv_low TYPE x LENGTH 4.
+    IF iv_int < 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    lv_low = iv_int.
+    append( lv_high ).
+    append( lv_low ).
+
+  ENDMETHOD.
+
+
+  METHOD uint64_decode.
+* Decode a uint64 into an int4, enforcing the documented int4-safe ceiling
+* (0x7FFFFFFF, ~2 GiB). Reject any value whose high 32 bits are set or whose
+* low word would overflow the signed integer, rather than silently truncating.
+    DATA lv_hex TYPE xstring.
+    DATA lv_high TYPE x LENGTH 4.
+    DATA lv_low TYPE x LENGTH 4.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+    lv_hex = take( 8 ).
+    lv_high = lv_hex(4).
+    lv_low = lv_hex+4(4).
+    IF lv_high <> '00000000'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    lv_first = lv_low(1).
+    GET BIT 1 OF lv_first INTO lv_bit.
+    IF lv_bit = '1'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    rv_int = lv_low.
 
   ENDMETHOD.
 ENDCLASS.

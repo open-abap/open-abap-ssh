@@ -11,6 +11,13 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS malformed_name_lists FOR TESTING RAISING cx_static_check.
     METHODS unit32 FOR TESTING RAISING cx_static_check.
     METHODS uint32_peek FOR TESTING RAISING cx_static_check.
+    METHODS uint64_zero FOR TESTING RAISING cx_static_check.
+    METHODS uint64_small FOR TESTING RAISING cx_static_check.
+    METHODS uint64_max_int4 FOR TESTING RAISING cx_static_check.
+    METHODS uint64_rejects_low_boundary FOR TESTING RAISING cx_static_check.
+    METHODS uint64_rejects_high_half FOR TESTING RAISING cx_static_check.
+    METHODS uint64_rejects_truncated FOR TESTING RAISING cx_static_check.
+    METHODS uint64_rejects_negative FOR TESTING RAISING cx_static_check.
     METHODS constructs_empty FOR TESTING RAISING cx_static_check.
     METHODS append_take FOR TESTING RAISING cx_static_check.
     METHODS interleaved_append_take FOR TESTING RAISING cx_static_check.
@@ -95,6 +102,105 @@ CLASS ltcl_test IMPLEMENTATION.
       act = mo_stream->get_length( )
       exp = 0 ).
 
+  ENDMETHOD.
+
+  METHOD uint64_zero.
+
+    mo_stream->uint64_encode( 0 ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = '0000000000000000' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->uint64_decode( )
+      exp = 0 ).
+
+  ENDMETHOD.
+
+  METHOD uint64_small.
+
+    mo_stream->uint64_encode( 32768 ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = '0000000000008000' ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->uint64_decode( )
+      exp = 32768 ).
+
+  ENDMETHOD.
+
+  METHOD uint64_max_int4.
+* 0x000000007FFFFFFF is the largest value that fits the int4-safe ceiling.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    lo_stream = NEW #( '000000007FFFFFFF' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->uint64_decode( )
+      exp = 2147483647 ).
+
+    mo_stream->uint64_encode( 2147483647 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = '000000007FFFFFFF' ).
+  ENDMETHOD.
+
+  METHOD uint64_rejects_low_boundary.
+* 0x00000000FFFFFFFF: high half zero, but the low word exceeds the int4 ceiling.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_stream = NEW #( '00000000FFFFFFFF' ).
+    TRY.
+        lo_stream->uint64_decode( ).
+        cl_abap_unit_assert=>fail( 'oversized uint64 accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD uint64_rejects_high_half.
+* Any set bit in the high 32 bits is beyond the addressable int4 range.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_stream = NEW #( '0000000100000000' ).
+    TRY.
+        lo_stream->uint64_decode( ).
+        cl_abap_unit_assert=>fail( 'high-half uint64 accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD uint64_rejects_truncated.
+* Fewer than eight bytes available must raise, never return a partial value.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_stream = NEW #( '00000000000000' ).
+    TRY.
+        lo_stream->uint64_decode( ).
+        cl_abap_unit_assert=>fail( 'truncated uint64 accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD uint64_rejects_negative.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    TRY.
+        mo_stream->uint64_encode( -1 ).
+        cl_abap_unit_assert=>fail( 'negative uint64 accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
   ENDMETHOD.
 
   METHOD constructs_empty.
