@@ -2,6 +2,8 @@ name: test
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 env:
@@ -66,6 +68,29 @@ jobs:
         OASSH_PASSWORD: test
         OASSH_EXPECT_REKEY: "1"
         OASSH_EXPECT_STRICT_KEX: "1"
+
+  interactive-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/openssh
+      with:
+        image: ${{ env.OPENSSH_IMAGE }}
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - name: Require the durable interactive-shell algorithm set
+      run: |
+        docker exec openssh sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'RekeyLimit 1G 1h' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'KexAlgorithms curve25519-sha256' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'Ciphers aes128-ctr' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'HostKeyAlgorithms rsa-sha2-256' >> /config/sshd/sshd_config"
+        docker restart openssh
+    - run: npm run integration:shell
+      env:
+        OASSH_USER: test
+        OASSH_PASSWORD: test
 
   group14-exec:
     runs-on: ubuntu-latest
@@ -138,6 +163,68 @@ jobs:
         OASSH_PASSWORD: test
         OASSH_EXPECT_HOST_KEY: ssh-ed25519
         OASSH_EXPECT_STRICT_KEX: "1"
+
+  sftp-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/openssh
+      with:
+        image: ${{ env.OPENSSH_IMAGE }}
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - name: Require the durable SFTP algorithm set and install fixtures
+      run: |
+        docker exec openssh sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'RekeyLimit 1G 1h' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'KexAlgorithms curve25519-sha256' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'Ciphers aes128-ctr' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'HostKeyAlgorithms rsa-sha2-256' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "printf 'open-abap-sftp\000\377' > /config/sftp-fixture.bin"
+        docker exec openssh mkdir -p /config/oassh-list
+        docker exec openssh sh -c "printf a > /config/oassh-list/a.bin"
+        docker exec openssh sh -c "printf bb > /config/oassh-list/b.txt"
+        docker exec openssh chown -R 1000:1000 /config/sftp-fixture.bin /config/oassh-list
+        docker restart openssh
+    - run: npm run build
+    - name: Download binary fixture
+      run: node integration/sftp.mjs
+    - name: Upload and independently download a multi-chunk binary fixture
+      run: node integration/sftp-upload.mjs
+    - name: STAT binary fixture
+      run: node integration/sftp-stat.mjs
+    - name: LSTAT binary fixture
+      run: node integration/sftp-stat.mjs
+      env:
+        OASSH_SFTP_LSTAT: "1"
+    - name: List directory and parse NAME attributes
+      run: node integration/sftp-list.mjs
+
+  sftp-paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/openssh
+      with:
+        image: ${{ env.OPENSSH_IMAGE }}
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - name: Require the durable SFTP algorithm set and install fixtures
+      run: |
+        docker exec openssh sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'RekeyLimit 1G 1h' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'KexAlgorithms curve25519-sha256' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'Ciphers aes128-ctr' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'HostKeyAlgorithms rsa-sha2-256' >> /config/sshd/sshd_config"
+        docker exec openssh mkdir -p /config/oassh-mutations
+        docker exec openssh sh -c "printf source > /config/oassh-mutations/source.bin"
+        docker exec openssh chown -R 1000:1000 /config/oassh-mutations
+        docker restart openssh
+    - run: npm run build
+    - name: Normalize paths and exercise STATUS-checked mutations
+      run: node integration/sftp-mutations.mjs
 
   # Interop smoke test against the public Rebex test server, an independent
   # non-OpenSSH implementation. Non-blocking: third-party uptime and rate

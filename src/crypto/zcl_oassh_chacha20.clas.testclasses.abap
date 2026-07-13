@@ -2,6 +2,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS rfc8439_block FOR TESTING.
     METHODS openssh_stream FOR TESTING.
+    METHODS large_stream FOR TESTING.
 ENDCLASS.
 
 
@@ -35,5 +36,31 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = '284717404A862C596464B1FBDB82DD2324A322256AF62B94587301C49C4E1D4B'
         && '8476D3863147D29E84FB4C053F1F2558479DA2ECAB167EC442DD1C81EF9369CE'
         && '4583A779650712A16CA1C5A82A08B3BF389C41EFA960A2A59ECD67A03A662F69' ).
+  ENDMETHOD.
+
+
+  METHOD large_stream.
+* Exercise the maximum channel-data size so output assembly spans 512 cipher
+* blocks. Decrypting with the same counter must recover every byte.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_plain TYPE xstring.
+    DATA lv_cipher TYPE xstring.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '0001020304050607' ).
+    lv_plain = li_random->bytes( 32768 ).
+    lv_cipher = zcl_oassh_chacha20=>crypt_ssh(
+      iv_key     = '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'
+      iv_nonce   = '0000000000000007'
+      iv_counter = 1
+      iv_data    = lv_plain ).
+    cl_abap_unit_assert=>assert_equals(
+      act = xstrlen( lv_cipher )
+      exp = 32768 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_chacha20=>crypt_ssh(
+        iv_key     = '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'
+        iv_nonce   = '0000000000000007'
+        iv_counter = 1
+        iv_data    = lv_cipher )
+      exp = lv_plain ).
   ENDMETHOD.
 ENDCLASS.

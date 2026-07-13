@@ -124,11 +124,22 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
 
 
   METHOD normalize.
-* strip leading zero bytes; zero collapses to the empty xstring
-    rv_r = iv_x.
-    WHILE xstrlen( rv_r ) > 0 AND rv_r(1) = '00'.
-      rv_r = rv_r+1.
+* Find the prefix once and slice once. Re-slicing on every zero copied the
+* shrinking suffix quadratically for large non-canonical inputs.
+    DATA lv_offset TYPE i.
+    DATA lv_length TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    lv_length = xstrlen( iv_x ).
+    WHILE lv_offset < lv_length.
+      lv_byte = iv_x+lv_offset(1).
+      IF lv_byte <> '00'.
+        EXIT.
+      ENDIF.
+      lv_offset = lv_offset + 1.
     ENDWHILE.
+    IF lv_offset < lv_length.
+      rv_r = iv_x+lv_offset.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -445,6 +456,7 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
     DATA lv_bitin   TYPE i.
     DATA lv_bytex   TYPE x LENGTH 1.
     DATA lv_bit     TYPE c LENGTH 1.
+    DATA lv_base_ge TYPE abap_bool.
 
     lt_m = to_limbs( iv_m ).
     lv_n = lines( lt_m ).
@@ -461,9 +473,13 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
       APPEND 0 TO lt_r2.
     ENDWHILE.
 
-* base, reduced into n limbs first if it is wider than the modulus
+* Montgomery operands must be below m. Equal limb counts do not imply that
+* the base is smaller (for example, 8 and modulus 7 are both one limb).
     lt_base = to_limbs( iv_base ).
-    IF lines( lt_base ) > lv_n.
+    lv_base_ge = limb_ge(
+      it_a = lt_base
+      it_b = lt_m ).
+    IF lines( lt_base ) > lv_n OR lv_base_ge = abap_true.
       lv_reduced = modulo(
         iv_a = iv_base
         iv_m = iv_m ).
@@ -506,6 +522,10 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
           CONTINUE.
         ENDIF.
         lv_started = abap_true.
+* The first set bit changes the accumulator from Montgomery 1 to base.
+* Assign it directly instead of calculating 1^2 and then 1 * base.
+        lt_result = lt_base.
+        CONTINUE.
       ENDIF.
       lt_result = mont_mul(
         it_a     = lt_result
@@ -554,8 +574,6 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
 
   METHOD mont_mul.
 * CIOS Montgomery product: rt = a * b * R^-1 mod m, all limbs base 2^15
-    DATA lt_a     TYPE ty_limbs.
-    DATA lt_b     TYPE ty_limbs.
     DATA lt_t     TYPE ty_limbs.
     DATA lv_i     TYPE i.
     DATA lv_j     TYPE i.
@@ -564,14 +582,11 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
     DATA lv_value TYPE i.
     DATA lv_mm    TYPE i.
 
-    lt_a = it_a.
-    WHILE lines( lt_a ) < iv_n.
-      APPEND 0 TO lt_a.
-    ENDWHILE.
-    lt_b = it_b.
-    WHILE lines( lt_b ) < iv_n.
-      APPEND 0 TO lt_b.
-    ENDWHILE.
+* All callers keep operands at the fixed modulus width. Avoid copying and
+* re-padding both limb tables for every exponent-loop multiplication.
+    ASSERT lines( it_a ) >= iv_n.
+    ASSERT lines( it_b ) >= iv_n.
+    ASSERT lines( it_m ) = iv_n.
     DO iv_n * 2 + 2 TIMES.
       APPEND 0 TO lt_t.
     ENDDO.
@@ -582,7 +597,7 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
       DO iv_n TIMES.
         lv_j = sy-index - 1.
         lv_pos = lv_i + lv_j + 1.
-        lv_value = lt_t[ lv_pos ] + lt_a[ lv_i + 1 ] * lt_b[ lv_j + 1 ] + lv_carry.
+        lv_value = lt_t[ lv_pos ] + it_a[ lv_i + 1 ] * it_b[ lv_j + 1 ] + lv_carry.
         lt_t[ lv_pos ] = lv_value MOD c_base.
         lv_carry = lv_value DIV c_base.
       ENDDO.
@@ -626,6 +641,11 @@ CLASS zcl_oassh_bigint IMPLEMENTATION.
         it_a = rt_result
         it_b = it_m ).
     ENDIF.
+* Reduction guarantees the extra high scratch limb is zero. Keep subsequent
+* operands exactly n limbs so they satisfy the fixed-width fast-path contract.
+    WHILE lines( rt_result ) > iv_n.
+      DELETE rt_result INDEX lines( rt_result ).
+    ENDWHILE.
     WHILE lines( rt_result ) < iv_n.
       APPEND 0 TO rt_result.
     ENDWHILE.

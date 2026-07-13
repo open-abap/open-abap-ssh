@@ -73,9 +73,22 @@ CLASS zcl_oassh_stream DEFINITION
         VALUE(rv_int) TYPE i
       RAISING
         zcx_oassh_error.
+    METHODS uint64_encode
+      IMPORTING
+        iv_int TYPE i
+      RAISING
+        zcx_oassh_error.
+    METHODS uint64_decode
+      RETURNING
+        VALUE(rv_int) TYPE i
+      RAISING
+        zcx_oassh_error.
     METHODS get_length
       RETURNING
         VALUE(rv_length) TYPE i.
+    METHODS find_cr_lf
+      RETURNING
+        VALUE(rv_line_length) TYPE i.
     METHODS clear.
     METHODS string_encode
       IMPORTING
@@ -97,6 +110,11 @@ CLASS zcl_oassh_stream DEFINITION
     DATA mv_hex TYPE xstring.
     DATA mv_pos TYPE i.
     DATA mt_pending TYPE ty_chunks.
+    DATA mv_pending_length TYPE i.
+    DATA mv_line_scan_initialized TYPE abap_bool.
+    DATA mv_line_scan_length TYPE i.
+    DATA mv_line_scan_pending TYPE i.
+    DATA mv_line_scan_previous_cr TYPE abap_bool.
 
     METHODS materialize.
     CLASS-METHODS join_chunks
@@ -114,7 +132,12 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
   METHOD append.
     DATA lv_chunk TYPE xstring.
     lv_chunk = iv_hex.
+* Empty socket callbacks carry no state and must not grow the chunk table.
+    IF lv_chunk IS INITIAL.
+      RETURN.
+    ENDIF.
     APPEND lv_chunk TO mt_pending.
+    mv_pending_length = mv_pending_length + xstrlen( lv_chunk ).
   ENDMETHOD.
 
 
@@ -136,6 +159,13 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     APPEND LINES OF mt_pending TO lt_chunks.
     mv_hex = join_chunks( lt_chunks ).
     CLEAR mt_pending.
+    CLEAR mv_pending_length.
+* A partial CRLF scan referred to the old pending-chunk indexes. Rescan the
+* new contiguous backing layout if the caller materializes before completion.
+    CLEAR mv_line_scan_initialized.
+    CLEAR mv_line_scan_length.
+    CLEAR mv_line_scan_pending.
+    CLEAR mv_line_scan_previous_cr.
   ENDMETHOD.
 
 
@@ -276,6 +306,11 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     CLEAR mv_hex.
     CLEAR mv_pos.
     CLEAR mt_pending.
+    CLEAR mv_pending_length.
+    CLEAR mv_line_scan_initialized.
+    CLEAR mv_line_scan_length.
+    CLEAR mv_line_scan_pending.
+    CLEAR mv_line_scan_previous_cr.
   ENDMETHOD.
 
 
@@ -291,8 +326,60 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
 
 
   METHOD get_length.
-    materialize( ).
-    rv_length = xstrlen( mv_hex ) - mv_pos.
+* Framing checks this on every receive callback. Do not materialize pending
+* one-byte APC frames merely to count them; join only when bytes are consumed.
+    rv_length = xstrlen( mv_hex ) - mv_pos + mv_pending_length.
+  ENDMETHOD.
+
+
+  METHOD find_cr_lf.
+* Scan backing bytes once, then only newly appended chunks. This is used by
+* version exchange where APC commonly delivers one byte per callback.
+    DATA lv_offset TYPE i.
+    DATA lv_chunk_index TYPE i.
+    DATA lv_chunk_offset TYPE i.
+    DATA lv_chunk TYPE xstring.
+    DATA lv_byte TYPE x LENGTH 1.
+    rv_line_length = -1.
+    IF mv_line_scan_initialized = abap_false.
+      lv_offset = mv_pos.
+      WHILE xstrlen( mv_hex ) > lv_offset.
+        lv_byte = mv_hex+lv_offset(1).
+        IF mv_line_scan_previous_cr = abap_true AND lv_byte = '0A'.
+          rv_line_length = mv_line_scan_length - 1.
+          CLEAR mv_line_scan_initialized.
+          CLEAR mv_line_scan_length.
+          CLEAR mv_line_scan_pending.
+          CLEAR mv_line_scan_previous_cr.
+          RETURN.
+        ENDIF.
+        mv_line_scan_length = mv_line_scan_length + 1.
+        mv_line_scan_previous_cr = xsdbool( lv_byte = '0D' ).
+        lv_offset = lv_offset + 1.
+      ENDWHILE.
+      mv_line_scan_initialized = abap_true.
+    ENDIF.
+    lv_chunk_index = mv_line_scan_pending + 1.
+    WHILE lines( mt_pending ) >= lv_chunk_index.
+      lv_chunk = mt_pending[ lv_chunk_index ].
+      lv_chunk_offset = 0.
+      WHILE xstrlen( lv_chunk ) > lv_chunk_offset.
+        lv_byte = lv_chunk+lv_chunk_offset(1).
+        IF mv_line_scan_previous_cr = abap_true AND lv_byte = '0A'.
+          rv_line_length = mv_line_scan_length - 1.
+          CLEAR mv_line_scan_initialized.
+          CLEAR mv_line_scan_length.
+          CLEAR mv_line_scan_pending.
+          CLEAR mv_line_scan_previous_cr.
+          RETURN.
+        ENDIF.
+        mv_line_scan_length = mv_line_scan_length + 1.
+        mv_line_scan_previous_cr = xsdbool( lv_byte = '0D' ).
+        lv_chunk_offset = lv_chunk_offset + 1.
+      ENDWHILE.
+      mv_line_scan_pending = lv_chunk_index.
+      lv_chunk_index = lv_chunk_index + 1.
+    ENDWHILE.
   ENDMETHOD.
 
 
@@ -411,6 +498,48 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     DATA lv_hex TYPE x LENGTH 4.
     lv_hex = iv_int.
     append( lv_hex ).
+
+  ENDMETHOD.
+
+
+  METHOD uint64_encode.
+* SFTP READ/WRITE offsets and file sizes are uint64 (draft-ietf-secsh-filexfer-02).
+* ABAP has no unsigned 64-bit type. Sizes and offsets on any realistic APC
+* transfer stay well below 2 GiB, so we accept only non-negative int4 values and
+* place them in the low 32 bits; the high 32 bits are always zero on the wire.
+    DATA lv_high TYPE x LENGTH 4.
+    DATA lv_low TYPE x LENGTH 4.
+    IF iv_int < 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    lv_low = iv_int.
+    append( lv_high ).
+    append( lv_low ).
+
+  ENDMETHOD.
+
+
+  METHOD uint64_decode.
+* Decode a uint64 into an int4, enforcing the documented int4-safe ceiling
+* (0x7FFFFFFF, ~2 GiB). Reject any value whose high 32 bits are set or whose
+* low word would overflow the signed integer, rather than silently truncating.
+    DATA lv_hex TYPE xstring.
+    DATA lv_high TYPE x LENGTH 4.
+    DATA lv_low TYPE x LENGTH 4.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+    lv_hex = take( 8 ).
+    lv_high = lv_hex(4).
+    lv_low = lv_hex+4(4).
+    IF lv_high <> '00000000'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    lv_first = lv_low(1).
+    GET BIT 1 OF lv_first INTO lv_bit.
+    IF lv_bit = '1'.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    rv_int = lv_low.
 
   ENDMETHOD.
 ENDCLASS.

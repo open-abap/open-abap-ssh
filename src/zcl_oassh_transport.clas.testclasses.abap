@@ -25,6 +25,7 @@ ENDCLASS.
 
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
+    TYPES ty_payloads TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
     CONSTANTS c_host_1 TYPE xstring VALUE
       '000000077373682D727361000000030100010000008100EACC6C23ED94569C9F'.
     CONSTANTS c_host_2 TYPE xstring VALUE
@@ -47,20 +48,34 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
       '2EB36772C13530C22D335FD21E0244DB92A99A9F41027C6198581CD2A2F395D4'.
     METHODS through_newkeys FOR TESTING RAISING cx_static_check.
     METHODS password_auth FOR TESTING RAISING cx_static_check.
+    METHODS empty_password FOR TESTING RAISING cx_static_check.
     METHODS handshake
       RETURNING VALUE(ro_transport) TYPE REF TO zcl_oassh_transport
       RAISING cx_static_check.
+    METHODS kex_pending
+      RETURNING VALUE(ro_transport) TYPE REF TO zcl_oassh_transport
+      RAISING cx_static_check.
+    METHODS valid_kex_reply RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS signature_ok FOR TESTING RAISING cx_static_check.
     METHODS signature_tampered_hash FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_host_algo FOR TESTING RAISING cx_static_check.
     METHODS signature_wrong_sig_algo FOR TESTING RAISING cx_static_check.
+    METHODS signature_noncanonical_names FOR TESTING RAISING cx_static_check.
     METHODS signature_negotiated_mismatch FOR TESTING RAISING cx_static_check.
     METHODS negotiation_rejected FOR TESTING RAISING cx_static_check.
     METHODS invalid_private_seed FOR TESTING RAISING cx_static_check.
     METHODS invalid_group14_public FOR TESTING RAISING cx_static_check.
+    METHODS invalid_x25519_public FOR TESTING RAISING cx_static_check.
+    METHODS premature_auth_reply FOR TESTING RAISING cx_static_check.
+    METHODS malformed_auth_is_atomic FOR TESTING RAISING cx_static_check.
+    METHODS malformed_kex_is_atomic FOR TESTING RAISING cx_static_check.
+    METHODS invalid_signature_not_trusted FOR TESTING RAISING cx_static_check.
+    METHODS noncanonical_auth_service FOR TESTING RAISING cx_static_check.
     METHODS authentication_failure FOR TESTING RAISING cx_static_check.
+    METHODS credential_fallback FOR TESTING RAISING cx_static_check.
     METHODS rekey FOR TESTING RAISING cx_static_check.
     METHODS strict_kex FOR TESTING RAISING cx_static_check.
+    METHODS guessed_kex_packet FOR TESTING RAISING cx_static_check.
     METHODS group14_fallback FOR TESTING RAISING cx_static_check.
     METHODS chacha_fallback FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
@@ -92,10 +107,17 @@ CLASS ltcl_test IMPLEMENTATION.
 
 
   METHOD handshake.
+    ro_transport = kex_pending( ).
+    ro_transport->receive_kex_reply( valid_kex_reply( ) ).
+    ro_transport->activate_outbound_keys( ).
+    ro_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD kex_pending.
     DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
     DATA lo_verifier TYPE REF TO lcl_verifier.
     DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
-    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
     lo_random = NEW #( iv_pattern = '0102030405060708' ).
     lo_verifier = NEW #( ).
     ro_transport = NEW #(
@@ -117,13 +139,16 @@ CLASS ltcl_test IMPLEMENTATION.
     DELETE ls_server-encryption_algorithms_s_to_c
       WHERE table_line = zcl_oassh_transport=>c_cipher_chachapoly.
     ro_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD valid_kex_reply.
+    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
     ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
     ls_reply-k_s = host_key( ).
     ls_reply-q_s = 'CABC16BA515B878A3F17A2E5ECBD86FAE1554EA1559ACD496A22F45127652A68'.
     ls_reply-signature = signature_blob( ).
-    ro_transport->receive_kex_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
-    ro_transport->activate_outbound_keys( ).
-    ro_transport->receive_newkeys( zcl_oassh_message_21=>serialize( )->get( ) ).
+    rv_payload = zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ).
   ENDMETHOD.
 
 
@@ -265,6 +290,80 @@ CLASS ltcl_test IMPLEMENTATION.
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-negotiation_failed ).
     ENDTRY.
+
+* An algorithm deliberately omitted from the client proposal cannot become
+* "common" merely because the server advertises it.
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_offer_ed25519 = abap_false ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    CLEAR ls_server-server_host_key_algorithms.
+    APPEND zcl_oassh_transport=>c_host_ed25519
+      TO ls_server-server_host_key_algorithms.
+    TRY.
+        lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+        cl_abap_unit_assert=>fail( 'unoffered host-key algorithm accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-negotiation_failed ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD empty_password.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA ls_request TYPE zcl_oassh_message_50=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_empty_password TYPE xstring.
+    DATA lv_payload TYPE xstring.
+    DATA lv_reason TYPE i.
+    lo_random = NEW #( iv_pattern = '01' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
+
+* RFC 4252 section 8 defines the password as an SSH string and does not
+* require it to be non-empty. Explicit presence is separate from its value.
+    lo_transport->start_auth(
+      iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password          = lv_empty_password
+      iv_password_supplied = abap_true ).
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+    ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+    lo_stream = NEW #( lv_payload ).
+    ls_request = zcl_oassh_message_50=>parse( lo_stream ).
+    cl_abap_unit_assert=>assert_initial( ls_request-password ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->get_length( )
+      exp = 0 ).
+
+* Omitting both supported credential forms remains an API error.
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier ).
+    lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
+    TRY.
+        lo_transport->start_auth(
+          iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
+          iv_password_supplied = abap_false ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-invalid_credentials ).
   ENDMETHOD.
 
 
@@ -326,16 +425,17 @@ CLASS ltcl_test IMPLEMENTATION.
 
 
   METHOD authentication_failure.
-    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
     DATA lo_transport TYPE REF TO zcl_oassh_transport.
-    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
     DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    lo_random = NEW #( iv_pattern = '0102030405060708' ).
-    lo_verifier = NEW #( ).
-    lo_transport = NEW #(
-      ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+    lo_transport = handshake( ).
+    lo_transport->start_auth(
+      iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password = zcl_oassh_ascii=>to_xstring( 'test' ) ).
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+    ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
     ls_failure-message_id = zcl_oassh_message_51=>gc_message_id.
     APPEND 'password' TO ls_failure-authentications.
     TRY.
@@ -552,6 +652,337 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
     cl_abap_unit_assert=>assert_true( lo_transport->is_strict_kex( ) ).
     cl_abap_unit_assert=>assert_true( lo_transport->is_initial_kex( ) ).
+  ENDMETHOD.
+
+
+  METHOD credential_fallback.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
+    DATA ls_password TYPE zcl_oassh_message_50=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_payload TYPE xstring.
+    DATA lv_seed TYPE xstring VALUE
+      '9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60'.
+    DATA lv_reason TYPE i.
+    lo_transport = handshake( ).
+    lo_transport->start_auth(
+      iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password          = zcl_oassh_ascii=>to_xstring( 'fallback' )
+      iv_password_supplied = abap_true
+      iv_private_seed      = lv_seed ).
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+    ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_payload(1)
+      exp = zcl_oassh_message_50=>gc_message_id ).
+
+* The server rejects publickey but explicitly permits password to continue.
+    ls_failure-message_id = zcl_oassh_message_51=>gc_message_id.
+    APPEND 'password' TO ls_failure-authentications.
+    lv_payload = lo_transport->receive_auth( zcl_oassh_message_51=>serialize( ls_failure )->get( ) ).
+    lo_stream = NEW #( lv_payload ).
+    ls_password = zcl_oassh_message_50=>parse( lo_stream ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_password-password
+      exp = zcl_oassh_ascii=>to_xstring( 'fallback' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_stream->get_length( )
+      exp = 0 ).
+
+* A rejected fallback is terminal even if the server repeats "password".
+    TRY.
+        lo_transport->receive_auth( zcl_oassh_message_51=>serialize( ls_failure )->get( ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-authentication_failed ).
+  ENDMETHOD.
+
+
+  METHOD signature_noncanonical_names.
+    DATA lo_source TYPE REF TO zcl_oassh_stream.
+    DATA lo_malformed TYPE REF TO zcl_oassh_stream.
+    DATA lv_e TYPE xstring.
+    DATA lv_n TYPE xstring.
+    DATA lv_signature TYPE xstring.
+    lo_source = NEW #( host_key( ) ).
+    lo_source->string_decode( ).
+    lv_e = lo_source->mpint_decode( ).
+    lv_n = lo_source->mpint_decode( ).
+
+* Filtering must not turn ssh-<NUL>rsa into the canonical ssh-rsa token.
+    lo_malformed = NEW #( ).
+    lo_malformed->string_encode( '7373682D00727361' ).
+    lo_malformed->mpint_encode( lv_e ).
+    lo_malformed->mpint_encode( lv_n ).
+    cl_abap_unit_assert=>assert_false(
+      zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = lo_malformed->get( )
+        iv_signature     = signature_blob( )
+        iv_exchange_hash = c_exchange_hash ) ).
+
+* The signature wrapper algorithm is also compared as exact wire bytes.
+    lo_malformed = NEW #( ).
+    lo_malformed->string_encode( '7273612D736861322D00323536' ).
+    lo_malformed->string_encode( signature_bytes( ) ).
+    lv_signature = lo_malformed->get( ).
+    cl_abap_unit_assert=>assert_false(
+      zcl_oassh_transport=>verify_server_signature(
+        iv_host_key      = host_key( )
+        iv_signature     = lv_signature
+        iv_exchange_hash = c_exchange_hash ) ).
+  ENDMETHOD.
+
+
+  METHOD premature_auth_reply.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lt_payloads TYPE ty_payloads.
+    DATA ls_banner TYPE zcl_oassh_message_53=>ty_data.
+    DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_transport = handshake( ).
+    lo_transport->start_auth(
+      iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password = zcl_oassh_ascii=>to_xstring( 'test' ) ).
+    ls_banner-message_id = zcl_oassh_message_53=>gc_message_id.
+    ls_banner-message = zcl_oassh_ascii=>to_xstring( 'premature' ).
+    ls_failure-message_id = zcl_oassh_message_51=>gc_message_id.
+    APPEND 'password' TO ls_failure-authentications.
+    APPEND zcl_oassh_message_53=>serialize( ls_banner )->get( ) TO lt_payloads.
+    APPEND zcl_oassh_message_52=>serialize( )->get( ) TO lt_payloads.
+    APPEND zcl_oassh_message_51=>serialize( ls_failure )->get( ) TO lt_payloads.
+
+    LOOP AT lt_payloads INTO DATA(lv_payload).
+      CLEAR lv_reason.
+      TRY.
+          lo_transport->receive_auth( lv_payload ).
+        CATCH zcx_oassh_error INTO lx_error.
+          lv_reason = lx_error->get_reason( ).
+      ENDTRY.
+      cl_abap_unit_assert=>assert_equals(
+        act = lv_reason
+        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      cl_abap_unit_assert=>assert_equals(
+        act = lo_transport->get_auth_state( )
+        exp = zcl_oassh_transport=>c_auth_state-service_requested ).
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD malformed_auth_is_atomic.
+* Trailing bytes must be rejected before credentials or auth state are spent.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_accept TYPE xstring.
+    DATA lv_malformed TYPE xstring.
+    DATA lv_reason TYPE i.
+    lo_transport = handshake( ).
+    lo_transport->start_auth(
+      iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password          = zcl_oassh_ascii=>to_xstring( 'secret' )
+      iv_password_supplied = abap_true ).
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+    ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+    lv_accept = zcl_oassh_message_6=>serialize( ls_accept )->get( ).
+    lv_malformed = lv_accept && 'AA'.
+
+    TRY.
+        lo_transport->receive_auth( lv_malformed ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-service_requested ).
+    cl_abap_unit_assert=>assert_true( lo_transport->mv_password_supplied ).
+
+    lo_transport->receive_auth( lv_accept ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-request_sent ).
+
+    CLEAR lv_reason.
+    TRY.
+        lo_transport->receive_auth( '34AA' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-request_sent ).
+
+    lo_transport->receive_auth( '34' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-authenticated ).
+  ENDMETHOD.
+
+
+  METHOD malformed_kex_is_atomic.
+* Unauthenticated or structurally malformed replies must not publish K or H.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reply TYPE xstring.
+    DATA lv_malformed TYPE xstring.
+    DATA lv_reason TYPE i.
+    lo_transport = kex_pending( ).
+    lv_reply = valid_kex_reply( ).
+    lv_malformed = lv_reply && 'AA'.
+    TRY.
+        lo_transport->receive_kex_reply( lv_malformed ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->get_exchange_hash( ) ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_k ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_state( )
+      exp = zcl_oassh_transport=>c_state-ecdh_sent ).
+
+* The valid authenticated reply can still complete after malformed rejection.
+    lo_transport->receive_kex_reply( lv_reply ).
+    cl_abap_unit_assert=>assert_not_initial( lo_transport->get_exchange_hash( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_state( )
+      exp = zcl_oassh_transport=>c_state-newkeys_sent ).
+  ENDMETHOD.
+
+
+  METHOD invalid_signature_not_trusted.
+* A trust/TOFU callback must never see a key without valid possession proof.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_transport = kex_pending( ).
+    lo_verifier ?= lo_transport->mi_host_verifier.
+    lo_stream = NEW #( valid_kex_reply( ) ).
+    ls_reply = zcl_oassh_message_ecdh_31=>parse( lo_stream ).
+    ls_reply-signature = '00'.
+    TRY.
+        lo_transport->receive_kex_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-signature_invalid ).
+    cl_abap_unit_assert=>assert_initial( lo_verifier->received( ) ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->get_exchange_hash( ) ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_k ).
+  ENDMETHOD.
+
+
+  METHOD noncanonical_auth_service.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_transport = handshake( ).
+    lo_transport->start_auth(
+      iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
+      iv_password = zcl_oassh_ascii=>to_xstring( 'test' ) ).
+    ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
+* Filtering previously normalized ssh-<NUL>userauth to ssh-userauth.
+    ls_accept-service_name = '7373682D007573657261757468'.
+    TRY.
+        lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_auth_state( )
+      exp = zcl_oassh_transport=>c_auth_state-service_requested ).
+  ENDMETHOD.
+
+
+  METHOD invalid_x25519_public.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+    ls_reply-message_id = zcl_oassh_message_ecdh_31=>gc_message_id.
+    ls_reply-q_s =
+      '0000000000000000000000000000000000000000000000000000000000000000'.
+    TRY.
+        lo_transport->receive_kex_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+  ENDMETHOD.
+
+
+  METHOD guessed_kex_packet.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
+    lo_random = NEW #( iv_pattern = '0102030405060708' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_offer_strict  = abap_false ).
+    lo_transport->start_kex(
+      iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
+      iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
+    ls_server = zcl_oassh_message_20=>create( lo_random ).
+    DELETE ls_server-kex_algorithms
+      WHERE table_line = zcl_oassh_transport=>c_kex_group14.
+    INSERT zcl_oassh_transport=>c_kex_group14
+      INTO ls_server-kex_algorithms INDEX 1.
+    DELETE ls_server-server_host_key_algorithms
+      WHERE table_line = zcl_oassh_transport=>c_host_ed25519.
+    INSERT zcl_oassh_transport=>c_host_ed25519
+      INTO ls_server-server_host_key_algorithms INDEX 1.
+    ls_server-first_kex_packet_follows = abap_true.
+    lo_transport->receive_kexinit( zcl_oassh_message_20=>serialize( ls_server )->get( ) ).
+
+* The client still selects its own preferred curve25519/RSA pair, so the
+* server's group14/Ed25519 guessed packet is discarded exactly once.
+    cl_abap_unit_assert=>assert_true( lo_transport->discard_guessed_packet( ) ).
+    cl_abap_unit_assert=>assert_false( lo_transport->discard_guessed_packet( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->get_state( )
+      exp = zcl_oassh_transport=>c_state-ecdh_sent ).
   ENDMETHOD.
 
 

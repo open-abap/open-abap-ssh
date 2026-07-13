@@ -23,6 +23,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS valid_signature FOR TESTING RAISING cx_static_check.
     METHODS changed_message FOR TESTING RAISING cx_static_check.
     METHODS changed_signature FOR TESTING RAISING cx_static_check.
+    METHODS invalid_parameters FOR TESTING RAISING cx_static_check.
     METHODS modulus RETURNING VALUE(rv_n) TYPE xstring.
     METHODS signature RETURNING VALUE(rv_signature) TYPE xstring.
 ENDCLASS.
@@ -63,6 +64,60 @@ CLASS ltcl_test IMPLEMENTATION.
       iv_n         = modulus( )
       iv_e         = c_e
       iv_signature = modulus( )
+      iv_message   = c_message ) ).
+  ENDMETHOD.
+
+
+  METHOD invalid_parameters.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_n TYPE xstring.
+    DATA lv_prefix TYPE xstring.
+    DATA lv_even_n TYPE xstring.
+    DATA lv_short_n TYPE xstring.
+    DATA lv_large_n TYPE xstring.
+    DATA lv_weak_n TYPE xstring.
+    DATA lv_weak_suffix TYPE xstring.
+    DATA lv_offset TYPE i.
+    DATA lv_even_last TYPE x LENGTH 1 VALUE '4C'.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'FF' ).
+    lv_n = modulus( ).
+    lv_offset = xstrlen( lv_n ) - 1.
+    lv_prefix = lv_n(lv_offset).
+    CONCATENATE lv_prefix lv_even_last INTO lv_even_n IN BYTE MODE.
+    lv_short_n = li_random->bytes( 127 ).
+    lv_large_n = li_random->bytes( 1025 ).
+    lv_weak_suffix = lv_n+1.
+    lv_weak_n = '7F' && lv_weak_suffix.
+
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_even_n
+      iv_e         = c_e
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_n
+      iv_e         = '02'
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_n
+      iv_e         = lv_n
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_short_n
+      iv_e         = c_e
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_weak_n
+      iv_e         = c_e
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_large_n
+      iv_e         = c_e
+      iv_signature = signature( )
       iv_message   = c_message ) ).
   ENDMETHOD.
 ENDCLASS.

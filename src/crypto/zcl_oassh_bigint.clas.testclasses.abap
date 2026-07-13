@@ -8,6 +8,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS modulo FOR TESTING RAISING cx_static_check.
     METHODS mod_pow FOR TESTING RAISING cx_static_check.
     METHODS mod_pow_medium FOR TESTING RAISING cx_static_check.
+    METHODS normalize_large_prefix FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -59,6 +60,20 @@ CLASS ltcl_test IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD normalize_large_prefix.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_value TYPE xstring.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '00' ).
+    lv_value = li_random->bytes( 4096 ) && '01'.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>compare( iv_a = lv_value iv_b = '01' )
+      exp = 0 ).
+    lv_value = li_random->bytes( 4096 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>compare( iv_a = lv_value iv_b = lv_value )
+      exp = 0 ).
+  ENDMETHOD.
+
   METHOD multiply.
 
     DATA lv_zero TYPE xstring.
@@ -108,6 +123,25 @@ CLASS ltcl_test IMPLEMENTATION.
       act = zcl_oassh_bigint=>mod_pow( iv_base = '03' iv_exp = '05' iv_m = '07' )
       exp = '05' ).
 
+    " Same-width Montgomery bases still require reduction when base >= m.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow( iv_base = '08' iv_exp = '01' iv_m = '07' )
+      exp = '01' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow( iv_base = '07' iv_exp = '01' iv_m = '07' )
+      exp = '' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow( iv_base = 'FE' iv_exp = '03' iv_m = 'FB' )
+      exp = '1B' ).
+
+    " Bits following the directly initialized leading one still square/multiply.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow( iv_base = '02' iv_exp = '02' iv_m = '07' )
+      exp = '04' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow( iv_base = '03' iv_exp = '03' iv_m = '07' )
+      exp = '06' ).
+
     " x^0 = 1
     cl_abap_unit_assert=>assert_equals(
       act = zcl_oassh_bigint=>mod_pow( iv_base = '05' iv_exp = lv_zero iv_m = '07' )
@@ -124,6 +158,14 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_exp  = '010001'
         iv_m    = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF61' )
       exp = 'F8D7DF0DF2B38FD953387F64670C78D3' ).
+
+    " Independent 256-bit square-and-multiply vector, exponent 65537.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_oassh_bigint=>mod_pow(
+        iv_base = '0FEDCBA98765432100123456789ABCDEF112233445566778899AABBCCDDEEFF0'
+        iv_exp  = '010001'
+        iv_m    = 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F' )
+      exp = '5E0136EBF7A6389D2C5229390C28DB84BF6D3844EBEB793BC015D8533EEBE48C' ).
 
   ENDMETHOD.
 

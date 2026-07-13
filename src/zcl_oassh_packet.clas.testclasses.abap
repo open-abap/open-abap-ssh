@@ -12,6 +12,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS strict_resets_sequence FOR TESTING RAISING cx_static_check.
     METHODS malformed_fixtures FOR TESTING RAISING cx_static_check.
     METHODS oversize_fixtures FOR TESTING RAISING cx_static_check.
+    METHODS channel_max_payload FOR TESTING RAISING cx_static_check.
+    METHODS mac_tamper_positions FOR TESTING RAISING cx_static_check.
     METHODS assert_rejected
       IMPORTING
         iv_packet         TYPE xstring
@@ -230,6 +232,9 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->get_receive_sequence( )
       exp = lv_min_i ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_last_receive_sequence( )
+      exp = 2147483647 ).
 
 * Exercise the upper unsigned half as well: its signed representation must
 * still serialize into the same uint32 for MAC input on both peers.
@@ -237,6 +242,9 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->decode( lv_wire )
       exp = '02' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_last_receive_sequence( )
+      exp = lv_min_i ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_sender->get_send_sequence( )
       exp = lv_min_i + 1 ).
@@ -421,7 +429,7 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_packet = NEW #( ii_random = NEW zcl_oassh_random_fixed( ) ).
     li_random = NEW zcl_oassh_random_fixed( ).
     TRY.
-        lo_packet->encode( li_random->bytes( 32769 ) ).
+        lo_packet->encode( li_random->bytes( 32782 ) ).
       CATCH zcx_oassh_error INTO lx_error.
         lv_reason = lx_error->get_reason( ).
     ENDTRY.
@@ -467,5 +475,114 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = zcx_oassh_error=>c_reason-mac_invalid ).
+  ENDMETHOD.
+
+
+  METHOD channel_max_payload.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_payload TYPE xstring.
+    DATA lv_data TYPE xstring.
+    DATA lv_wire TYPE xstring.
+    DATA lv_reason TYPE i.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '41' ).
+    lv_data = li_random->bytes( 32768 ).
+* SSH_MSG_CHANNEL_EXTENDED_DATA carries four more envelope bytes than DATA.
+* The full advertised data maximum must remain a valid transport payload.
+    lo_stream = NEW #( ).
+    lo_stream->append( '5F' ).
+    lo_stream->uint32_encode( 0 ).
+    lo_stream->uint32_encode( 1 ).
+    lo_stream->string_encode( lv_data ).
+    lv_payload = lo_stream->get( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = xstrlen( lv_payload )
+      exp = zcl_oassh_packet=>c_max_payload_length ).
+    lo_sender = NEW #( ii_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AA' ) ).
+    lo_receiver = NEW #( ii_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AA' ) ).
+    lv_wire = lo_sender->encode( lv_payload ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->decode( lv_wire )
+      exp = lv_payload ).
+
+* One additional data byte exceeds the maximum advertised by the channel.
+    lo_stream = NEW #( ).
+    lo_stream->append( '5F' ).
+    lo_stream->uint32_encode( 0 ).
+    lo_stream->uint32_encode( 1 ).
+    lo_stream->string_encode( li_random->bytes( 32769 ) ).
+    TRY.
+        lo_sender->encode( lo_stream->get( ) ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+  ENDMETHOD.
+
+
+  METHOD mac_tamper_positions.
+    CONSTANTS lc_mac TYPE xstring VALUE '00112233445566778899AABBCCDDEEFF'.
+    DATA lo_sender TYPE REF TO zcl_oassh_packet.
+    DATA lo_receiver TYPE REF TO zcl_oassh_packet.
+    DATA lv_wire TYPE xstring.
+    DATA lv_plain TYPE xstring.
+    DATA lv_mac TYPE xstring.
+    DATA lv_bad_mac TYPE xstring.
+    DATA lv_bad_packet TYPE xstring.
+    DATA lv_prefix TYPE xstring.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_one TYPE x LENGTH 1 VALUE '01'.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_sender = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_encrypt_mac = lc_mac ).
+    lv_wire = lo_sender->encode( '01' ).
+    lv_plain = lv_wire(16).
+    lv_mac = lv_wire+16(32).
+
+* A mismatch at either end of the HMAC is rejected without advancing state.
+    lv_byte = lv_mac(1) BIT-XOR lv_one.
+    lv_bad_mac = lv_byte && lv_mac+1.
+    lo_receiver = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_decrypt_mac = lc_mac ).
+    lv_bad_packet = lv_plain && lv_bad_mac.
+    TRY.
+        lo_receiver->decode( lv_bad_packet ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_receive_sequence( )
+      exp = 0 ).
+
+    lv_prefix = lv_mac(31).
+    lv_byte = lv_mac+31(1) BIT-XOR lv_one.
+    lv_bad_mac = lv_prefix && lv_byte.
+    lo_receiver = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
+      iv_decrypt_mac = lc_mac ).
+    lv_bad_packet = lv_plain && lv_bad_mac.
+    CLEAR lv_reason.
+    TRY.
+        lo_receiver->decode( lv_bad_packet ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_receiver->get_receive_sequence( )
+      exp = 0 ).
   ENDMETHOD.
 ENDCLASS.

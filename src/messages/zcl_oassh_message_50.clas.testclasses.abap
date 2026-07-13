@@ -4,6 +4,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS wire_format FOR TESTING RAISING cx_static_check.
     METHODS publickey_wire FOR TESTING RAISING cx_static_check.
     METHODS signed_publickey FOR TESTING RAISING cx_static_check.
+    METHODS noncanonical_method FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -25,6 +26,25 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_stream->get_length( )
       exp = 0 ).
+  ENDMETHOD.
+
+
+  METHOD noncanonical_method.
+    DATA ls_data TYPE zcl_oassh_message_50=>ty_data.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    ls_data-message_id = zcl_oassh_message_50=>gc_message_id.
+    ls_data-method_name = '7061737300776F7264'. " pass<NUL>word
+    lo_stream = zcl_oassh_message_50=>serialize( ls_data ).
+    TRY.
+        zcl_oassh_message_50=>parse( lo_stream ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
   ENDMETHOD.
 
 

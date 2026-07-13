@@ -74,6 +74,7 @@ CLASS zcl_oassh_transport DEFINITION
       IMPORTING
         iv_user           TYPE xstring
         iv_password       TYPE xstring OPTIONAL
+        iv_password_supplied TYPE abap_bool DEFAULT abap_true
         iv_private_seed   TYPE xstring OPTIONAL
       RETURNING
         VALUE(rv_payload) TYPE xstring
@@ -112,6 +113,9 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS is_initial_kex
       RETURNING
         VALUE(rv_initial) TYPE abap_bool.
+    METHODS discard_guessed_packet
+      RETURNING
+        VALUE(rv_discard) TYPE abap_bool.
     METHODS get_packet
       RETURNING
         VALUE(ro_packet) TYPE REF TO zcl_oassh_packet.
@@ -138,12 +142,14 @@ CLASS zcl_oassh_transport DEFINITION
     DATA mo_packet TYPE REF TO zcl_oassh_packet.
     DATA mv_user TYPE xstring.
     DATA mv_password TYPE xstring.
+    DATA mv_password_supplied TYPE abap_bool.
     DATA mv_private_seed TYPE xstring.
     DATA mv_auth_state TYPE i.
     DATA mv_rekey_in_progress TYPE abap_bool.
     DATA mv_rekey_count TYPE i.
     DATA mv_strict_kex TYPE abap_bool.
     DATA mv_initial_kex TYPE abap_bool.
+    DATA mv_discard_guessed_packet TYPE abap_bool.
     DATA mv_offer_strict TYPE abap_bool.
     DATA mv_offer_group14 TYPE abap_bool.
     DATA mv_offer_chacha TYPE abap_bool.
@@ -166,6 +172,13 @@ CLASS zcl_oassh_transport DEFINITION
       RAISING zcx_oassh_error.
     METHODS publickey_request
       RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS password_request
+      RETURNING VALUE(rv_payload) TYPE xstring.
+    CLASS-METHODS is_all_zero
+      IMPORTING
+        iv_value          TYPE xstring
+      RETURNING
+        VALUE(rv_is_zero) TYPE abap_bool.
 ENDCLASS.
 
 
@@ -189,27 +202,31 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lv_e TYPE xstring.
     DATA lv_n TYPE xstring.
     DATA lv_signature TYPE xstring.
-    DATA lv_host_name TYPE string.
-    DATA lv_signature_name TYPE string.
     DATA lv_public_key TYPE xstring.
+    DATA lv_ssh_rsa TYPE xstring.
+    DATA lv_rsa_sha2 TYPE xstring.
+    DATA lv_ssh_ed25519 TYPE xstring.
+    lv_ssh_rsa = zcl_oassh_ascii=>to_xstring( 'ssh-rsa' ).
+    lv_rsa_sha2 = zcl_oassh_ascii=>to_xstring( c_host_rsa ).
+    lv_ssh_ed25519 = zcl_oassh_ascii=>to_xstring( c_host_ed25519 ).
     TRY.
         lo_host = NEW #( iv_host_key ).
         lv_host_algorithm = lo_host->string_decode( ).
-        lv_host_name = zcl_oassh_ascii=>from_xstring( lv_host_algorithm ).
         lo_signature = NEW #( iv_signature ).
         lv_signature_algorithm = lo_signature->string_decode( ).
-        lv_signature_name = zcl_oassh_ascii=>from_xstring( lv_signature_algorithm ).
         lv_signature = lo_signature->string_decode( ).
         IF lo_signature->get_length( ) <> 0.
           RETURN.
         ENDIF.
         CASE iv_expected_algorithm.
           WHEN c_host_rsa.
-            IF lv_host_name <> 'ssh-rsa' OR lv_signature_name <> c_host_rsa.
+            IF lv_host_algorithm <> lv_ssh_rsa
+                OR lv_signature_algorithm <> lv_rsa_sha2.
               RETURN.
             ENDIF.
           WHEN c_host_ed25519.
-            IF lv_host_name <> c_host_ed25519 OR lv_signature_name <> c_host_ed25519.
+            IF lv_host_algorithm <> lv_ssh_ed25519
+                OR lv_signature_algorithm <> lv_ssh_ed25519.
               RETURN.
             ENDIF.
           WHEN ''.
@@ -217,13 +234,13 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
           WHEN OTHERS.
             RETURN.
         ENDCASE.
-        CASE lv_host_name.
-          WHEN 'ssh-rsa'.
-            IF lv_signature_name <> c_host_rsa.
+        CASE lv_host_algorithm.
+          WHEN lv_ssh_rsa.
+            IF lv_signature_algorithm <> lv_rsa_sha2.
               RETURN.
             ENDIF.
-            lv_e = lo_host->mpint_decode( ).
-            lv_n = lo_host->mpint_decode( ).
+            lv_e = lo_host->mpint_decode_positive( ).
+            lv_n = lo_host->mpint_decode_positive( ).
             IF lo_host->get_length( ) <> 0.
               RETURN.
             ENDIF.
@@ -232,8 +249,8 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
               iv_e         = lv_e
               iv_signature = lv_signature
               iv_message   = iv_exchange_hash ).
-          WHEN c_host_ed25519.
-            IF lv_signature_name <> c_host_ed25519.
+          WHEN lv_ssh_ed25519.
+            IF lv_signature_algorithm <> lv_ssh_ed25519.
               RETURN.
             ENDIF.
             lv_public_key = lo_host->string_decode( ).
@@ -330,6 +347,15 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         AND ( line_exists( ls_server-kex_algorithms[ table_line = 'kex-strict-s' ] )
           OR line_exists( ls_server-kex_algorithms[ table_line = 'kex-strict-s-v00@openssh.com' ] ) ) ).
     ENDIF.
+* RFC 4253 section 7: when the peer optimistically sends a guessed first KEX
+* packet and either of its first algorithm guesses was wrong, exactly that
+* next packet must be ignored.
+    CLEAR mv_discard_guessed_packet.
+    IF ls_server-first_kex_packet_follows = abap_true
+        AND ( ls_server-kex_algorithms[ 1 ] <> mv_kex_algorithm
+          OR ls_server-server_host_key_algorithms[ 1 ] <> mv_host_key_algorithm ).
+      mv_discard_guessed_packet = abap_true.
+    ENDIF.
     mv_i_s = iv_payload.
     mv_private = mi_random->bytes( 32 ).
     IF mv_kex_algorithm = c_kex_curve25519.
@@ -353,10 +379,17 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD discard_guessed_packet.
+    rv_discard = mv_discard_guessed_packet.
+    CLEAR mv_discard_guessed_packet.
+  ENDMETHOD.
+
+
   METHOD select_host_key.
     IF line_exists( it_algorithms[ table_line = c_host_rsa ] ).
       mv_host_key_algorithm = c_host_rsa.
-    ELSEIF line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
+    ELSEIF mv_offer_ed25519 = abap_true
+        AND line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
       mv_host_key_algorithm = c_host_ed25519.
     ELSE.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
@@ -445,6 +478,8 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lv_host_key TYPE xstring.
     DATA lv_server_public TYPE xstring.
     DATA lv_signature TYPE xstring.
+    DATA lv_k TYPE xstring.
+    DATA lv_h TYPE xstring.
     ASSERT mv_state = c_state-ecdh_sent.
     lo_stream = NEW #( iv_payload ).
     IF mv_kex_algorithm = c_kex_curve25519.
@@ -458,9 +493,14 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       lv_shared_le = zcl_oassh_x25519=>scalarmult(
         iv_scalar = mv_private
         iv_u      = lv_server_public ).
+* RFC 7748 section 6.1 / RFC 8731 section 3: abort when a low-order peer
+* public value produces an all-zero X25519 shared secret.
+      IF is_all_zero( lv_shared_le ) = abap_true.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
 * RFC 8731 encodes the X25519 octet string directly as an SSH mpint.
-      mv_k = lv_shared_le.
-      mv_h = zcl_oassh_kdf=>exchange_hash(
+      lv_k = lv_shared_le.
+      lv_h = zcl_oassh_kdf=>exchange_hash(
         iv_v_c = mv_v_c
         iv_v_s = mv_v_s
         iv_i_c = mv_i_c
@@ -468,7 +508,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         iv_k_s = lv_host_key
         iv_q_c = mv_q_c
         iv_q_s = lv_server_public
-        iv_k   = mv_k ).
+        iv_k   = lv_k ).
     ELSE.
       ls_dh = zcl_oassh_message_dh_31=>parse( lo_stream ).
       IF zcl_oassh_group14=>is_valid_public( ls_dh-f ) = abap_false.
@@ -477,10 +517,10 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       lv_host_key = ls_dh-k_s.
       lv_server_public = ls_dh-f.
       lv_signature = ls_dh-signature.
-      mv_k = zcl_oassh_group14=>shared_secret(
+      lv_k = zcl_oassh_group14=>shared_secret(
         iv_peer_public = lv_server_public
         iv_private     = mv_private ).
-      mv_h = zcl_oassh_kdf=>exchange_hash_dh(
+      lv_h = zcl_oassh_kdf=>exchange_hash_dh(
         iv_v_c = mv_v_c
         iv_v_s = mv_v_s
         iv_i_c = mv_i_c
@@ -488,27 +528,46 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         iv_k_s = lv_host_key
         iv_e   = mv_q_c
         iv_f   = lv_server_public
-        iv_k   = mv_k ).
+        iv_k   = lv_k ).
     ENDIF.
     IF lo_stream->get_length( ) <> 0.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDIF.
-    IF mi_host_verifier->verify( lv_host_key ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-host_key_rejected ).
-    ENDIF.
     IF verify_server_signature(
         iv_host_key           = lv_host_key
         iv_signature          = lv_signature
-        iv_exchange_hash      = mv_h
+        iv_exchange_hash      = lv_h
         iv_expected_algorithm = mv_host_key_algorithm ) = abap_false.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-signature_invalid ).
     ENDIF.
+* Verify proof of host-key possession before invoking a potentially stateful
+* trust callback (for example, a TOFU known-hosts store).
+    IF mi_host_verifier->verify( lv_host_key ) = abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-host_key_rejected ).
+    ENDIF.
+* Commit key material only after exact parsing, host trust, and signature
+* authentication have all succeeded.
+    mv_k = lv_k.
+    mv_h = lv_h.
     IF mv_session_id IS INITIAL.
       mv_session_id = mv_h.
     ENDIF.
     derive_keys( ).
     rv_payload = zcl_oassh_message_21=>serialize( )->get( ).
     mv_state = c_state-newkeys_sent.
+  ENDMETHOD.
+
+
+  METHOD is_all_zero.
+    DATA lv_offset TYPE i.
+    DATA lv_byte TYPE x LENGTH 1.
+    DATA lv_difference TYPE x LENGTH 1.
+    DO xstrlen( iv_value ) TIMES.
+      lv_offset = sy-index - 1.
+      lv_byte = iv_value+lv_offset(1).
+      lv_difference = lv_difference BIT-OR lv_byte.
+    ENDDO.
+    rv_is_zero = xsdbool( lv_difference = '00' ).
   ENDMETHOD.
 
 
@@ -581,11 +640,12 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF iv_private_seed IS NOT INITIAL AND xstrlen( iv_private_seed ) <> 32.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
     ENDIF.
-    IF iv_private_seed IS INITIAL AND iv_password IS INITIAL.
+    IF iv_private_seed IS INITIAL AND iv_password_supplied = abap_false.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
     ENDIF.
     mv_user = iv_user.
     mv_password = iv_password.
+    mv_password_supplied = iv_password_supplied.
     mv_private_seed = iv_private_seed.
     ls_data-message_id = zcl_oassh_message_5=>gc_message_id.
     ls_data-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
@@ -599,7 +659,8 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA lv_id TYPE x LENGTH 1.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
-    DATA ls_request TYPE zcl_oassh_message_50=>ty_data.
+    DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
+    DATA lv_userauth_service TYPE xstring.
     IF iv_payload IS INITIAL.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDIF.
@@ -611,33 +672,50 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         ls_accept = zcl_oassh_message_6=>parse( lo_stream ).
-        IF zcl_oassh_ascii=>from_xstring( ls_accept-service_name ) <> 'ssh-userauth'.
+        lv_userauth_service = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
+        IF ls_accept-service_name <> lv_userauth_service.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        IF lo_stream->get_length( ) <> 0.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         IF mv_private_seed IS NOT INITIAL.
           rv_payload = publickey_request( ).
         ELSE.
-          ls_request-message_id = zcl_oassh_message_50=>gc_message_id.
-          ls_request-user_name = mv_user.
-          ls_request-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-connection' ).
-          ls_request-method_name = zcl_oassh_ascii=>to_xstring( 'password' ).
-          ls_request-password = mv_password.
-          rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
+          rv_payload = password_request( ).
         ENDIF.
         mv_auth_state = c_auth_state-request_sent.
       WHEN zcl_oassh_message_53=>gc_message_id.
 * USERAUTH_BANNER: informational only, no reply
+        IF mv_auth_state <> c_auth_state-request_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         zcl_oassh_message_53=>parse( lo_stream ).
       WHEN zcl_oassh_message_52=>gc_message_id.
+        IF mv_auth_state <> c_auth_state-request_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         zcl_oassh_message_52=>parse( lo_stream ).
-        mv_auth_state = c_auth_state-authenticated.
-      WHEN zcl_oassh_message_51=>gc_message_id.
-* USERAUTH_FAILURE: password rejected (or more methods required)
-        zcl_oassh_message_51=>parse( lo_stream ).
         IF lo_stream->get_length( ) <> 0.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-authentication_failed ).
+        mv_auth_state = c_auth_state-authenticated.
+      WHEN zcl_oassh_message_51=>gc_message_id.
+* USERAUTH_FAILURE: continue with the supplied password after a preferred
+* public-key attempt when the server says that method can continue.
+        IF mv_auth_state <> c_auth_state-request_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        ls_failure = zcl_oassh_message_51=>parse( lo_stream ).
+        IF lo_stream->get_length( ) <> 0.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
+        IF mv_password_supplied = abap_true
+            AND line_exists( ls_failure-authentications[ table_line = 'password' ] ).
+          rv_payload = password_request( ).
+        ELSE.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-authentication_failed ).
+        ENDIF.
       WHEN OTHERS.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDCASE.
@@ -653,6 +731,20 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       iv_session_id   = mv_session_id
       iv_private_seed = mv_private_seed ).
     CLEAR mv_private_seed.
+  ENDMETHOD.
+
+
+  METHOD password_request.
+    DATA ls_request TYPE zcl_oassh_message_50=>ty_data.
+    ls_request-message_id = zcl_oassh_message_50=>gc_message_id.
+    ls_request-user_name = mv_user.
+    ls_request-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-connection' ).
+    ls_request-method_name = zcl_oassh_ascii=>to_xstring( 'password' ).
+    ls_request-password = mv_password.
+    rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
+* Consume this credential choice so a rejected password cannot be retried in
+* an unbounded loop merely because the server lists it again.
+    CLEAR mv_password_supplied.
   ENDMETHOD.
 
 

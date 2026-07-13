@@ -65,91 +65,151 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S0 — Groundwork
 
-- [ ] `zcl_oassh_stream`: `uint64_encode`/`uint64_decode`. ABAP has no
+- [x] `zcl_oassh_stream`: `uint64_encode`/`uint64_decode`. ABAP has no
       unsigned 64-bit type and `int8` may behave differently under the
       transpiler — represent the value as `x LENGTH 8` (or two uint32 halves)
       internally, and cap accepted sizes/offsets at a documented int4-safe
       ceiling (2 GiB is far beyond realistic APC use). Tests: zero, small,
       0x00000000FFFFFFFF boundary, high-half rejection, truncation.
-- [ ] `zcl_oassh_channel=>subsystem( iv_name )` — same shape as `exec`
+      Implemented as two 4-byte halves; the high half must be zero and the low
+      word must have its top bit clear (`<= 0x7FFFFFFF`), both enforced on
+      decode. Seven tier-1 tests (zero, small, max int4, low boundary,
+      high-half, truncation, negative-encode).
+- [x] `zcl_oassh_channel=>subsystem( iv_name )` — same shape as `exec`
       (`want_reply` true, wait for CHANNEL_SUCCESS/FAILURE); either reuse the
       `exec_sent` state or add a dedicated one, but keep the state machine
       explicit. Test: exact wire bytes for `subsystem "sftp"`, and
       CHANNEL_FAILURE surfaces a typed error.
-- [ ] Incremental inbound data hand-off from channel to owner (SFTP must
+      Reuses `exec_sent` (same want_reply/CHANNEL_SUCCESS-FAILURE cycle); the
+      name is encoded as an ASCII token. Two tier-1 tests: exact wire bytes for
+      `subsystem "sftp"` + running transition, and typed CHANNEL_FAILURE.
+- [x] Incremental inbound data hand-off from channel to owner (SFTP must
       react to data while the channel is still open; `get_stdout( )` at
       close is not enough). Keep `execute( )` behavior unchanged — regression
       via existing tier-2 replay.
+      `zcl_oassh_channel=>drain_stdout( )` returns the CHANNEL_DATA buffered
+      since the previous drain and clears it, so an owner can react per-receive
+      and a large transfer never accumulates the whole stream. `execute( )`
+      never drains, so `get_stdout( )`-at-close is unchanged (tier-2 replay
+      still green). Tier-1 test `drains_incrementally`.
 
 ## S1 — SFTP framing + INIT/VERSION
 
-- [ ] `zcl_oassh_sftp`: packet reassembly (length-prefix framing over a chunk
+- [x] `zcl_oassh_sftp`: packet reassembly (length-prefix framing over a chunk
       buffer), request-id allocation, response dispatch. Reject: length < 1,
       length above a documented ceiling (OpenSSH uses 256 KiB — pick and
       assert one), response id mismatch, unknown response type.
-- [ ] `SSH_FXP_INIT (version=3)` → parse `VERSION`; require version 3, store
+      Uses the chunked stream buffer with a cached frame length and 256 KiB
+      packet-body ceiling; multiple outstanding int4-safe request IDs are
+      matched independently.
+- [x] `SSH_FXP_INIT (version=3)` → parse `VERSION`; require version 3, store
       but ignore extension pairs. INIT/VERSION carry **no** request-id —
       keep that special case isolated.
-- [ ] Tests: exact INIT bytes; VERSION with and without extensions; VERSION
+      VERSION publishes state only after all extension name/data pairs parse.
+- [x] Tests: exact INIT bytes; VERSION with and without extensions; VERSION
       split across two data chunks; two responses in one chunk; garbage type;
       version 6 rejected with a typed error.
+      Ten tier-1 tests also cover zero/oversized lengths, echoed-id mismatch,
+      request-id wire allocation, and a truncated extension pair.
 
 ## S2 — Download slice ⭐ first shippable
 
-- [ ] State machine: `INIT → VERSION → OPEN(path, SSH_FXF_READ, empty ATTRS)
+- [x] State machine: `INIT → VERSION → OPEN(path, SSH_FXF_READ, empty ATTRS)
       → HANDLE → READ loop → SSH_FX_EOF → CLOSE(handle) → STATUS → channel
       close`. Chunked READ at 32768 bytes per request (interop-safe under
       OpenSSH limits); the server may return **less** than requested — advance
-      the offset by what actually arrived. `SSH_FXP_DATA` on a short final
-      read and `SSH_FX_EOF` are both normal termination paths.
-- [ ] Any STATUS other than OK/EOF at the step that expects it → typed
+      the offset by what actually arrived and continue until explicit
+      `SSH_FX_EOF`. Binary chunks are accumulated in a balanced table; both
+      full and short DATA advance the uint64 offset. Zero-length DATA is
+      rejected to prevent a no-progress loop.
+- [x] Any STATUS other than OK/EOF at the step that expects it → typed
       `zcx_oassh_error` carrying the SFTP status code; still CLOSE the handle
       and the channel on the error path (no leaked handles).
-- [ ] Public API on `zcl_oassh`: `sftp_download( iv_path, iv_timeout_seconds )`
+      The first failure status survives handle/channel cleanup and is exposed
+      through `get_sftp_status( )`; OPEN failure has no handle to close.
+- [x] Public API on `zcl_oassh`: `sftp_download( iv_path, iv_timeout_seconds )`
       returning `xstring` (binary-safe — no `zcl_oassh_ascii` conversion of
       file content). Same one-operation-per-connection contract as
       `execute( )` for now; assert against mixing the two.
-- [ ] Tier 1: full-download happy path against a scripted response sequence;
-      short reads; zero-byte file; NO_SUCH_FILE; DATA for a stale request id;
+      Execute and SFTP now share an explicit operation selector/completion
+      lifecycle while channel framing remains generic.
+- [x] Tier 1: full-download happy path against a scripted response sequence;
+      continuing short reads; zero-length DATA rejection; zero-byte file;
+      NO_SUCH_FILE; DATA for a stale request id;
       READ response arriving after EOF.
-- [ ] Tier 2: recorded OpenSSH sftp session replayed through mock socket +
+      Also covers exact OPEN/READ/CLOSE bytes, a full 32768-byte read and
+      offset advance, typed status propagation, and remote channel credit.
+- [x] Tier 2: recorded OpenSSH sftp session replayed through mock socket +
       fixed RNG — complete inbound fixture consumed, outbound bytes exact.
-- [ ] Tier 3: `integration/sftp.mjs` — Docker OpenSSH with the sftp
+      Captured from the pinned OpenSSH 10.3 image with fixed AB randomness;
+      the replay downloads the binary fixture including NUL and 0xFF.
+- [x] Tier 3: `integration/sftp.mjs` — Docker OpenSSH with the sftp
       subsystem, download a pinned fixture file, byte-compare. Assert the
       subsystem request succeeded (no exec fallback masking a failure).
+      Live pinned-container run downloaded and byte-compared the 16-byte
+      `/config/sftp-fixture.bin` fixture; the operation reached SFTP finished
+      and completed the SSH channel close handshake.
 
 ## S3 — Upload slice
 
-- [ ] `OPEN(path, WRITE|CREAT|TRUNC, empty ATTRS) → HANDLE → WRITE loop
+- [x] `OPEN(path, WRITE|CREAT|TRUNC, empty ATTRS) → HANDLE → WRITE loop
       (32768-byte chunks, offset tracking) → STATUS OK per WRITE → CLOSE`.
       Respect the **remote** channel window when queueing WRITE packets —
       this is the first sender of bulk channel data, so remote-window
       accounting in `zcl_oassh_channel` finally gets exercised; add tests
-      for stalling on window exhaustion and resuming on WINDOW_ADJUST.
-- [ ] `sftp_upload( iv_path, iv_data, iv_timeout_seconds )`.
-- [ ] Tier 1 (scripted), tier 2 (replay), tier 3 (upload then verify content
-      via a second connection's download or forced `cat`).
-- [ ] Rebex (`integration/rebex.mjs`): server is read-only — download-only
-      check there; upload stays OpenSSH-only.
+      for stalling on window exhaustion and resuming on WINDOW_ADJUST. Exact
+      OPEN/WRITE bytes, 32768-byte offset progression, zero-window stall, and
+      WINDOW_ADJUST resume are covered by ABAP Unit.
+- [x] `sftp_upload( iv_path, iv_data, iv_timeout_seconds )`.
+- [x] Tier 1 (scripted), tier 2 (replay), tier 3 (upload then verify content
+      via a second connection's download or forced `cat`). The fixed-`AB`
+      OpenSSH replay consumes the complete inbound stream and matches exact
+      outbound bytes; the pinned live server round-tripped 32770 binary bytes
+      through a fresh download connection.
+- [x] Rebex (`integration/rebex.mjs`): server is read-only — download-only
+      check there; upload stays OpenSSH-only. The 379-byte official
+      `/pub/example/readme.txt` fixture downloads byte-exactly.
 
 ## S4 — Directory and metadata ops (by demand, order flexible)
 
-- [ ] `STAT`/`LSTAT` → parsed ATTRS (needed anyway for pre-sizing downloads).
-- [ ] `OPENDIR`/`READDIR` loop → list of names + ATTRS; `READDIR` repeats
-      until `SSH_FX_EOF`.
-- [ ] `MKDIR`/`RMDIR`/`REMOVE`/`RENAME` — thin, STATUS-checked wrappers.
-- [ ] `REALPATH` for path normalization if servers disagree on relative paths.
+- [x] `STAT`/`LSTAT` → parsed ATTRS (needed anyway for pre-sizing downloads).
+      Public APIs return byte-exact unsigned v3 fields, presence flags, and
+      opaque extensions; unsupported flag bits, excessive extension counts,
+      truncation, stale IDs, and STATUS failures are rejected or typed. ABAP
+      Unit, fixed-`AB` OpenSSH replay, and live pinned OpenSSH STAT/LSTAT all
+      pass against the 16-byte binary fixture; Rebex STAT independently
+      returns the official 379-byte fixture size.
+- [x] `OPENDIR`/`READDIR` loop → list of names + ATTRS; `READDIR` repeats
+      until `SSH_FX_EOF`. NAME batches retain binary-safe filenames,
+      opaque longnames, and parsed ATTRS; bounded counts, malformed packets,
+      STATUS errors, and mandatory handle closure are covered by ABAP Unit.
+      Fixed-`AB` exact OpenSSH replay and live pinned OpenSSH listing pass.
+- [x] `MKDIR`/`RMDIR`/`REMOVE`/`RENAME` — thin, STATUS-checked wrappers.
+      Exact v3 wire layouts, typed STATUS failures, and unexpected replies are
+      covered by ABAP Unit. A fixed-`AB` exact MKDIR session replay passes, and
+      all four public APIs pass against pinned OpenSSH with verified filesystem
+      postconditions.
+- [x] `REALPATH` for path normalization if servers disagree on relative paths.
+      The public API returns the binary-safe canonical NAME, opaque longname,
+      and parsed ATTRS. Exact wire output, STATUS failures, malformed counts,
+      and empty canonical paths are covered by ABAP Unit; pinned OpenSSH returns
+      and verifies the expected canonical path through the live driver.
 
 ## S5 — Validation & CI wrap-up
 
-- [ ] CI: add sftp integration job(s) to `.github/workflows/test.yml`,
-      pinned image, forced algorithms consistent with existing jobs.
+- [x] CI: add sftp integration job(s) to `.github/workflows/test.yml`,
+      pinned image, forced algorithms consistent with existing jobs. Parallel
+      file/directory and path-operation jobs build once, force
+      `curve25519-sha256`/`aes128-ctr`/`rsa-sha2-256`, and assert every durable
+      SFTP mode at the application level. The combined CI setup passes locally.
 - [ ] A4H: activate, ABAP Unit (focused + full), replay, ATC on changed scope.
 - [ ] NPL SAP_BASIS 750: deploy via configured tooling, syntax-check, focused
       + replay tests. Live APC sftp download against Docker OpenSSH if
       reachable; otherwise record exactly what was blocked.
 - [ ] README: sftp usage snippet; `CHECKLIST.md` M9 sftp item checked only
-      when all tiers above are green.
+      when all tiers above are green. The README now documents the binary-safe
+      APIs and one-operation-per-connection lifecycle; this remains open until
+      A4H/NPL validation permits the M9 checklist update.
 - [ ] New transpiler/SAP discrepancies (uint64, chunk reassembly, int8) go to
       `ANORMALIES.md` with minimal repro.
 
