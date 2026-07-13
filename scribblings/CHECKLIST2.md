@@ -196,8 +196,11 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S5 — Validation & CI wrap-up
 
-- [ ] CI: add sftp integration job(s) to `.github/workflows/test.yml`,
-      pinned image, forced algorithms consistent with existing jobs.
+- [x] CI: add sftp integration job(s) to `.github/workflows/test.yml`,
+      pinned image, forced algorithms consistent with existing jobs. Parallel
+      file/directory and path-operation jobs build once, force
+      `curve25519-sha256`/`aes128-ctr`/`rsa-sha2-256`, and assert every durable
+      SFTP mode at the application level. The combined CI setup passes locally.
 - [ ] A4H: activate, ABAP Unit (focused + full), replay, ATC on changed scope.
 - [ ] NPL SAP_BASIS 750: deploy via configured tooling, syntax-check, focused
       + replay tests. Live APC sftp download against Docker OpenSSH if
