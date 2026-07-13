@@ -30,6 +30,10 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS stat_extensions FOR TESTING RAISING cx_static_check.
     METHODS stat_status FOR TESTING RAISING cx_static_check.
     METHODS stat_malformed_attrs FOR TESTING RAISING cx_static_check.
+    METHODS list_directory FOR TESTING RAISING cx_static_check.
+    METHODS list_read_error_closes FOR TESTING RAISING cx_static_check.
+    METHODS list_open_error FOR TESTING RAISING cx_static_check.
+    METHODS list_invalid_count FOR TESTING RAISING cx_static_check.
     METHODS typed_status_error FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -566,6 +570,111 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD list_directory.
+* OPENDIR -> HANDLE -> repeated READDIR/NAME -> EOF -> CLOSE/OK.
+    DATA lv_out TYPE xstring.
+    DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+    lv_out = mo_sftp->start_list( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A0B000000010000000164' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A0C000000020000000148' ).
+    lv_out = mo_sftp->receive(
+      '0000002D680000000200000002000000016100000001410000000100000000000000030000000162000000014200000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A0C000000030000000148' ).
+    lt_names = mo_sftp->get_names( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( lt_names )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_names[ 1 ]-filename
+      exp = '61' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_names[ 1 ]-longname
+      exp = '41' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_names[ 1 ]-attrs-size
+      exp = '0000000000000003' ).
+    lv_out = mo_sftp->receive( '000000116500000003000000010000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000040000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000004000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD list_read_error_closes.
+* A non-EOF READDIR error is retained, but the directory handle is closed.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_list( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000002000000030000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000030000000148' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 3 ).
+    lv_out = mo_sftp->receive( '000000116500000003000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 3 ).
+  ENDMETHOD.
+
+
+  METHOD list_open_error.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_list( 'missing' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_initial( mo_sftp->mv_handle ).
+  ENDMETHOD.
+
+
+  METHOD list_invalid_count.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_list( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    TRY.
+        mo_sftp->receive( '00000009680000000200000000' ).
+        cl_abap_unit_assert=>fail( 'empty NAME batch accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_list( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    TRY.
+        mo_sftp->receive( '00000009680000000200001001' ).
+        cl_abap_unit_assert=>fail( 'oversized NAME count accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
     ENDTRY.
   ENDMETHOD.
 

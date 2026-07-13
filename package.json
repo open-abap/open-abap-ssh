@@ -14,6 +14,7 @@
     "integration:sftp": "npm run build && node integration/sftp.mjs",
     "integration:sftp-upload": "npm run build && node integration/sftp-upload.mjs",
     "integration:sftp-stat": "npm run build && node integration/sftp-stat.mjs",
+    "integration:sftp-list": "npm run build && node integration/sftp-list.mjs",
     "integration:rebex": "npm run build && node integration/rebex.mjs"
   },
   "repository": {

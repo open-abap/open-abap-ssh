@@ -27,6 +27,13 @@ CLASS zcl_oassh_sftp DEFINITION
         mtime           TYPE ty_uint32,
         extensions      TYPE ty_extensions,
       END OF ty_attrs.
+    TYPES:
+      BEGIN OF ty_name,
+        filename TYPE xstring,
+        longname TYPE xstring,
+        attrs    TYPE ty_attrs,
+      END OF ty_name.
+    TYPES ty_names TYPE STANDARD TABLE OF ty_name WITH EMPTY KEY.
     CONSTANTS c_max_packet_length TYPE i VALUE 262144.
     CONSTANTS:
       BEGIN OF c_state,
@@ -39,6 +46,8 @@ CLASS zcl_oassh_sftp DEFINITION
         write_pending   TYPE i VALUE 6,
         finished        TYPE i VALUE 7,
         stat_pending    TYPE i VALUE 8,
+        opendir_pending TYPE i VALUE 9,
+        readdir_pending TYPE i VALUE 10,
       END OF c_state.
 
     METHODS constructor.
@@ -70,6 +79,13 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS start_list
+      IMPORTING
+        iv_path        TYPE string
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS receive
       IMPORTING
         iv_data TYPE xstring
@@ -92,6 +108,9 @@ CLASS zcl_oassh_sftp DEFINITION
     METHODS get_attrs
       RETURNING
         VALUE(rs_attrs) TYPE ty_attrs.
+    METHODS get_names
+      RETURNING
+        VALUE(rt_names) TYPE ty_names.
 
   PRIVATE SECTION.
     TYPES ty_request_ids TYPE SORTED TABLE OF i WITH UNIQUE KEY table_line.
@@ -100,7 +119,9 @@ CLASS zcl_oassh_sftp DEFINITION
     CONSTANTS c_operation_upload TYPE i VALUE 2.
     CONSTANTS c_operation_stat TYPE i VALUE 3.
     CONSTANTS c_operation_lstat TYPE i VALUE 4.
+    CONSTANTS c_operation_list TYPE i VALUE 5.
     CONSTANTS c_read_length TYPE i VALUE 32768.
+    CONSTANTS c_max_directory_entries TYPE i VALUE 100000.
 
     DATA mo_receive TYPE REF TO zcl_oassh_stream.
     DATA mv_expected_length TYPE i.
@@ -122,6 +143,7 @@ CLASS zcl_oassh_sftp DEFINITION
     DATA mv_upload_position TYPE i.
     DATA mv_write_length TYPE i.
     DATA ms_attrs TYPE ty_attrs.
+    DATA mt_names TYPE ty_names.
 
     METHODS frame
       IMPORTING
@@ -195,6 +217,22 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS opendir_request
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS readdir_request
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS handle_list_response
+      IMPORTING
+        iv_type   TYPE zcl_oassh_stream=>ty_byte
+        io_packet TYPE REF TO zcl_oassh_stream
+      RAISING
+        zcx_oassh_error.
     METHODS handle_attrs_response
       IMPORTING
         iv_type   TYPE zcl_oassh_stream=>ty_byte
@@ -204,6 +242,7 @@ CLASS zcl_oassh_sftp DEFINITION
     CLASS-METHODS parse_attrs
       IMPORTING
         io_packet       TYPE REF TO zcl_oassh_stream
+        iv_require_consumed TYPE abap_bool DEFAULT abap_true
       RETURNING
         VALUE(rs_attrs) TYPE ty_attrs
       RAISING
@@ -289,6 +328,16 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     ELSE.
       mv_operation = c_operation_stat.
     ENDIF.
+    mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
+    rv_data = start( ).
+  ENDMETHOD.
+
+
+  METHOD start_list.
+    IF mv_state <> c_state-created.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDIF.
+    mv_operation = c_operation_list.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
     rv_data = start( ).
   ENDMETHOD.
@@ -420,6 +469,9 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN c_operation_stat OR c_operation_lstat.
         mv_outbound = stat_request( ).
         mv_state = c_state-stat_pending.
+      WHEN c_operation_list.
+        mv_outbound = opendir_request( ).
+        mv_state = c_state-opendir_pending.
     ENDCASE.
   ENDMETHOD.
 
@@ -452,6 +504,13 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     ELSEIF ( mv_operation = c_operation_stat OR mv_operation = c_operation_lstat )
         AND mv_state = c_state-stat_pending.
       handle_attrs_response(
+        iv_type   = iv_type
+        io_packet = io_packet ).
+    ELSEIF mv_operation = c_operation_list
+        AND ( mv_state = c_state-opendir_pending
+          OR mv_state = c_state-readdir_pending
+          OR mv_state = c_state-close_pending ).
+      handle_list_response(
         iv_type   = iv_type
         io_packet = io_packet ).
     ELSE.
@@ -661,6 +720,107 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD opendir_request.
+* Section 6.7: OPENDIR contains the directory path and returns an opaque handle.
+    DATA lo_body TYPE REF TO zcl_oassh_stream.
+    lo_body = NEW #( ).
+    lo_body->string_encode( mv_path ).
+    rv_data = build_request(
+      iv_type = '0B'
+      iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD readdir_request.
+    DATA lo_body TYPE REF TO zcl_oassh_stream.
+    lo_body = NEW #( ).
+    lo_body->string_encode( mv_handle ).
+    rv_data = build_request(
+      iv_type = '0C'
+      iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD handle_list_response.
+* Sections 6.7 and 7: consume every NAME batch, repeat READDIR until EOF, and
+* close the directory handle on EOF or any READDIR status failure.
+    DATA lv_handle TYPE xstring.
+    DATA lv_status TYPE i.
+    DATA lv_count TYPE i.
+    DATA lv_total TYPE i.
+    DATA ls_name TYPE ty_name.
+    CASE mv_state.
+      WHEN c_state-opendir_pending.
+        CASE iv_type.
+          WHEN '66'. " SSH_FXP_HANDLE
+            lv_handle = io_packet->string_decode( ).
+            ensure_consumed( io_packet ).
+            IF lv_handle IS INITIAL OR xstrlen( lv_handle ) > 256.
+              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            ENDIF.
+            mv_handle = lv_handle.
+            mv_outbound = readdir_request( ).
+            mv_state = c_state-readdir_pending.
+          WHEN '65'.
+            lv_status = parse_status( io_packet ).
+            IF lv_status = 0 OR lv_status = 1.
+              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            ENDIF.
+            mv_error_status = lv_status.
+            mv_state = c_state-finished.
+          WHEN OTHERS.
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDCASE.
+      WHEN c_state-readdir_pending.
+        CASE iv_type.
+          WHEN '68'. " SSH_FXP_NAME
+            lv_count = io_packet->uint32_decode( ).
+            IF lv_count <= 0 OR lv_count > 4096.
+              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            ENDIF.
+            lv_total = lines( mt_names ) + lv_count.
+            IF lv_total > c_max_directory_entries.
+              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            ENDIF.
+            DO lv_count TIMES.
+              CLEAR ls_name.
+              ls_name-filename = io_packet->string_decode( ).
+              ls_name-longname = io_packet->string_decode( ).
+              ls_name-attrs = parse_attrs(
+                io_packet           = io_packet
+                iv_require_consumed = abap_false ).
+              APPEND ls_name TO mt_names.
+            ENDDO.
+            ensure_consumed( io_packet ).
+            mv_outbound = readdir_request( ).
+          WHEN '65'.
+            lv_status = parse_status( io_packet ).
+            IF lv_status <> 1.
+              IF lv_status = 0.
+                zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              ENDIF.
+              mv_error_status = lv_status.
+            ENDIF.
+            mv_outbound = close_request( ).
+            mv_state = c_state-close_pending.
+          WHEN OTHERS.
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDCASE.
+      WHEN c_state-close_pending.
+        IF iv_type <> '65'.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDIF.
+        lv_status = parse_status( io_packet ).
+        IF lv_status <> 0 AND mv_error_status < 0.
+          mv_error_status = lv_status.
+        ENDIF.
+        mv_state = c_state-finished.
+      WHEN OTHERS.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDCASE.
+  ENDMETHOD.
+
+
   METHOD handle_attrs_response.
     DATA lv_status TYPE i.
     CASE iv_type.
@@ -737,7 +897,9 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         APPEND ls_extension TO rs_attrs-extensions.
       ENDDO.
     ENDIF.
-    ensure_consumed( io_packet ).
+    IF iv_require_consumed = abap_true.
+      ensure_consumed( io_packet ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -818,5 +980,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD get_attrs.
     rs_attrs = ms_attrs.
+  ENDMETHOD.
+
+
+  METHOD get_names.
+    rt_names = mt_names.
   ENDMETHOD.
 ENDCLASS.

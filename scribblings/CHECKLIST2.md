@@ -178,8 +178,11 @@ draft before implementing; the list above is orientation, not the spec.
       Unit, fixed-`AB` OpenSSH replay, and live pinned OpenSSH STAT/LSTAT all
       pass against the 16-byte binary fixture; Rebex STAT independently
       returns the official 379-byte fixture size.
-- [ ] `OPENDIR`/`READDIR` loop → list of names + ATTRS; `READDIR` repeats
-      until `SSH_FX_EOF`.
+- [x] `OPENDIR`/`READDIR` loop → list of names + ATTRS; `READDIR` repeats
+      until `SSH_FX_EOF`. NAME batches retain binary-safe filenames,
+      opaque longnames, and parsed ATTRS; bounded counts, malformed packets,
+      STATUS errors, and mandatory handle closure are covered by ABAP Unit.
+      Fixed-`AB` exact OpenSSH replay and live pinned OpenSSH listing pass.
 - [ ] `MKDIR`/`RMDIR`/`REMOVE`/`RENAME` — thin, STATUS-checked wrappers.
 - [ ] `REALPATH` for path normalization if servers disagree on relative paths.
 
