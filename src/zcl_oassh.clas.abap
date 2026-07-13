@@ -43,6 +43,22 @@ CLASS zcl_oassh DEFINITION
         iv_timeout_seconds TYPE i DEFAULT 300
       RAISING
         cx_static_check.
+    METHODS sftp_stat
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+      RAISING
+        cx_static_check.
+    METHODS sftp_lstat
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+      RAISING
+        cx_static_check.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -78,6 +94,8 @@ CLASS zcl_oassh DEFINITION
         execute       TYPE i VALUE 1,
         sftp_download TYPE i VALUE 2,
         sftp_upload   TYPE i VALUE 3,
+        sftp_stat     TYPE i VALUE 4,
+        sftp_lstat    TYPE i VALUE 5,
       END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -146,6 +164,15 @@ CLASS zcl_oassh DEFINITION
       IMPORTING
         iv_data TYPE xstring.
     METHODS flush_sftp_output
+      RAISING
+        cx_static_check.
+    METHODS sftp_attributes
+      IMPORTING
+        iv_path            TYPE string
+        iv_lstat           TYPE abap_bool
+        iv_timeout_seconds TYPE i
+      RETURNING
+        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS process_global_request
@@ -316,6 +343,63 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_reason      = zcx_oassh_error=>c_reason-sftp_status
         iv_sftp_status = lv_status ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD sftp_stat.
+    rs_attrs = sftp_attributes(
+      iv_path            = iv_path
+      iv_lstat           = abap_false
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD sftp_lstat.
+    rs_attrs = sftp_attributes(
+      iv_path            = iv_path
+      iv_lstat           = abap_true
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD sftp_attributes.
+    DATA lv_status TYPE i.
+    IF mv_operation_started = abap_true.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    mv_operation_started = abap_true.
+    IF iv_lstat = abap_true.
+      mv_operation = gc_operation-sftp_lstat.
+    ELSE.
+      mv_operation = gc_operation-sftp_stat.
+    ENDIF.
+    mv_sftp_path = iv_path.
+    mo_sftp = NEW #( ).
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
+        OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lv_status = mo_sftp->get_error_status( ).
+    IF lv_status >= 0.
+      zcx_oassh_error=>raise(
+        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
+        iv_sftp_status = lv_status ).
+    ENDIF.
+    rs_attrs = mo_sftp->get_attrs( ).
   ENDMETHOD.
 
 
@@ -720,7 +804,8 @@ CLASS zcl_oassh IMPLEMENTATION.
         CASE mv_operation.
           WHEN gc_operation-execute.
             lv_reply = mo_channel->exec( mv_command ).
-          WHEN gc_operation-sftp_download OR gc_operation-sftp_upload.
+          WHEN gc_operation-sftp_download OR gc_operation-sftp_upload
+              OR gc_operation-sftp_stat OR gc_operation-sftp_lstat.
             lv_reply = mo_channel->subsystem( 'sftp' ).
           WHEN OTHERS.
             zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
@@ -728,16 +813,23 @@ CLASS zcl_oassh IMPLEMENTATION.
         send_encrypted( lv_reply ).
       WHEN zcl_oassh_channel=>c_state-running.
         IF mv_operation = gc_operation-sftp_download
-            OR mv_operation = gc_operation-sftp_upload.
+            OR mv_operation = gc_operation-sftp_upload
+            OR mv_operation = gc_operation-sftp_stat
+            OR mv_operation = gc_operation-sftp_lstat.
           flush_sftp_output( ).
           IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-created.
-            IF mv_operation = gc_operation-sftp_download.
-              lv_sftp_output = mo_sftp->start_download( mv_sftp_path ).
-            ELSE.
-              lv_sftp_output = mo_sftp->start_upload(
-                iv_path = mv_sftp_path
-                iv_data = mv_sftp_upload_data ).
-            ENDIF.
+            CASE mv_operation.
+              WHEN gc_operation-sftp_download.
+                lv_sftp_output = mo_sftp->start_download( mv_sftp_path ).
+              WHEN gc_operation-sftp_upload.
+                lv_sftp_output = mo_sftp->start_upload(
+                  iv_path = mv_sftp_path
+                  iv_data = mv_sftp_upload_data ).
+              WHEN gc_operation-sftp_stat OR gc_operation-sftp_lstat.
+                lv_sftp_output = mo_sftp->start_stat(
+                  iv_path  = mv_sftp_path
+                  iv_lstat = xsdbool( mv_operation = gc_operation-sftp_lstat ) ).
+            ENDCASE.
           ELSE.
             lv_sftp_input = mo_channel->drain_stdout( ).
             IF lv_sftp_input IS NOT INITIAL.

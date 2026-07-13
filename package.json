@@ -13,6 +13,7 @@
     "integration:exec": "npm run build && node integration/exec.mjs",
     "integration:sftp": "npm run build && node integration/sftp.mjs",
     "integration:sftp-upload": "npm run build && node integration/sftp-upload.mjs",
+    "integration:sftp-stat": "npm run build && node integration/sftp-stat.mjs",
     "integration:rebex": "npm run build && node integration/rebex.mjs"
   },
   "repository": {

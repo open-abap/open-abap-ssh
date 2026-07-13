@@ -4,6 +4,29 @@ CLASS zcl_oassh_sftp DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
+    TYPES ty_uint32 TYPE x LENGTH 4.
+    TYPES ty_uint64 TYPE x LENGTH 8.
+    TYPES:
+      BEGIN OF ty_extension,
+        extension_type TYPE xstring,
+        extension_data TYPE xstring,
+      END OF ty_extension.
+    TYPES ty_extensions TYPE STANDARD TABLE OF ty_extension WITH EMPTY KEY.
+    TYPES:
+      BEGIN OF ty_attrs,
+        flags           TYPE ty_uint32,
+        has_size        TYPE abap_bool,
+        size            TYPE ty_uint64,
+        has_uid_gid     TYPE abap_bool,
+        uid             TYPE ty_uint32,
+        gid             TYPE ty_uint32,
+        has_permissions TYPE abap_bool,
+        permissions     TYPE ty_uint32,
+        has_acmodtime   TYPE abap_bool,
+        atime           TYPE ty_uint32,
+        mtime           TYPE ty_uint32,
+        extensions      TYPE ty_extensions,
+      END OF ty_attrs.
     CONSTANTS c_max_packet_length TYPE i VALUE 262144.
     CONSTANTS:
       BEGIN OF c_state,
@@ -15,6 +38,7 @@ CLASS zcl_oassh_sftp DEFINITION
         close_pending   TYPE i VALUE 5,
         write_pending   TYPE i VALUE 6,
         finished        TYPE i VALUE 7,
+        stat_pending    TYPE i VALUE 8,
       END OF c_state.
 
     METHODS constructor.
@@ -38,6 +62,14 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS start_stat
+      IMPORTING
+        iv_path        TYPE string
+        iv_lstat       TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     METHODS receive
       IMPORTING
         iv_data TYPE xstring
@@ -57,12 +89,17 @@ CLASS zcl_oassh_sftp DEFINITION
     METHODS get_error_status
       RETURNING
         VALUE(rv_status) TYPE i.
+    METHODS get_attrs
+      RETURNING
+        VALUE(rs_attrs) TYPE ty_attrs.
 
   PRIVATE SECTION.
     TYPES ty_request_ids TYPE SORTED TABLE OF i WITH UNIQUE KEY table_line.
     TYPES ty_chunks TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
     CONSTANTS c_operation_download TYPE i VALUE 1.
     CONSTANTS c_operation_upload TYPE i VALUE 2.
+    CONSTANTS c_operation_stat TYPE i VALUE 3.
+    CONSTANTS c_operation_lstat TYPE i VALUE 4.
     CONSTANTS c_read_length TYPE i VALUE 32768.
 
     DATA mo_receive TYPE REF TO zcl_oassh_stream.
@@ -84,6 +121,7 @@ CLASS zcl_oassh_sftp DEFINITION
     DATA mv_upload_data TYPE xstring.
     DATA mv_upload_position TYPE i.
     DATA mv_write_length TYPE i.
+    DATA ms_attrs TYPE ty_attrs.
 
     METHODS frame
       IMPORTING
@@ -152,6 +190,30 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS stat_request
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS handle_attrs_response
+      IMPORTING
+        iv_type   TYPE zcl_oassh_stream=>ty_byte
+        io_packet TYPE REF TO zcl_oassh_stream
+      RAISING
+        zcx_oassh_error.
+    CLASS-METHODS parse_attrs
+      IMPORTING
+        io_packet       TYPE REF TO zcl_oassh_stream
+      RETURNING
+        VALUE(rs_attrs) TYPE ty_attrs
+      RAISING
+        zcx_oassh_error.
+    CLASS-METHODS flag_is_set
+      IMPORTING
+        iv_flags      TYPE ty_uint32
+        iv_bit        TYPE i
+      RETURNING
+        VALUE(rv_set) TYPE abap_bool.
     CLASS-METHODS parse_status
       IMPORTING
         io_packet       TYPE REF TO zcl_oassh_stream
@@ -218,6 +280,20 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD start_stat.
+    IF mv_state <> c_state-created.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDIF.
+    IF iv_lstat = abap_true.
+      mv_operation = c_operation_lstat.
+    ELSE.
+      mv_operation = c_operation_stat.
+    ENDIF.
+    mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
+    rv_data = start( ).
+  ENDMETHOD.
+
+
   METHOD receive.
 * SFTP framing is independent of SSH CHANNEL_DATA boundaries. Keep incomplete
 * bytes in the chunked stream and dispatch every complete packet in order.
@@ -262,7 +338,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     DATA lo_body TYPE REF TO zcl_oassh_stream.
     DATA lv_id TYPE i.
     DATA lv_valid TYPE abap_bool.
-    IF mv_state < c_state-ready OR mv_state >= c_state-finished.
+    IF mv_state < c_state-ready OR mv_state = c_state-finished.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
     ENDIF.
     CASE iv_type.
@@ -311,7 +387,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       handle_version( lo_packet ).
       RETURN.
     ENDIF.
-    IF mv_state >= c_state-ready AND mv_state < c_state-finished.
+    IF mv_state >= c_state-ready AND mv_state <> c_state-finished.
       handle_response(
         iv_type   = lv_type
         io_packet = lo_packet ).
@@ -337,10 +413,14 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     ENDWHILE.
     mv_version = lv_version.
     mv_state = c_state-ready.
-    IF mv_operation = c_operation_download OR mv_operation = c_operation_upload.
-      mv_outbound = open_request( ).
-      mv_state = c_state-open_pending.
-    ENDIF.
+    CASE mv_operation.
+      WHEN c_operation_download OR c_operation_upload.
+        mv_outbound = open_request( ).
+        mv_state = c_state-open_pending.
+      WHEN c_operation_stat OR c_operation_lstat.
+        mv_outbound = stat_request( ).
+        mv_state = c_state-stat_pending.
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -367,6 +447,11 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     IF ( mv_operation = c_operation_download OR mv_operation = c_operation_upload )
         AND mv_state <> c_state-ready.
       handle_download_response(
+        iv_type   = iv_type
+        io_packet = io_packet ).
+    ELSEIF ( mv_operation = c_operation_stat OR mv_operation = c_operation_lstat )
+        AND mv_state = c_state-stat_pending.
+      handle_attrs_response(
         iv_type   = iv_type
         io_packet = io_packet ).
     ELSE.
@@ -558,6 +643,111 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD stat_request.
+* draft-ietf-secsh-filexfer-02 section 6.8: STAT follows links while LSTAT
+* returns attributes for the link itself. Both requests contain only a path.
+    DATA lo_body TYPE REF TO zcl_oassh_stream.
+    DATA lv_type TYPE zcl_oassh_stream=>ty_byte.
+    lo_body = NEW #( ).
+    lo_body->string_encode( mv_path ).
+    IF mv_operation = c_operation_lstat.
+      lv_type = '07'. " SSH_FXP_LSTAT
+    ELSE.
+      lv_type = '11'. " SSH_FXP_STAT
+    ENDIF.
+    rv_data = build_request(
+      iv_type = lv_type
+      iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD handle_attrs_response.
+    DATA lv_status TYPE i.
+    CASE iv_type.
+      WHEN '69'. " SSH_FXP_ATTRS
+        ms_attrs = parse_attrs( io_packet ).
+      WHEN '65'. " SSH_FXP_STATUS
+        lv_status = parse_status( io_packet ).
+        IF lv_status = 0 OR lv_status = 1.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDIF.
+        mv_error_status = lv_status.
+      WHEN OTHERS.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDCASE.
+    mv_state = c_state-finished.
+  ENDMETHOD.
+
+
+  METHOD parse_attrs.
+* Section 5 fixes both field order and flag semantics. Unsupported v3 bits
+* are a protocol error; raw unsigned values remain byte-exact for portable ABAP.
+    DATA lv_flags TYPE ty_uint32.
+    DATA lv_bit_index TYPE i.
+    DATA lv_bit TYPE c LENGTH 1.
+    DATA lv_count TYPE i.
+    DATA ls_extension TYPE ty_extension.
+    lv_flags = io_packet->take( 4 ).
+    lv_bit_index = 2.
+    WHILE lv_bit_index <= 28.
+      GET BIT lv_bit_index OF lv_flags INTO lv_bit.
+      IF lv_bit = '1'.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      ENDIF.
+      lv_bit_index = lv_bit_index + 1.
+    ENDWHILE.
+    rs_attrs-flags = lv_flags.
+    rs_attrs-has_size = flag_is_set(
+      iv_flags = lv_flags
+      iv_bit   = 32 ).
+    rs_attrs-has_uid_gid = flag_is_set(
+      iv_flags = lv_flags
+      iv_bit   = 31 ).
+    rs_attrs-has_permissions = flag_is_set(
+      iv_flags = lv_flags
+      iv_bit   = 30 ).
+    rs_attrs-has_acmodtime = flag_is_set(
+      iv_flags = lv_flags
+      iv_bit   = 29 ).
+    IF rs_attrs-has_size = abap_true.
+      rs_attrs-size = io_packet->take( 8 ).
+    ENDIF.
+    IF rs_attrs-has_uid_gid = abap_true.
+      rs_attrs-uid = io_packet->take( 4 ).
+      rs_attrs-gid = io_packet->take( 4 ).
+    ENDIF.
+    IF rs_attrs-has_permissions = abap_true.
+      rs_attrs-permissions = io_packet->take( 4 ).
+    ENDIF.
+    IF rs_attrs-has_acmodtime = abap_true.
+      rs_attrs-atime = io_packet->take( 4 ).
+      rs_attrs-mtime = io_packet->take( 4 ).
+    ENDIF.
+    IF flag_is_set(
+        iv_flags = lv_flags
+        iv_bit   = 1 ) = abap_true.
+      lv_count = io_packet->uint32_decode( ).
+      IF lv_count < 0 OR lv_count > 1024.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      ENDIF.
+      DO lv_count TIMES.
+        CLEAR ls_extension.
+        ls_extension-extension_type = io_packet->string_decode( ).
+        ls_extension-extension_data = io_packet->string_decode( ).
+        APPEND ls_extension TO rs_attrs-extensions.
+      ENDDO.
+    ENDIF.
+    ensure_consumed( io_packet ).
+  ENDMETHOD.
+
+
+  METHOD flag_is_set.
+    DATA lv_bit TYPE c LENGTH 1.
+    GET BIT iv_bit OF iv_flags INTO lv_bit.
+    rv_set = xsdbool( lv_bit = '1' ).
+  ENDMETHOD.
+
+
   METHOD parse_status.
 * Section 7: STATUS always includes code, UTF-8 message, and language tag.
     rv_status = io_packet->uint32_decode( ).
@@ -623,5 +813,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD get_error_status.
     rv_status = mv_error_status.
+  ENDMETHOD.
+
+
+  METHOD get_attrs.
+    rs_attrs = ms_attrs.
   ENDMETHOD.
 ENDCLASS.

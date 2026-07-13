@@ -25,6 +25,11 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS upload_multiple_chunks FOR TESTING RAISING cx_static_check.
     METHODS upload_empty FOR TESTING RAISING cx_static_check.
     METHODS upload_write_error_closes FOR TESTING RAISING cx_static_check.
+    METHODS stat_attrs FOR TESTING RAISING cx_static_check.
+    METHODS lstat_wire FOR TESTING RAISING cx_static_check.
+    METHODS stat_extensions FOR TESTING RAISING cx_static_check.
+    METHODS stat_status FOR TESTING RAISING cx_static_check.
+    METHODS stat_malformed_attrs FOR TESTING RAISING cx_static_check.
     METHODS typed_status_error FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -442,6 +447,126 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = mo_sftp->get_error_status( )
       exp = 3 ).
+  ENDMETHOD.
+
+
+  METHOD stat_attrs.
+* Sections 5 and 6.8: flags determine the exact order of every ATTRS field.
+    DATA lv_out TYPE xstring.
+    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    lv_out = mo_sftp->start_stat( 'a' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A11000000010000000161' ).
+    lv_out = mo_sftp->receive(
+      '0000002569000000010000000F00000000000000030000000100000002000081A40000000400000005' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    ls_attrs = mo_sftp->get_attrs( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-flags
+      exp = '0000000F' ).
+    cl_abap_unit_assert=>assert_true( ls_attrs-has_size ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-size
+      exp = '0000000000000003' ).
+    cl_abap_unit_assert=>assert_true( ls_attrs-has_uid_gid ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-uid
+      exp = '00000001' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-gid
+      exp = '00000002' ).
+    cl_abap_unit_assert=>assert_true( ls_attrs-has_permissions ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-permissions
+      exp = '000081A4' ).
+    cl_abap_unit_assert=>assert_true( ls_attrs-has_acmodtime ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-atime
+      exp = '00000004' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-mtime
+      exp = '00000005' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD lstat_wire.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_stat(
+      iv_path  = 'a'
+      iv_lstat = abap_true ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A07000000010000000161' ).
+  ENDMETHOD.
+
+
+  METHOD stat_extensions.
+* Unknown extension values are preserved as opaque byte strings.
+    DATA lv_out TYPE xstring.
+    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    lv_out = mo_sftp->start_stat( 'a' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000002169000000018000000000000002000000016100000000000000016200000002CCCC' ).
+    ls_attrs = mo_sftp->get_attrs( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( ls_attrs-extensions )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-extensions[ 1 ]-extension_type
+      exp = '61' ).
+    cl_abap_unit_assert=>assert_initial( ls_attrs-extensions[ 1 ]-extension_data ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_attrs-extensions[ 2 ]-extension_data
+      exp = 'CCCC' ).
+  ENDMETHOD.
+
+
+  METHOD stat_status.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_stat( 'missing' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD stat_malformed_attrs.
+* Unsupported v3 flag bits and truncated flagged fields are rejected.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_stat( 'a' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '00000009690000000100000010' ).
+        cl_abap_unit_assert=>fail( 'unsupported ATTRS flag accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_stat( 'a' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '0000000D69000000010000000100000000' ).
+        cl_abap_unit_assert=>fail( 'truncated ATTRS size accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDTRY.
   ENDMETHOD.
 
 
