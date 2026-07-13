@@ -135,7 +135,11 @@
 - [x] `chacha20-poly1305@openssh.com` — RFC 8439/OpenSSH vectors,
   authenticated streaming packets, forced OpenSSH integration, A4H/NPL ABAP Unit
 - [ ] interactive shell, sftp, port forwarding
+  - [x] interactive shell: RFC 4254 PTY request, checked shell request,
+        window-aware binary stdin, client EOF, raw terminal output, exact
+        fixed-RNG OpenSSH replay, and pinned live OpenSSH CI
   - sftp: implementation plan and milestone checklist in `CHECKLIST2.md`
+  - [ ] port forwarding
 
 ## Testing infrastructure (cross-cutting)
 - [x] tier 1: vectors in testclasses, run via transpiler (`npm test`)

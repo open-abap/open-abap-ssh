@@ -16,6 +16,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS utf8_command FOR TESTING RAISING cx_static_check.
     METHODS subsystem_request FOR TESTING RAISING cx_static_check.
     METHODS subsystem_failure FOR TESTING RAISING cx_static_check.
+    METHODS pty_shell_session FOR TESTING RAISING cx_static_check.
+    METHODS pty_rejected FOR TESTING RAISING cx_static_check.
     METHODS drains_incrementally FOR TESTING RAISING cx_static_check.
     METHODS sends_data FOR TESTING RAISING cx_static_check.
     METHODS client_closes FOR TESTING RAISING cx_static_check.
@@ -501,6 +503,73 @@ CLASS ltcl_test IMPLEMENTATION.
 
 * Drained bytes are not returned again by get_stdout( ) at close.
     cl_abap_unit_assert=>assert_initial( lo_channel->get_stdout( ) ).
+  ENDMETHOD.
+
+
+  METHOD pty_shell_session.
+* RFC 4254 sections 6.2, 6.5, and 8: PTY reply precedes shell request; stdin
+* is ordinary channel data and client EOF leaves the receive direction open.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->pty(
+        iv_terminal = 'xterm'
+        iv_columns  = 80
+        iv_rows     = 24 )
+      exp = '6200000007000000077074792D7265710100000005787465726D000000500000001800000000000000000000000100' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-pty_sent ).
+    lo_channel->receive( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-pty_ready ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->shell( )
+      exp = '6200000007000000057368656C6C01' ).
+    lo_channel->receive( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->data( '657869740A' )
+      exp = '5E0000000700000005657869740A' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->eof( )
+      exp = '6000000007' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-eof_sent ).
+* Output after client EOF is valid until the peer closes its direction.
+    lo_channel->receive( '5E0000000000000002646F' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_stdout( )
+      exp = '646F' ).
+    lo_channel->receive( '6000000000' ).
+    lo_channel->receive( '6100000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-closed ).
+  ENDMETHOD.
+
+
+  METHOD pty_rejected.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_channel->pty(
+      iv_terminal = 'xterm'
+      iv_columns  = 80
+      iv_rows     = 24 ).
+    TRY.
+        lo_channel->receive( '6400000000' ).
+        cl_abap_unit_assert=>fail( 'PTY rejection ignored' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-channel_failed ).
+    ENDTRY.
   ENDMETHOD.
 
 

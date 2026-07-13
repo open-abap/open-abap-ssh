@@ -12,6 +12,9 @@ CLASS zcl_oassh_channel DEFINITION
         eof_received  TYPE i VALUE 5,
         close_sent    TYPE i VALUE 6,
         closed        TYPE i VALUE 7,
+        pty_sent      TYPE i VALUE 8,
+        pty_ready     TYPE i VALUE 9,
+        eof_sent      TYPE i VALUE 10,
       END OF c_state.
     METHODS open RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS exec
@@ -20,11 +23,23 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS subsystem
       IMPORTING iv_name TYPE string
       RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS pty
+      IMPORTING
+        iv_terminal TYPE string
+        iv_columns  TYPE i
+        iv_rows     TYPE i
+      RETURNING VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS shell
+      RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS data
       IMPORTING iv_data TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS close
+      RETURNING VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS eof
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS receive
@@ -170,6 +185,44 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD pty.
+* RFC 4254 sections 6.2 and 8: request a PTY before starting the shell. An
+* explicit TTY_OP_END is the complete empty terminal-mode stream.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    IF mv_state <> c_state-open OR iv_columns < 0 OR iv_rows < 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lo_stream = NEW #( ).
+    lo_stream->append( '62' ).
+    lo_stream->uint32_encode( mv_remote_channel ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'pty-req' ) ).
+    lo_stream->boolean_encode( abap_true ).
+* TERM is request data, not a protocol token; preserve its UTF-8 bytes.
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring_text( iv_terminal ) ).
+    lo_stream->uint32_encode( iv_columns ).
+    lo_stream->uint32_encode( iv_rows ).
+    lo_stream->uint32_encode( 0 ).
+    lo_stream->uint32_encode( 0 ).
+    lo_stream->string_encode( '00' ).
+    rv_payload = lo_stream->get( ).
+    mv_state = c_state-pty_sent.
+  ENDMETHOD.
+
+
+  METHOD shell.
+* RFC 4254 section 6.5: a shell request has no request-specific fields.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    ASSERT mv_state = c_state-pty_ready.
+    lo_stream = NEW #( ).
+    lo_stream->append( '62' ).
+    lo_stream->uint32_encode( mv_remote_channel ).
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'shell' ) ).
+    lo_stream->boolean_encode( abap_true ).
+    rv_payload = lo_stream->get( ).
+    mv_state = c_state-exec_sent.
+  ENDMETHOD.
+
+
   METHOD data.
 * RFC 4254 section 5.2: channel data consumes the peer's advertised window
 * and may not exceed its maximum packet size.
@@ -200,7 +253,8 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 * RFC 4254 section 5.3 permits CLOSE without a preceding EOF. The peer must
 * answer with CLOSE; receive( ) then publishes the terminal closed state.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
-    IF mv_state <> c_state-running AND mv_state <> c_state-eof_received.
+    IF mv_state <> c_state-running AND mv_state <> c_state-eof_received
+        AND mv_state <> c_state-eof_sent.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
     ENDIF.
     lo_stream = NEW #( ).
@@ -208,6 +262,21 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     lo_stream->uint32_encode( mv_remote_channel ).
     rv_payload = lo_stream->get( ).
     mv_state = c_state-close_sent.
+  ENDMETHOD.
+
+
+  METHOD eof.
+* RFC 4254 section 5.3: EOF closes only the client's direction; the channel
+* remains open so all terminal output and the peer's CLOSE can still arrive.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    IF mv_state <> c_state-running.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lo_stream = NEW #( ).
+    lo_stream->append( '60' ).
+    lo_stream->uint32_encode( mv_remote_channel ).
+    rv_payload = lo_stream->get( ).
+    mv_state = c_state-eof_sent.
   ENDMETHOD.
 
   METHOD receive.
@@ -272,14 +341,20 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
           APPEND lv_data TO mt_stderr.
         ENDIF.
       WHEN '63'. " CHANNEL_SUCCESS (99)
-        IF mv_state <> c_state-exec_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
-        ENDIF.
-        lv_recipient = read_recipient( lo_stream ).
-        ensure_consumed( lo_stream ).
-        mv_state = c_state-running.
+        CASE mv_state.
+          WHEN c_state-pty_sent.
+            lv_recipient = read_recipient( lo_stream ).
+            ensure_consumed( lo_stream ).
+            mv_state = c_state-pty_ready.
+          WHEN c_state-exec_sent.
+            lv_recipient = read_recipient( lo_stream ).
+            ensure_consumed( lo_stream ).
+            mv_state = c_state-running.
+          WHEN OTHERS.
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDCASE.
       WHEN '64'. " CHANNEL_FAILURE (100)
-        IF mv_state <> c_state-exec_sent.
+        IF mv_state <> c_state-exec_sent AND mv_state <> c_state-pty_sent.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).

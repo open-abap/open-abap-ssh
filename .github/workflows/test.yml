@@ -67,6 +67,29 @@ jobs:
         OASSH_EXPECT_REKEY: "1"
         OASSH_EXPECT_STRICT_KEX: "1"
 
+  interactive-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/openssh
+      with:
+        image: ${{ env.OPENSSH_IMAGE }}
+    - uses: actions/setup-node@v6
+    - run: npm ci
+    - name: Require the durable interactive-shell algorithm set
+      run: |
+        docker exec openssh sh -c "echo 'LoginGraceTime 600' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'RekeyLimit 1G 1h' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'KexAlgorithms curve25519-sha256' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'Ciphers aes128-ctr' >> /config/sshd/sshd_config"
+        docker exec openssh sh -c "echo 'HostKeyAlgorithms rsa-sha2-256' >> /config/sshd/sshd_config"
+        docker restart openssh
+    - run: npm run integration:shell
+      env:
+        OASSH_USER: test
+        OASSH_PASSWORD: test
+
   group14-exec:
     runs-on: ubuntu-latest
     timeout-minutes: 10
