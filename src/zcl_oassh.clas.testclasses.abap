@@ -319,7 +319,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_disconnect_wire = lo_packet->encode( '010000000B00000004676F6E6500000000' ).
     lv_trailing_wire = lo_packet->encode( '0200000000' ).
     li_socket->connect( ).
-    lo_ssh->mo_stream->append( lv_disconnect_wire && lv_trailing_wire ).
+    lo_ssh->mo_stream->append( lv_disconnect_wire ).
+    lo_ssh->mo_stream->append( lv_trailing_wire ).
 
     lo_ssh->process_kex( ).
 
