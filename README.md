@@ -2,7 +2,9 @@
 
 An SSH-2 client implemented in portable ABAP. It can connect to OpenSSH,
 authenticate with a password or an Ed25519 private seed, execute a command, and
-return its stdout, stderr, and exit status.
+return its stdout, stderr, and exit status. It also supports binary-safe SFTP
+file transfer, metadata, directory listing, path normalization, and basic path
+mutation operations.
 
 The client runs on SAP systems through ABAP Push Channels (APC) and on Node.js
 after transpilation with open-abap. SAP_BASIS 750 is the compatibility floor.
@@ -89,6 +91,46 @@ lo_ssh = zcl_oassh=>connect(
 Keep private seeds and passwords outside source code and transport them through
 the platform's secret-management facilities.
 
+### SFTP
+
+An SSH client instance performs one command or SFTP operation. Open a fresh,
+host-verified connection for each operation and close it in `CLEANUP` as well as
+after the successful call. Downloads and uploads use `xstring` end to end:
+
+```abap
+DATA lv_file TYPE xstring.
+
+lo_ssh = zcl_oassh=>connect(
+  iv_host          = 'ssh.example.com'
+  iv_port          = '22'
+  iv_user          = 'deploy'
+  iv_password      = 'secret'
+  ii_host_verifier = lo_host_verifier ).
+
+TRY.
+    lv_file = lo_ssh->sftp_download(
+      iv_path            = '/incoming/data.bin'
+      iv_timeout_seconds = 60 ).
+  CLEANUP.
+    lo_ssh->close( ).
+ENDTRY.
+lo_ssh->close( ).
+```
+
+The public SFTP methods are:
+
+- `sftp_download` and `sftp_upload` for binary file contents.
+- `sftp_stat` and `sftp_lstat` for byte-exact v3 attributes, including unsigned
+  32-bit and 64-bit fields represented as fixed-length byte types.
+- `sftp_list` for binary-safe filenames, opaque longnames, and parsed attributes.
+- `sftp_realpath` for the canonical NAME result and its attributes.
+- `sftp_mkdir`, `sftp_rmdir`, `sftp_remove`, and `sftp_rename` for
+  STATUS-checked path mutations.
+
+SFTP status failures raise `zcx_oassh_error` through `cx_static_check`; inspect
+the typed reason and SFTP status rather than treating every failure as a missing
+file. Host-key verification remains mandatory for every fresh connection.
+
 ## Node.js development and transpiled usage
 
 Install Node.js and npm, then clone and validate the project:
@@ -140,8 +182,10 @@ non-blocking job.
 - Ciphers: `aes128-ctr`, `chacha20-poly1305@openssh.com`
 - Authentication: password and Ed25519 public key
 - Session command execution, stdout/stderr, exit status, rekeying, and strict KEX
+- SFTP v3: binary download/upload, STAT/LSTAT, directory listing, REALPATH,
+  MKDIR/RMDIR, REMOVE, and RENAME
 
-Interactive shells, SFTP, and port forwarding are not implemented.
+Interactive shells and port forwarding are not implemented.
 
 ## Protocol references
 

@@ -206,7 +206,9 @@ draft before implementing; the list above is orientation, not the spec.
       + replay tests. Live APC sftp download against Docker OpenSSH if
       reachable; otherwise record exactly what was blocked.
 - [ ] README: sftp usage snippet; `CHECKLIST.md` M9 sftp item checked only
-      when all tiers above are green.
+      when all tiers above are green. The README now documents the binary-safe
+      APIs and one-operation-per-connection lifecycle; this remains open until
+      A4H/NPL validation permits the M9 checklist update.
 - [ ] New transpiler/SAP discrepancies (uint64, chunk reassembly, int8) go to
       `ANORMALIES.md` with minimal repro.
 
