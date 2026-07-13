@@ -17,6 +17,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS subsystem_request FOR TESTING RAISING cx_static_check.
     METHODS subsystem_failure FOR TESTING RAISING cx_static_check.
     METHODS drains_incrementally FOR TESTING RAISING cx_static_check.
+    METHODS sends_data FOR TESTING RAISING cx_static_check.
+    METHODS client_closes FOR TESTING RAISING cx_static_check.
     METHODS maximum_data_packets FOR TESTING RAISING cx_static_check.
     METHODS empty_data_not_retained FOR TESTING RAISING cx_static_check.
 ENDCLASS.
@@ -499,6 +501,53 @@ CLASS ltcl_test IMPLEMENTATION.
 
 * Drained bytes are not returned again by get_stdout( ) at close.
     cl_abap_unit_assert=>assert_initial( lo_channel->get_stdout( ) ).
+  ENDMETHOD.
+
+
+  METHOD sends_data.
+* RFC 4254 section 5.2: exact DATA envelope and unsigned remote-window debit.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070000002000000010' ).
+    lo_channel->subsystem( 'sftp' ).
+    lo_channel->receive( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->data( '01020304' )
+      exp = '5E000000070000000401020304' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->mv_remote_window
+      exp = '0000001C' ).
+    TRY.
+        lo_channel->data( '0000000000000000000000000000000000' ).
+        cl_abap_unit_assert=>fail( 'remote maximum packet ignored' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-channel_failed ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD client_closes.
+* A locally initiated CLOSE is not echoed when the mandatory peer CLOSE arrives.
+    DATA lo_channel TYPE REF TO zcl_oassh_channel.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070020000000008000' ).
+    lo_channel->subsystem( 'sftp' ).
+    lo_channel->receive( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->close( )
+      exp = '6100000007' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-close_sent ).
+    cl_abap_unit_assert=>assert_initial( lo_channel->receive( '6100000000' ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-closed ).
   ENDMETHOD.
 
 

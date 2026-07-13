@@ -10,7 +10,8 @@ CLASS zcl_oassh_channel DEFINITION
         exec_sent     TYPE i VALUE 3,
         running       TYPE i VALUE 4,
         eof_received  TYPE i VALUE 5,
-        closed        TYPE i VALUE 6,
+        close_sent    TYPE i VALUE 6,
+        closed        TYPE i VALUE 7,
       END OF c_state.
     METHODS open RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS exec
@@ -19,6 +20,13 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS subsystem
       IMPORTING iv_name TYPE string
       RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS data
+      IMPORTING iv_data TYPE xstring
+      RETURNING VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS close
+      RETURNING VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS receive
       IMPORTING iv_payload TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring
@@ -61,6 +69,13 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS receive_open_confirmation
       IMPORTING io_stream TYPE REF TO zcl_oassh_stream
       RAISING zcx_oassh_error.
+    METHODS receive_close
+      IMPORTING
+        io_stream        TYPE REF TO zcl_oassh_stream
+      RETURNING
+        VALUE(rv_payload) TYPE xstring
+      RAISING
+        zcx_oassh_error.
     CLASS-METHODS ensure_data_length
       IMPORTING iv_data TYPE xstring
       RAISING zcx_oassh_error.
@@ -78,6 +93,20 @@ CLASS zcl_oassh_channel DEFINITION
         VALUE(rv_sum) TYPE ty_uint32
       RAISING
         zcx_oassh_error.
+    CLASS-METHODS subtract_uint32
+      IMPORTING
+        iv_left       TYPE ty_uint32
+        iv_right      TYPE i
+      RETURNING
+        VALUE(rv_sum) TYPE ty_uint32
+      RAISING
+        zcx_oassh_error.
+    CLASS-METHODS uint32_fits
+      IMPORTING
+        iv_available   TYPE ty_uint32
+        iv_length      TYPE i
+      RETURNING
+        VALUE(rv_fits) TYPE abap_bool.
     CLASS-METHODS join_chunks
       IMPORTING
         it_chunks     TYPE ty_chunks
@@ -132,9 +161,49 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     mv_state = c_state-exec_sent.
   ENDMETHOD.
 
+
+  METHOD data.
+* RFC 4254 section 5.2: channel data consumes the peer's advertised window
+* and may not exceed its maximum packet size.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    IF mv_state <> c_state-running.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF uint32_fits(
+        iv_available = mv_remote_window
+        iv_length    = xstrlen( iv_data ) ) = abap_false
+        OR uint32_fits(
+          iv_available = mv_remote_max_packet
+          iv_length    = xstrlen( iv_data ) ) = abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lo_stream = NEW #( ).
+    lo_stream->append( '5E' ).
+    lo_stream->uint32_encode( mv_remote_channel ).
+    lo_stream->string_encode( iv_data ).
+    rv_payload = lo_stream->get( ).
+    mv_remote_window = subtract_uint32(
+      iv_left  = mv_remote_window
+      iv_right = xstrlen( iv_data ) ).
+  ENDMETHOD.
+
+
+  METHOD close.
+* RFC 4254 section 5.3 permits CLOSE without a preceding EOF. The peer must
+* answer with CLOSE; receive( ) then publishes the terminal closed state.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    IF mv_state <> c_state-running AND mv_state <> c_state-eof_received.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lo_stream = NEW #( ).
+    lo_stream->append( '61' ).
+    lo_stream->uint32_encode( mv_remote_channel ).
+    rv_payload = lo_stream->get( ).
+    mv_state = c_state-close_sent.
+  ENDMETHOD.
+
   METHOD receive.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
-    DATA lo_reply TYPE REF TO zcl_oassh_stream.
     DATA lv_id TYPE x LENGTH 1.
     DATA lv_recipient TYPE i.
     DATA lv_data TYPE xstring.
@@ -169,7 +238,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         mv_remote_window = lv_new_window.
       WHEN '5E'. " DATA (94)
         ensure_channel_open( ).
-        IF mv_state = c_state-eof_received.
+        IF mv_state = c_state-eof_received OR mv_state = c_state-close_sent.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
@@ -182,7 +251,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         ENDIF.
       WHEN '5F'. " EXTENDED_DATA (95), type 1 is stderr
         ensure_channel_open( ).
-        IF mv_state = c_state-eof_received.
+        IF mv_state = c_state-eof_received OR mv_state = c_state-close_sent.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
@@ -220,16 +289,11 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         ensure_consumed( lo_stream ).
-        mv_state = c_state-eof_received.
+        IF mv_state <> c_state-close_sent.
+          mv_state = c_state-eof_received.
+        ENDIF.
       WHEN '61'. " CLOSE (97): echo CLOSE exactly once
-        ensure_channel_open( ).
-        lv_recipient = read_recipient( lo_stream ).
-        ensure_consumed( lo_stream ).
-        lo_reply = NEW #( ).
-        lo_reply->append( '61' ).
-        lo_reply->uint32_encode( mv_remote_channel ).
-        rv_payload = lo_reply->get( ).
-        mv_state = c_state-closed.
+        rv_payload = receive_close( lo_stream ).
       WHEN OTHERS.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDCASE.
@@ -295,6 +359,88 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     IF lv_carry <> 0.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD receive_close.
+    DATA lo_reply TYPE REF TO zcl_oassh_stream.
+    DATA lv_recipient TYPE i.
+    ensure_channel_open( ).
+    lv_recipient = read_recipient( io_stream ).
+    ensure_consumed( io_stream ).
+    IF mv_state <> c_state-close_sent.
+      lo_reply = NEW #( ).
+      lo_reply->append( '61' ).
+      lo_reply->uint32_encode( mv_remote_channel ).
+      rv_payload = lo_reply->get( ).
+    ENDIF.
+    mv_state = c_state-closed.
+  ENDMETHOD.
+
+
+  METHOD uint32_fits.
+* Compare the four-byte unsigned value with a non-negative int4 without using
+* ABAP's signed direct ordering for byte types.
+    DATA lv_needed TYPE ty_uint32.
+    DATA lv_offset TYPE i.
+    DATA lv_available_byte TYPE x LENGTH 1.
+    DATA lv_needed_byte TYPE x LENGTH 1.
+    DATA lv_available TYPE i.
+    DATA lv_required TYPE i.
+    IF iv_length < 0.
+      RETURN.
+    ENDIF.
+    lv_needed = iv_length.
+    DO 4 TIMES.
+      lv_offset = sy-index - 1.
+      lv_available_byte = iv_available+lv_offset(1).
+      lv_needed_byte = lv_needed+lv_offset(1).
+      lv_available = lv_available_byte.
+      lv_required = lv_needed_byte.
+      IF lv_available > lv_required.
+        rv_fits = abap_true.
+        RETURN.
+      ELSEIF lv_available < lv_required.
+        RETURN.
+      ENDIF.
+    ENDDO.
+    rv_fits = abap_true.
+  ENDMETHOD.
+
+
+  METHOD subtract_uint32.
+    DATA lv_right TYPE ty_uint32.
+    DATA lv_offset TYPE i.
+    DATA lv_left_byte TYPE x LENGTH 1.
+    DATA lv_right_byte TYPE x LENGTH 1.
+    DATA lv_result_byte TYPE x LENGTH 1.
+    DATA lv_left TYPE i.
+    DATA lv_subtrahend TYPE i.
+    DATA lv_total TYPE i.
+    DATA lv_borrow TYPE i.
+    IF uint32_fits(
+        iv_available = iv_left
+        iv_length    = iv_right ) = abap_false.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lv_right = iv_right.
+    rv_sum = iv_left.
+    DO 4 TIMES.
+      lv_offset = 4 - sy-index.
+      lv_left_byte = iv_left+lv_offset(1).
+      lv_right_byte = lv_right+lv_offset(1).
+      lv_left = lv_left_byte.
+      lv_subtrahend = lv_right_byte + lv_borrow.
+      IF lv_left < lv_subtrahend.
+        lv_total = lv_left + 256 - lv_subtrahend.
+        lv_borrow = 1.
+      ELSE.
+        lv_total = lv_left - lv_subtrahend.
+        CLEAR lv_borrow.
+      ENDIF.
+      lv_result_byte = lv_total.
+      rv_sum+lv_offset(1) = lv_result_byte.
+    ENDDO.
   ENDMETHOD.
 
 

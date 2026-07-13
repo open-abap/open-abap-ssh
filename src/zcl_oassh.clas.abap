@@ -28,6 +28,14 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output) TYPE string
       RAISING
         cx_static_check.
+    METHODS sftp_download
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        cx_static_check.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -57,6 +65,12 @@ CLASS zcl_oassh DEFINITION
         key_exchange              TYPE i VALUE 2,
         encrypted                 TYPE i VALUE 3,
       END OF gc_state.
+    CONSTANTS:
+      BEGIN OF gc_operation,
+        none          TYPE i VALUE 0,
+        execute       TYPE i VALUE 1,
+        sftp_download TYPE i VALUE 2,
+      END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
     DATA mo_stream TYPE REF TO zcl_oassh_stream.
@@ -73,9 +87,12 @@ CLASS zcl_oassh DEFINITION
     DATA mv_plain_packet_length TYPE i.
     DATA mv_enc_packet_length TYPE i.
     DATA mo_channel TYPE REF TO zcl_oassh_channel.
+    DATA mo_sftp TYPE REF TO zcl_oassh_sftp.
     DATA mv_command TYPE string.
-    DATA mv_execute_started TYPE abap_bool.
-    DATA mv_command_done TYPE abap_bool.
+    DATA mv_sftp_path TYPE string.
+    DATA mv_operation TYPE i.
+    DATA mv_operation_started TYPE abap_bool.
+    DATA mv_operation_done TYPE abap_bool.
     DATA mv_disconnected TYPE abap_bool.
     DATA mv_disconnect_reason TYPE i.
 
@@ -103,6 +120,16 @@ CLASS zcl_oassh DEFINITION
       RAISING
         cx_static_check.
     METHODS start_channel
+      RAISING
+        cx_static_check.
+    METHODS advance_channel
+      IMPORTING
+        iv_payload TYPE xstring
+      RAISING
+        cx_static_check.
+    METHODS send_encrypted
+      IMPORTING
+        iv_payload TYPE xstring
       RAISING
         cx_static_check.
     METHODS process_global_request
@@ -168,19 +195,20 @@ CLASS zcl_oassh IMPLEMENTATION.
 * Socket callbacks keep driving authentication while WAIT yields. Once the
 * transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
 * drive the channel until the peer closes it.
-    IF mv_execute_started = abap_true.
+    IF mv_operation_started = abap_true.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
     ENDIF.
     IF iv_timeout_seconds <= 0.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
     ENDIF.
-    mv_execute_started = abap_true.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-execute.
     mv_command = iv_command.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
     mi_socket->wait( iv_timeout_seconds ).
-    IF mv_command_done <> abap_true.
+    IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
     ENDIF.
@@ -193,6 +221,46 @@ CLASS zcl_oassh IMPLEMENTATION.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
     ENDIF.
     rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
+  ENDMETHOD.
+
+
+  METHOD sftp_download.
+* The public operation remains binary-safe end to end. Authentication and
+* channel setup share the execute callback flow; only the channel operation
+* selected after open differs.
+    DATA lv_status TYPE i.
+    IF mv_operation_started = abap_true.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-sftp_download.
+    mv_sftp_path = iv_path.
+    mo_sftp = NEW #( ).
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
+        OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lv_status = mo_sftp->get_error_status( ).
+    IF lv_status >= 0.
+      zcx_oassh_error=>raise(
+        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
+        iv_sftp_status = lv_status ).
+    ENDIF.
+    rv_data = mo_sftp->get_data( ).
   ENDMETHOD.
 
 
@@ -253,7 +321,7 @@ CLASS zcl_oassh IMPLEMENTATION.
         AND iv_payload(1) = zcl_oassh_message_1=>gc_message_id.
       mv_disconnected = abap_true.
       mv_disconnect_reason = ls_disconnect-reason_code.
-      mv_command_done = abap_true.
+      mv_operation_done = abap_true.
     ENDIF.
   ENDMETHOD.
 
@@ -554,7 +622,7 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF mo_transport->get_auth_state( ) <> zcl_oassh_transport=>c_auth_state-authenticated.
         lv_reply = mo_transport->receive_auth( lv_payload ).
         IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated
-            AND mv_execute_started = abap_true.
+            AND mv_operation_started = abap_true.
           start_channel( ).
         ENDIF.
       ELSEIF lv_payload(1) = '5A'. " SSH_MSG_CHANNEL_OPEN (90)
@@ -562,13 +630,8 @@ CLASS zcl_oassh IMPLEMENTATION.
       ELSEIF lv_payload(1) = '50'. " SSH_MSG_GLOBAL_REQUEST (80)
         lv_reply = process_global_request( lv_payload ).
       ELSEIF mo_channel IS BOUND.
-        lv_reply = mo_channel->receive( lv_payload ).
-        CASE mo_channel->get_state( ).
-          WHEN zcl_oassh_channel=>c_state-open.
-            lv_reply = mo_channel->exec( mv_command ).
-          WHEN zcl_oassh_channel=>c_state-closed.
-            mv_command_done = abap_true.
-        ENDCASE.
+        advance_channel( lv_payload ).
+        CLEAR lv_reply.
       ELSE.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
       ENDIF.
@@ -585,6 +648,58 @@ CLASS zcl_oassh IMPLEMENTATION.
     mo_channel = NEW #( ).
     lv_payload = mo_channel->open( ).
     mi_socket->send( mo_transport->get_packet( )->encode( lv_payload ) ).
+  ENDMETHOD.
+
+
+  METHOD advance_channel.
+* Keep channel plumbing generic while selecting the one-shot owner operation.
+* Replies created by receive (window adjust / close echo) are sent before an
+* SFTP request generated from the newly drained CHANNEL_DATA.
+    DATA lv_reply TYPE xstring.
+    DATA lv_sftp_input TYPE xstring.
+    DATA lv_sftp_output TYPE xstring.
+    lv_reply = mo_channel->receive( iv_payload ).
+    send_encrypted( lv_reply ).
+    CASE mo_channel->get_state( ).
+      WHEN zcl_oassh_channel=>c_state-open.
+        CASE mv_operation.
+          WHEN gc_operation-execute.
+            lv_reply = mo_channel->exec( mv_command ).
+          WHEN gc_operation-sftp_download.
+            lv_reply = mo_channel->subsystem( 'sftp' ).
+          WHEN OTHERS.
+            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+        ENDCASE.
+        send_encrypted( lv_reply ).
+      WHEN zcl_oassh_channel=>c_state-running.
+        IF mv_operation = gc_operation-sftp_download.
+          IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-created.
+            lv_sftp_output = mo_sftp->start_download( mv_sftp_path ).
+          ELSE.
+            lv_sftp_input = mo_channel->drain_stdout( ).
+            IF lv_sftp_input IS NOT INITIAL.
+              lv_sftp_output = mo_sftp->receive( lv_sftp_input ).
+            ENDIF.
+          ENDIF.
+          IF lv_sftp_output IS NOT INITIAL.
+            lv_reply = mo_channel->data( lv_sftp_output ).
+            send_encrypted( lv_reply ).
+          ENDIF.
+          IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-finished.
+            lv_reply = mo_channel->close( ).
+            send_encrypted( lv_reply ).
+          ENDIF.
+        ENDIF.
+      WHEN zcl_oassh_channel=>c_state-closed.
+        mv_operation_done = abap_true.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD send_encrypted.
+    IF iv_payload IS NOT INITIAL.
+      mi_socket->send( mo_transport->get_packet( )->encode( iv_payload ) ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -608,7 +723,7 @@ CLASS zcl_oassh IMPLEMENTATION.
 * A transport close before SSH channel completion makes the active operation
 * impossible; release APC WAIT immediately and let execute return a typed
 * channel failure.
-    mv_command_done = abap_true.
+    mv_operation_done = abap_true.
   ENDMETHOD.
 
 
@@ -670,12 +785,12 @@ CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD zif_oassh_socket_handler~on_error.
-    mv_command_done = abap_true.
+    mv_operation_done = abap_true.
   ENDMETHOD.
 
 
   METHOD zif_oassh_socket_handler~is_complete.
-    rv_complete = mv_command_done.
+    rv_complete = mv_operation_done.
   ENDMETHOD.
 
 

@@ -114,27 +114,40 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S2 — Download slice ⭐ first shippable
 
-- [ ] State machine: `INIT → VERSION → OPEN(path, SSH_FXF_READ, empty ATTRS)
+- [x] State machine: `INIT → VERSION → OPEN(path, SSH_FXF_READ, empty ATTRS)
       → HANDLE → READ loop → SSH_FX_EOF → CLOSE(handle) → STATUS → channel
       close`. Chunked READ at 32768 bytes per request (interop-safe under
       OpenSSH limits); the server may return **less** than requested — advance
       the offset by what actually arrived. `SSH_FXP_DATA` on a short final
       read and `SSH_FX_EOF` are both normal termination paths.
-- [ ] Any STATUS other than OK/EOF at the step that expects it → typed
+      Binary chunks are accumulated in a balanced table; full reads advance
+      the uint64 offset and short DATA closes the handle immediately.
+- [x] Any STATUS other than OK/EOF at the step that expects it → typed
       `zcx_oassh_error` carrying the SFTP status code; still CLOSE the handle
       and the channel on the error path (no leaked handles).
-- [ ] Public API on `zcl_oassh`: `sftp_download( iv_path, iv_timeout_seconds )`
+      The first failure status survives handle/channel cleanup and is exposed
+      through `get_sftp_status( )`; OPEN failure has no handle to close.
+- [x] Public API on `zcl_oassh`: `sftp_download( iv_path, iv_timeout_seconds )`
       returning `xstring` (binary-safe — no `zcl_oassh_ascii` conversion of
       file content). Same one-operation-per-connection contract as
       `execute( )` for now; assert against mixing the two.
-- [ ] Tier 1: full-download happy path against a scripted response sequence;
+      Execute and SFTP now share an explicit operation selector/completion
+      lifecycle while channel framing remains generic.
+- [x] Tier 1: full-download happy path against a scripted response sequence;
       short reads; zero-byte file; NO_SUCH_FILE; DATA for a stale request id;
       READ response arriving after EOF.
-- [ ] Tier 2: recorded OpenSSH sftp session replayed through mock socket +
+      Also covers exact OPEN/READ/CLOSE bytes, a full 32768-byte read and
+      offset advance, typed status propagation, and remote channel credit.
+- [x] Tier 2: recorded OpenSSH sftp session replayed through mock socket +
       fixed RNG — complete inbound fixture consumed, outbound bytes exact.
-- [ ] Tier 3: `integration/sftp.mjs` — Docker OpenSSH with the sftp
+      Captured from the pinned OpenSSH 10.3 image with fixed AB randomness;
+      the replay downloads the binary fixture including NUL and 0xFF.
+- [x] Tier 3: `integration/sftp.mjs` — Docker OpenSSH with the sftp
       subsystem, download a pinned fixture file, byte-compare. Assert the
       subsystem request succeeded (no exec fallback masking a failure).
+      Live pinned-container run downloaded and byte-compared the 16-byte
+      `/config/sftp-fixture.bin` fixture; the operation reached SFTP finished
+      and completed the SSH channel close handshake.
 
 ## S3 — Upload slice
 

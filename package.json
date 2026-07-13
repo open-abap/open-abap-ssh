@@ -11,6 +11,7 @@
     "integration:transport": "npm run build && node integration/transport.mjs",
     "integration:auth": "npm run build && node integration/auth.mjs",
     "integration:exec": "npm run build && node integration/exec.mjs",
+    "integration:sftp": "npm run build && node integration/sftp.mjs",
     "integration:rebex": "npm run build && node integration/rebex.mjs"
   },
   "repository": {

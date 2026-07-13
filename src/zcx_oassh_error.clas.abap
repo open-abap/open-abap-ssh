@@ -18,21 +18,28 @@ CLASS zcx_oassh_error DEFINITION
         authentication_failed TYPE i VALUE 9,
         channel_failed TYPE i VALUE 10,
         sftp_protocol TYPE i VALUE 11,
+        sftp_status TYPE i VALUE 12,
       END OF c_reason.
     METHODS constructor
       IMPORTING
-        iv_reason TYPE i.
+        iv_reason TYPE i
+        iv_sftp_status TYPE i DEFAULT -1.
     METHODS get_reason
       RETURNING
         VALUE(rv_reason) TYPE i.
+    METHODS get_sftp_status
+      RETURNING
+        VALUE(rv_status) TYPE i.
     CLASS-METHODS raise
       IMPORTING
         iv_reason TYPE i
+        iv_sftp_status TYPE i DEFAULT -1
       RAISING
         zcx_oassh_error.
 
   PRIVATE SECTION.
     DATA mv_reason TYPE i.
+    DATA mv_sftp_status TYPE i.
 ENDCLASS.
 
 
@@ -40,6 +47,7 @@ CLASS zcx_oassh_error IMPLEMENTATION.
   METHOD constructor.
     super->constructor( ).
     mv_reason = iv_reason.
+    mv_sftp_status = iv_sftp_status.
   ENDMETHOD.
 
 
@@ -48,9 +56,15 @@ CLASS zcx_oassh_error IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_sftp_status.
+    rv_status = mv_sftp_status.
+  ENDMETHOD.
+
+
   METHOD raise.
     RAISE EXCEPTION TYPE zcx_oassh_error
       EXPORTING
-        iv_reason = iv_reason.
+        iv_reason      = iv_reason
+        iv_sftp_status = iv_sftp_status.
   ENDMETHOD.
 ENDCLASS.

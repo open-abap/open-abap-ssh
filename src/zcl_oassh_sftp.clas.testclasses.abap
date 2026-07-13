@@ -15,6 +15,13 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS unknown_response FOR TESTING RAISING cx_static_check.
     METHODS version_six FOR TESTING RAISING cx_static_check.
     METHODS truncated_extension FOR TESTING RAISING cx_static_check.
+    METHODS download_short FOR TESTING RAISING cx_static_check.
+    METHODS download_full_chunk FOR TESTING RAISING cx_static_check.
+    METHODS download_eof FOR TESTING RAISING cx_static_check.
+    METHODS download_open_error FOR TESTING RAISING cx_static_check.
+    METHODS download_read_error_closes FOR TESTING RAISING cx_static_check.
+    METHODS download_stale_id FOR TESTING RAISING cx_static_check.
+    METHODS typed_status_error FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -196,5 +203,157 @@ CLASS ltcl_test IMPLEMENTATION.
           exp = zcx_oassh_error=>c_reason-malformed_packet ).
     ENDTRY.
     cl_abap_unit_assert=>assert_initial( mo_sftp->get_version( ) ).
+  ENDMETHOD.
+
+
+  METHOD download_short.
+* INIT -> VERSION -> OPEN -> HANDLE -> short DATA -> CLOSE -> STATUS OK.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_download( 'a' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '000000050100000003' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '00000012030000000100000001610000000100000000' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000001605000000020000000148000000000000000000008000' ).
+    lv_out = mo_sftp->receive( '0000000C670000000200000003616263' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000030000000148' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_data( )
+      exp = '616263' ).
+    lv_out = mo_sftp->receive( '000000116500000003000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = -1 ).
+  ENDMETHOD.
+
+
+  METHOD download_full_chunk.
+* A complete 32768-byte DATA advances the uint64 offset by the actual bytes and
+* issues another READ rather than assuming EOF.
+    DATA lo_packet TYPE REF TO zcl_oassh_stream.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_chunk TYPE xstring.
+    DATA lv_out TYPE xstring.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '5A' ).
+    lv_chunk = li_random->bytes( 32768 ).
+    lv_out = mo_sftp->start_download( 'large' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    lo_packet = NEW #( ).
+    lo_packet->uint32_encode( 32777 ).
+    lo_packet->byte_encode( '67' ).
+    lo_packet->uint32_encode( 2 ).
+    lo_packet->string_encode( lv_chunk ).
+    lv_out = mo_sftp->receive( lo_packet->get( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000001605000000030000000148000000000000800000008000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = xstrlen( mo_sftp->get_data( ) )
+      exp = 32768 ).
+  ENDMETHOD.
+
+
+  METHOD download_eof.
+* An empty file may answer the first READ with SSH_FX_EOF.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_download( 'empty' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000002000000010000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000030000000148' ).
+    cl_abap_unit_assert=>assert_initial( mo_sftp->get_data( ) ).
+    lv_out = mo_sftp->receive( '000000116500000003000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD download_open_error.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_download( 'missing' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD download_read_error_closes.
+* A failed READ retains its status but still closes the live handle first.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_download( 'denied' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000002000000030000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A04000000030000000148' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 3 ).
+    lv_out = mo_sftp->receive( '000000116500000003000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 3 ).
+  ENDMETHOD.
+
+
+  METHOD download_stale_id.
+* Once EOF consumed READ id 2, later DATA for id 2 is never accepted while
+* CLOSE id 3 is outstanding.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_download( 'empty' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '0000000A66000000010000000148' ).
+    lv_out = mo_sftp->receive( '000000116500000002000000010000000000000000' ).
+    TRY.
+        mo_sftp->receive( '00000009670000000200000000' ).
+        cl_abap_unit_assert=>fail( 'response for completed READ accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD typed_status_error.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    TRY.
+        zcx_oassh_error=>raise(
+          iv_reason      = zcx_oassh_error=>c_reason-sftp_status
+          iv_sftp_status = 2 ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_status ).
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_sftp_status( )
+          exp = 2 ).
+    ENDTRY.
   ENDMETHOD.
 ENDCLASS.
