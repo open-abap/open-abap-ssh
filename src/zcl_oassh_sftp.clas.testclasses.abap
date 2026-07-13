@@ -37,6 +37,9 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS mutation_wire FOR TESTING RAISING cx_static_check.
     METHODS mutation_status_error FOR TESTING RAISING cx_static_check.
     METHODS mutation_wrong_response FOR TESTING RAISING cx_static_check.
+    METHODS realpath_name FOR TESTING RAISING cx_static_check.
+    METHODS realpath_invalid_count FOR TESTING RAISING cx_static_check.
+    METHODS realpath_status FOR TESTING RAISING cx_static_check.
     METHODS typed_status_error FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -748,6 +751,79 @@ CLASS ltcl_test IMPLEMENTATION.
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-sftp_protocol ).
     ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD realpath_name.
+    DATA lv_out TYPE xstring.
+    DATA ls_name TYPE zcl_oassh_sftp=>ty_name.
+    lv_out = mo_sftp->start_realpath( '.' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A1000000001000000012E' ).
+    lv_out = mo_sftp->receive( '00000020680000000100000001000000022F640000000144000000010000000000000003' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    ls_name = mo_sftp->get_realpath( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_name-filename
+      exp = '2F64' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_name-longname
+      exp = '44' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_name-attrs-size
+      exp = '0000000000000003' ).
+  ENDMETHOD.
+
+
+  METHOD realpath_invalid_count.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_realpath( '.' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '00000009680000000100000000' ).
+        cl_abap_unit_assert=>fail( 'empty REALPATH NAME accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_realpath( '.' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '00000009680000000100000002' ).
+        cl_abap_unit_assert=>fail( 'multiple REALPATH names accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_realpath( '.' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '00000015680000000100000001000000000000000000000000' ).
+        cl_abap_unit_assert=>fail( 'empty canonical path accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD realpath_status.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_realpath( 'missing' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
   ENDMETHOD.
 
 

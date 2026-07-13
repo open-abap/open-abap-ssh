@@ -49,6 +49,7 @@ CLASS zcl_oassh_sftp DEFINITION
         opendir_pending TYPE i VALUE 9,
         readdir_pending TYPE i VALUE 10,
         status_pending  TYPE i VALUE 11,
+        name_pending    TYPE i VALUE 12,
       END OF c_state.
 
     METHODS constructor.
@@ -105,6 +106,10 @@ CLASS zcl_oassh_sftp DEFINITION
         iv_new_path TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
+    METHODS start_realpath
+      IMPORTING iv_path TYPE string
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS receive
       IMPORTING
         iv_data TYPE xstring
@@ -130,6 +135,8 @@ CLASS zcl_oassh_sftp DEFINITION
     METHODS get_names
       RETURNING
         VALUE(rt_names) TYPE ty_names.
+    METHODS get_realpath
+      RETURNING VALUE(rs_name) TYPE ty_name.
 
   PRIVATE SECTION.
     TYPES ty_request_ids TYPE SORTED TABLE OF i WITH UNIQUE KEY table_line.
@@ -143,6 +150,7 @@ CLASS zcl_oassh_sftp DEFINITION
     CONSTANTS c_operation_rmdir TYPE i VALUE 7.
     CONSTANTS c_operation_remove TYPE i VALUE 8.
     CONSTANTS c_operation_rename TYPE i VALUE 9.
+    CONSTANTS c_operation_realpath TYPE i VALUE 10.
     CONSTANTS c_read_length TYPE i VALUE 32768.
     CONSTANTS c_max_directory_entries TYPE i VALUE 100000.
 
@@ -168,6 +176,7 @@ CLASS zcl_oassh_sftp DEFINITION
     DATA mv_write_length TYPE i.
     DATA ms_attrs TYPE ty_attrs.
     DATA mt_names TYPE ty_names.
+    DATA ms_realpath TYPE ty_name.
 
     METHODS frame
       IMPORTING
@@ -262,6 +271,14 @@ CLASS zcl_oassh_sftp DEFINITION
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS handle_status_response
+      IMPORTING
+        iv_type   TYPE zcl_oassh_stream=>ty_byte
+        io_packet TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
+    METHODS realpath_request
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS handle_realpath_response
       IMPORTING
         iv_type   TYPE zcl_oassh_stream=>ty_byte
         io_packet TYPE REF TO zcl_oassh_stream
@@ -411,6 +428,16 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD start_realpath.
+    IF mv_state <> c_state-created.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDIF.
+    mv_operation = c_operation_realpath.
+    mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
+    rv_data = start( ).
+  ENDMETHOD.
+
+
   METHOD start_mutation.
     IF mv_state <> c_state-created.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
@@ -555,6 +582,9 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           OR c_operation_remove OR c_operation_rename.
         mv_outbound = mutation_request( ).
         mv_state = c_state-status_pending.
+      WHEN c_operation_realpath.
+        mv_outbound = realpath_request( ).
+        mv_state = c_state-name_pending.
     ENDCASE.
   ENDMETHOD.
 
@@ -600,6 +630,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           OR mv_operation = c_operation_remove OR mv_operation = c_operation_rename )
         AND mv_state = c_state-status_pending.
       handle_status_response(
+        iv_type   = iv_type
+        io_packet = io_packet ).
+    ELSEIF mv_operation = c_operation_realpath AND mv_state = c_state-name_pending.
+      handle_realpath_response(
         iv_type   = iv_type
         io_packet = io_packet ).
     ELSE.
@@ -870,6 +904,49 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD realpath_request.
+* draft-ietf-secsh-filexfer-02 section 6.8: REALPATH carries one path string.
+    DATA lo_body TYPE REF TO zcl_oassh_stream.
+    lo_body = NEW #( ).
+    lo_body->string_encode( mv_path ).
+    rv_data = build_request(
+      iv_type = '10'
+      iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD handle_realpath_response.
+* Section 6.8 requires exactly one NAME entry for the canonical path.
+    DATA lv_status TYPE i.
+    DATA lv_count TYPE i.
+    CASE iv_type.
+      WHEN '68'. " SSH_FXP_NAME
+        lv_count = io_packet->uint32_decode( ).
+        IF lv_count <> 1.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDIF.
+        ms_realpath-filename = io_packet->string_decode( ).
+        IF ms_realpath-filename IS INITIAL.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDIF.
+        ms_realpath-longname = io_packet->string_decode( ).
+        ms_realpath-attrs = parse_attrs(
+          io_packet           = io_packet
+          iv_require_consumed = abap_false ).
+        ensure_consumed( io_packet ).
+      WHEN '65'. " SSH_FXP_STATUS
+        lv_status = parse_status( io_packet ).
+        IF lv_status = 0 OR lv_status = 1.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        ENDIF.
+        mv_error_status = lv_status.
+      WHEN OTHERS.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDCASE.
+    mv_state = c_state-finished.
+  ENDMETHOD.
+
+
   METHOD handle_list_response.
 * Sections 6.7 and 7: consume every NAME batch, repeat READDIR until EOF, and
 * close the directory handle on EOF or any READDIR status failure.
@@ -1114,5 +1191,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD get_names.
     rt_names = mt_names.
+  ENDMETHOD.
+
+
+  METHOD get_realpath.
+    rs_name = ms_realpath.
   ENDMETHOD.
 ENDCLASS.

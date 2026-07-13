@@ -88,6 +88,12 @@ CLASS zcl_oassh DEFINITION
         iv_new_path        TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RAISING cx_static_check.
+    METHODS sftp_realpath
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
+      RAISING cx_static_check.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -130,6 +136,7 @@ CLASS zcl_oassh DEFINITION
         sftp_rmdir    TYPE i VALUE 8,
         sftp_remove   TYPE i VALUE 9,
         sftp_rename   TYPE i VALUE 10,
+        sftp_realpath TYPE i VALUE 11,
       END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -552,6 +559,43 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD sftp_realpath.
+    DATA lv_status TYPE i.
+    IF mv_operation_started = abap_true.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-sftp_realpath.
+    mv_sftp_path = iv_path.
+    mo_sftp = NEW #( ).
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
+        OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lv_status = mo_sftp->get_error_status( ).
+    IF lv_status >= 0.
+      zcx_oassh_error=>raise(
+        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
+        iv_sftp_status = lv_status ).
+    ENDIF.
+    rs_name = mo_sftp->get_realpath( ).
+  ENDMETHOD.
+
+
   METHOD get_stderr.
     IF mo_channel IS BOUND.
       rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stderr( ) ).
@@ -957,7 +1001,7 @@ CLASS zcl_oassh IMPLEMENTATION.
               OR gc_operation-sftp_stat OR gc_operation-sftp_lstat
               OR gc_operation-sftp_list OR gc_operation-sftp_mkdir
               OR gc_operation-sftp_rmdir OR gc_operation-sftp_remove
-              OR gc_operation-sftp_rename.
+              OR gc_operation-sftp_rename OR gc_operation-sftp_realpath.
             lv_reply = mo_channel->subsystem( 'sftp' ).
           WHEN OTHERS.
             zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
@@ -972,7 +1016,8 @@ CLASS zcl_oassh IMPLEMENTATION.
             OR mv_operation = gc_operation-sftp_mkdir
             OR mv_operation = gc_operation-sftp_rmdir
             OR mv_operation = gc_operation-sftp_remove
-            OR mv_operation = gc_operation-sftp_rename.
+            OR mv_operation = gc_operation-sftp_rename
+            OR mv_operation = gc_operation-sftp_realpath.
           flush_sftp_output( ).
           IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-created.
             CASE mv_operation.
@@ -998,6 +1043,8 @@ CLASS zcl_oassh IMPLEMENTATION.
                 lv_sftp_output = mo_sftp->start_rename(
                   iv_old_path = mv_sftp_path
                   iv_new_path = mv_sftp_path2 ).
+              WHEN gc_operation-sftp_realpath.
+                lv_sftp_output = mo_sftp->start_realpath( mv_sftp_path ).
             ENDCASE.
           ELSE.
             lv_sftp_input = mo_channel->drain_stdout( ).

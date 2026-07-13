@@ -188,7 +188,11 @@ draft before implementing; the list above is orientation, not the spec.
       covered by ABAP Unit. A fixed-`AB` exact MKDIR session replay passes, and
       all four public APIs pass against pinned OpenSSH with verified filesystem
       postconditions.
-- [ ] `REALPATH` for path normalization if servers disagree on relative paths.
+- [x] `REALPATH` for path normalization if servers disagree on relative paths.
+      The public API returns the binary-safe canonical NAME, opaque longname,
+      and parsed ATTRS. Exact wire output, STATUS failures, malformed counts,
+      and empty canonical paths are covered by ABAP Unit; pinned OpenSSH returns
+      and verifies the expected canonical path through the live driver.
 
 ## S5 — Validation & CI wrap-up
 
