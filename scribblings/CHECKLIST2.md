@@ -151,17 +151,23 @@ draft before implementing; the list above is orientation, not the spec.
 
 ## S3 — Upload slice
 
-- [ ] `OPEN(path, WRITE|CREAT|TRUNC, empty ATTRS) → HANDLE → WRITE loop
+- [x] `OPEN(path, WRITE|CREAT|TRUNC, empty ATTRS) → HANDLE → WRITE loop
       (32768-byte chunks, offset tracking) → STATUS OK per WRITE → CLOSE`.
       Respect the **remote** channel window when queueing WRITE packets —
       this is the first sender of bulk channel data, so remote-window
       accounting in `zcl_oassh_channel` finally gets exercised; add tests
-      for stalling on window exhaustion and resuming on WINDOW_ADJUST.
-- [ ] `sftp_upload( iv_path, iv_data, iv_timeout_seconds )`.
-- [ ] Tier 1 (scripted), tier 2 (replay), tier 3 (upload then verify content
-      via a second connection's download or forced `cat`).
-- [ ] Rebex (`integration/rebex.mjs`): server is read-only — download-only
-      check there; upload stays OpenSSH-only.
+      for stalling on window exhaustion and resuming on WINDOW_ADJUST. Exact
+      OPEN/WRITE bytes, 32768-byte offset progression, zero-window stall, and
+      WINDOW_ADJUST resume are covered by ABAP Unit.
+- [x] `sftp_upload( iv_path, iv_data, iv_timeout_seconds )`.
+- [x] Tier 1 (scripted), tier 2 (replay), tier 3 (upload then verify content
+      via a second connection's download or forced `cat`). The fixed-`AB`
+      OpenSSH replay consumes the complete inbound stream and matches exact
+      outbound bytes; the pinned live server round-tripped 32770 binary bytes
+      through a fresh download connection.
+- [x] Rebex (`integration/rebex.mjs`): server is read-only — download-only
+      check there; upload stays OpenSSH-only. The 379-byte official
+      `/pub/example/readme.txt` fixture downloads byte-exactly.
 
 ## S4 — Directory and metadata ops (by demand, order flexible)
 

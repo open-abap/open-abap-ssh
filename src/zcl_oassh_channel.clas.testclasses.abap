@@ -519,6 +519,9 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->mv_remote_window
       exp = '0000001C' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_send_capacity( )
+      exp = 16 ).
     TRY.
         lo_channel->data( '0000000000000000000000000000000000' ).
         cl_abap_unit_assert=>fail( 'remote maximum packet ignored' ).
@@ -527,6 +530,23 @@ CLASS ltcl_test IMPLEMENTATION.
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-channel_failed ).
     ENDTRY.
+
+* Exhaustion stalls at zero and WINDOW_ADJUST resumes up to max-packet credit.
+    lo_channel = NEW #( ).
+    lo_channel->open( ).
+    lo_channel->receive( '5B00000000000000070000000600000004' ).
+    lo_channel->subsystem( 'sftp' ).
+    lo_channel->receive( '6300000000' ).
+    lo_channel->data( '01020304' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_send_capacity( )
+      exp = 2 ).
+    lo_channel->data( '0506' ).
+    cl_abap_unit_assert=>assert_initial( lo_channel->get_send_capacity( ) ).
+    lo_channel->receive( '5D0000000000000005' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_channel->get_send_capacity( )
+      exp = 4 ).
   ENDMETHOD.
 
 

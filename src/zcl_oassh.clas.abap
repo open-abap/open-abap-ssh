@@ -36,6 +36,13 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         cx_static_check.
+    METHODS sftp_upload
+      IMPORTING
+        iv_path            TYPE string
+        iv_data            TYPE xstring
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        cx_static_check.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -70,6 +77,7 @@ CLASS zcl_oassh DEFINITION
         none          TYPE i VALUE 0,
         execute       TYPE i VALUE 1,
         sftp_download TYPE i VALUE 2,
+        sftp_upload   TYPE i VALUE 3,
       END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -90,6 +98,8 @@ CLASS zcl_oassh DEFINITION
     DATA mo_sftp TYPE REF TO zcl_oassh_sftp.
     DATA mv_command TYPE string.
     DATA mv_sftp_path TYPE string.
+    DATA mv_sftp_upload_data TYPE xstring.
+    DATA mv_sftp_outbound TYPE xstring.
     DATA mv_operation TYPE i.
     DATA mv_operation_started TYPE abap_bool.
     DATA mv_operation_done TYPE abap_bool.
@@ -130,6 +140,12 @@ CLASS zcl_oassh DEFINITION
     METHODS send_encrypted
       IMPORTING
         iv_payload TYPE xstring
+      RAISING
+        cx_static_check.
+    METHODS queue_sftp_output
+      IMPORTING
+        iv_data TYPE xstring.
+    METHODS flush_sftp_output
       RAISING
         cx_static_check.
     METHODS process_global_request
@@ -261,6 +277,45 @@ CLASS zcl_oassh IMPLEMENTATION.
         iv_sftp_status = lv_status ).
     ENDIF.
     rv_data = mo_sftp->get_data( ).
+  ENDMETHOD.
+
+
+  METHOD sftp_upload.
+* Upload completion means every WRITE was acknowledged and the remote handle
+* and SSH channel both completed their close handshakes.
+    DATA lv_status TYPE i.
+    IF mv_operation_started = abap_true.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-sftp_upload.
+    mv_sftp_path = iv_path.
+    mv_sftp_upload_data = iv_data.
+    mo_sftp = NEW #( ).
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    mi_socket->wait( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
+        OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+    ENDIF.
+    lv_status = mo_sftp->get_error_status( ).
+    IF lv_status >= 0.
+      zcx_oassh_error=>raise(
+        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
+        iv_sftp_status = lv_status ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -665,16 +720,24 @@ CLASS zcl_oassh IMPLEMENTATION.
         CASE mv_operation.
           WHEN gc_operation-execute.
             lv_reply = mo_channel->exec( mv_command ).
-          WHEN gc_operation-sftp_download.
+          WHEN gc_operation-sftp_download OR gc_operation-sftp_upload.
             lv_reply = mo_channel->subsystem( 'sftp' ).
           WHEN OTHERS.
             zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
         ENDCASE.
         send_encrypted( lv_reply ).
       WHEN zcl_oassh_channel=>c_state-running.
-        IF mv_operation = gc_operation-sftp_download.
+        IF mv_operation = gc_operation-sftp_download
+            OR mv_operation = gc_operation-sftp_upload.
+          flush_sftp_output( ).
           IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-created.
-            lv_sftp_output = mo_sftp->start_download( mv_sftp_path ).
+            IF mv_operation = gc_operation-sftp_download.
+              lv_sftp_output = mo_sftp->start_download( mv_sftp_path ).
+            ELSE.
+              lv_sftp_output = mo_sftp->start_upload(
+                iv_path = mv_sftp_path
+                iv_data = mv_sftp_upload_data ).
+            ENDIF.
           ELSE.
             lv_sftp_input = mo_channel->drain_stdout( ).
             IF lv_sftp_input IS NOT INITIAL.
@@ -682,10 +745,11 @@ CLASS zcl_oassh IMPLEMENTATION.
             ENDIF.
           ENDIF.
           IF lv_sftp_output IS NOT INITIAL.
-            lv_reply = mo_channel->data( lv_sftp_output ).
-            send_encrypted( lv_reply ).
+            queue_sftp_output( lv_sftp_output ).
+            flush_sftp_output( ).
           ENDIF.
-          IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-finished.
+          IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-finished
+              AND mv_sftp_outbound IS INITIAL.
             lv_reply = mo_channel->close( ).
             send_encrypted( lv_reply ).
           ENDIF.
@@ -700,6 +764,41 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF iv_payload IS NOT INITIAL.
       mi_socket->send( mo_transport->get_packet( )->encode( iv_payload ) ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD queue_sftp_output.
+    CONCATENATE mv_sftp_outbound iv_data INTO mv_sftp_outbound IN BYTE MODE.
+  ENDMETHOD.
+
+
+  METHOD flush_sftp_output.
+* RFC 4254 section 5.2: never exceed either the current remote window or the
+* peer's maximum packet size. WINDOW_ADJUST callbacks re-enter this method.
+    DATA lv_capacity TYPE i.
+    DATA lv_pending_length TYPE i.
+    DATA lv_send_length TYPE i.
+    DATA lv_payload TYPE xstring.
+    DATA lv_remainder TYPE xstring.
+    DATA lv_reply TYPE xstring.
+    lv_capacity = mo_channel->get_send_capacity( ).
+    WHILE mv_sftp_outbound IS NOT INITIAL AND lv_capacity > 0.
+      lv_pending_length = xstrlen( mv_sftp_outbound ).
+      lv_send_length = lv_pending_length.
+      IF lv_send_length > lv_capacity.
+        lv_send_length = lv_capacity.
+      ENDIF.
+      lv_payload = mv_sftp_outbound(lv_send_length).
+      IF lv_send_length = lv_pending_length.
+        CLEAR mv_sftp_outbound.
+      ELSE.
+        lv_remainder = mv_sftp_outbound+lv_send_length.
+        mv_sftp_outbound = lv_remainder.
+      ENDIF.
+      lv_reply = mo_channel->data( lv_payload ).
+      send_encrypted( lv_reply ).
+      lv_capacity = mo_channel->get_send_capacity( ).
+    ENDWHILE.
   ENDMETHOD.
 
 

@@ -36,6 +36,9 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS drain_stdout RETURNING VALUE(rv_data) TYPE xstring.
     METHODS get_stderr RETURNING VALUE(rv_data) TYPE xstring.
     METHODS get_exit_status RETURNING VALUE(rv_status) TYPE i.
+    METHODS get_send_capacity
+      RETURNING
+        VALUE(rv_capacity) TYPE i.
 
   PRIVATE SECTION.
     TYPES ty_uint32 TYPE x LENGTH 4.
@@ -107,6 +110,11 @@ CLASS zcl_oassh_channel DEFINITION
         iv_length      TYPE i
       RETURNING
         VALUE(rv_fits) TYPE abap_bool.
+    CLASS-METHODS uint32_to_capacity
+      IMPORTING
+        iv_value           TYPE ty_uint32
+      RETURNING
+        VALUE(rv_capacity) TYPE i.
     CLASS-METHODS join_chunks
       IMPORTING
         it_chunks     TYPE ty_chunks
@@ -444,6 +452,21 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD uint32_to_capacity.
+* Values above signed int4 capacity are all effectively unbounded for one
+* ABAP xstring slice; cap them rather than converting through signed i.
+    DATA lv_first TYPE x LENGTH 1.
+    DATA lv_bit TYPE c LENGTH 1.
+    lv_first = iv_value(1).
+    GET BIT 1 OF lv_first INTO lv_bit.
+    IF lv_bit = '1'.
+      rv_capacity = 2147483647.
+    ELSE.
+      rv_capacity = iv_value.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD handle_server_request.
     DATA lo_reply TYPE REF TO zcl_oassh_stream.
     DATA lv_recipient TYPE i.
@@ -588,5 +611,20 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 
   METHOD get_exit_status.
     rv_status = mv_exit_status.
+  ENDMETHOD.
+
+
+  METHOD get_send_capacity.
+    DATA lv_window TYPE i.
+    DATA lv_packet TYPE i.
+    IF mv_state <> c_state-running.
+      RETURN.
+    ENDIF.
+    lv_window = uint32_to_capacity( mv_remote_window ).
+    lv_packet = uint32_to_capacity( mv_remote_max_packet ).
+    rv_capacity = lv_window.
+    IF lv_packet < rv_capacity.
+      rv_capacity = lv_packet.
+    ENDIF.
   ENDMETHOD.
 ENDCLASS.

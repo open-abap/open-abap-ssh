@@ -113,7 +113,7 @@ const sftp = client.FRIENDS_ACCESS_INSTANCE.mo_sftp.get();
 if (channel.FRIENDS_ACCESS_INSTANCE.mv_state.get() !== 7) {
   throw new Error("SFTP operation did not complete the SSH channel close handshake");
 }
-if (sftp.FRIENDS_ACCESS_INSTANCE.mv_state.get() !== 6) {
+if (sftp.FRIENDS_ACCESS_INSTANCE.mv_state.get() !== 7) {
   throw new Error("SFTP operation did not reach its finished state");
 }
 console.log(`sftp download succeeded: ${output.length / 2} bytes from ${path}`);
