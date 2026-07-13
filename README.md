@@ -213,7 +213,7 @@ non-blocking job.
 - SFTP v3: binary download/upload, STAT/LSTAT, directory listing, REALPATH,
   MKDIR/RMDIR, REMOVE, and RENAME
 
-Port forwarding is not implemented.
+Port forwarding is intentionally out of scope.
 
 ## Protocol references
 

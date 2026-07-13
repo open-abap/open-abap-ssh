@@ -351,11 +351,11 @@ the remaining cross-cutting tasks.
       RFC 8268 peer-value validation and SHA-256 exchange hash; live OpenSSH proof)
 - [x] `chacha20-poly1305@openssh.com` (OpenSSH two-key construction,
   encrypted length, Poly1305-before-decrypt, streaming framing, and forced-cipher CI)
-- [ ] interactive shell channel, `sftp` subsystem, port forwarding
+- [ ] interactive shell channel and `sftp` subsystem
   - [x] interactive PTY shell: binary stdin/raw output, flow control, client
         EOF, exact fixed-RNG replay, and pinned OpenSSH interoperability
   - [ ] `sftp` final SAP validation (implementation tracked in `CHECKLIST2.md`)
-  - [ ] port forwarding
+  - Port forwarding is intentionally out of scope for `open-abap-ssh`.
 
 ---
 
