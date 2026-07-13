@@ -48,6 +48,7 @@ CLASS zcl_oassh_sftp DEFINITION
         stat_pending    TYPE i VALUE 8,
         opendir_pending TYPE i VALUE 9,
         readdir_pending TYPE i VALUE 10,
+        status_pending  TYPE i VALUE 11,
       END OF c_state.
 
     METHODS constructor.
@@ -86,6 +87,24 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS start_mkdir
+      IMPORTING iv_path TYPE string
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS start_rmdir
+      IMPORTING iv_path TYPE string
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS start_remove
+      IMPORTING iv_path TYPE string
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS start_rename
+      IMPORTING
+        iv_old_path TYPE string
+        iv_new_path TYPE string
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
     METHODS receive
       IMPORTING
         iv_data TYPE xstring
@@ -120,6 +139,10 @@ CLASS zcl_oassh_sftp DEFINITION
     CONSTANTS c_operation_stat TYPE i VALUE 3.
     CONSTANTS c_operation_lstat TYPE i VALUE 4.
     CONSTANTS c_operation_list TYPE i VALUE 5.
+    CONSTANTS c_operation_mkdir TYPE i VALUE 6.
+    CONSTANTS c_operation_rmdir TYPE i VALUE 7.
+    CONSTANTS c_operation_remove TYPE i VALUE 8.
+    CONSTANTS c_operation_rename TYPE i VALUE 9.
     CONSTANTS c_read_length TYPE i VALUE 32768.
     CONSTANTS c_max_directory_entries TYPE i VALUE 100000.
 
@@ -134,6 +157,7 @@ CLASS zcl_oassh_sftp DEFINITION
     DATA mv_last_response_body TYPE xstring.
     DATA mv_operation TYPE i.
     DATA mv_path TYPE xstring.
+    DATA mv_path2 TYPE xstring.
     DATA mv_handle TYPE xstring.
     DATA mv_offset TYPE i.
     DATA mt_data TYPE ty_chunks.
@@ -227,6 +251,21 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS mutation_request
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS start_mutation
+      IMPORTING
+        iv_operation TYPE i
+        iv_path      TYPE string
+        iv_path2     TYPE string OPTIONAL
+      RETURNING VALUE(rv_data) TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS handle_status_response
+      IMPORTING
+        iv_type   TYPE zcl_oassh_stream=>ty_byte
+        io_packet TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
     METHODS handle_list_response
       IMPORTING
         iv_type   TYPE zcl_oassh_stream=>ty_byte
@@ -339,6 +378,46 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     ENDIF.
     mv_operation = c_operation_list.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
+    rv_data = start( ).
+  ENDMETHOD.
+
+
+  METHOD start_mkdir.
+    rv_data = start_mutation(
+      iv_operation = c_operation_mkdir
+      iv_path      = iv_path ).
+  ENDMETHOD.
+
+
+  METHOD start_rmdir.
+    rv_data = start_mutation(
+      iv_operation = c_operation_rmdir
+      iv_path      = iv_path ).
+  ENDMETHOD.
+
+
+  METHOD start_remove.
+    rv_data = start_mutation(
+      iv_operation = c_operation_remove
+      iv_path      = iv_path ).
+  ENDMETHOD.
+
+
+  METHOD start_rename.
+    rv_data = start_mutation(
+      iv_operation = c_operation_rename
+      iv_path      = iv_old_path
+      iv_path2     = iv_new_path ).
+  ENDMETHOD.
+
+
+  METHOD start_mutation.
+    IF mv_state <> c_state-created.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDIF.
+    mv_operation = iv_operation.
+    mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
+    mv_path2 = zcl_oassh_ascii=>to_xstring_text( iv_path2 ).
     rv_data = start( ).
   ENDMETHOD.
 
@@ -472,6 +551,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN c_operation_list.
         mv_outbound = opendir_request( ).
         mv_state = c_state-opendir_pending.
+      WHEN c_operation_mkdir OR c_operation_rmdir
+          OR c_operation_remove OR c_operation_rename.
+        mv_outbound = mutation_request( ).
+        mv_state = c_state-status_pending.
     ENDCASE.
   ENDMETHOD.
 
@@ -511,6 +594,12 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           OR mv_state = c_state-readdir_pending
           OR mv_state = c_state-close_pending ).
       handle_list_response(
+        iv_type   = iv_type
+        io_packet = io_packet ).
+    ELSEIF ( mv_operation = c_operation_mkdir OR mv_operation = c_operation_rmdir
+          OR mv_operation = c_operation_remove OR mv_operation = c_operation_rename )
+        AND mv_state = c_state-status_pending.
+      handle_status_response(
         iv_type   = iv_type
         io_packet = io_packet ).
     ELSE.
@@ -738,6 +827,46 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     rv_data = build_request(
       iv_type = '0C'
       iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD mutation_request.
+* draft-ietf-secsh-filexfer-02 sections 6.5, 6.6, and 6.7 define these
+* path-based v3 requests. MKDIR carries an empty ATTRS flags word.
+    DATA lo_body TYPE REF TO zcl_oassh_stream.
+    DATA lv_type TYPE zcl_oassh_stream=>ty_byte.
+    lo_body = NEW #( ).
+    lo_body->string_encode( mv_path ).
+    CASE mv_operation.
+      WHEN c_operation_remove.
+        lv_type = '0D'.
+      WHEN c_operation_mkdir.
+        lv_type = '0E'.
+        lo_body->uint32_encode( 0 ).
+      WHEN c_operation_rmdir.
+        lv_type = '0F'.
+      WHEN c_operation_rename.
+        lv_type = '12'.
+        lo_body->string_encode( mv_path2 ).
+      WHEN OTHERS.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDCASE.
+    rv_data = build_request(
+      iv_type = lv_type
+      iv_body = lo_body->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD handle_status_response.
+    DATA lv_status TYPE i.
+    IF iv_type <> '65'. " SSH_FXP_STATUS
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDIF.
+    lv_status = parse_status( io_packet ).
+    IF lv_status <> 0.
+      mv_error_status = lv_status.
+    ENDIF.
+    mv_state = c_state-finished.
   ENDMETHOD.
 
 

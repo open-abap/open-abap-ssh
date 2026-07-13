@@ -183,7 +183,11 @@ draft before implementing; the list above is orientation, not the spec.
       opaque longnames, and parsed ATTRS; bounded counts, malformed packets,
       STATUS errors, and mandatory handle closure are covered by ABAP Unit.
       Fixed-`AB` exact OpenSSH replay and live pinned OpenSSH listing pass.
-- [ ] `MKDIR`/`RMDIR`/`REMOVE`/`RENAME` — thin, STATUS-checked wrappers.
+- [x] `MKDIR`/`RMDIR`/`REMOVE`/`RENAME` — thin, STATUS-checked wrappers.
+      Exact v3 wire layouts, typed STATUS failures, and unexpected replies are
+      covered by ABAP Unit. A fixed-`AB` exact MKDIR session replay passes, and
+      all four public APIs pass against pinned OpenSSH with verified filesystem
+      postconditions.
 - [ ] `REALPATH` for path normalization if servers disagree on relative paths.
 
 ## S5 — Validation & CI wrap-up

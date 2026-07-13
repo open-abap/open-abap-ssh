@@ -34,6 +34,9 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS list_read_error_closes FOR TESTING RAISING cx_static_check.
     METHODS list_open_error FOR TESTING RAISING cx_static_check.
     METHODS list_invalid_count FOR TESTING RAISING cx_static_check.
+    METHODS mutation_wire FOR TESTING RAISING cx_static_check.
+    METHODS mutation_status_error FOR TESTING RAISING cx_static_check.
+    METHODS mutation_wrong_response FOR TESTING RAISING cx_static_check.
     METHODS typed_status_error FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
@@ -671,6 +674,75 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         mo_sftp->receive( '00000009680000000200001001' ).
         cl_abap_unit_assert=>fail( 'oversized NAME count accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->get_reason( )
+          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD mutation_wire.
+* v3 REMOVE/MKDIR/RMDIR/RENAME have exact path encodings and require STATUS OK.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_mkdir( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000E0E00000001000000016400000000' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_rmdir( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A0F000000010000000164' ).
+
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_remove( 'f' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A0D000000010000000166' ).
+
+    mo_sftp = NEW #( ).
+    lv_out = mo_sftp->start_rename(
+      iv_old_path = 'a'
+      iv_new_path = 'b' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000F120000000100000001610000000162' ).
+  ENDMETHOD.
+
+
+  METHOD mutation_status_error.
+    DATA lv_out TYPE xstring.
+    lv_out = mo_sftp->start_remove( 'missing' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD mutation_wrong_response.
+    DATA lv_out TYPE xstring.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    lv_out = mo_sftp->start_mkdir( 'd' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    TRY.
+        mo_sftp->receive( '00000009690000000100000000' ).
+        cl_abap_unit_assert=>fail( 'non-STATUS mutation reply accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_reason( )
