@@ -269,6 +269,76 @@ the remaining cross-cutting tasks.
 - [x] replace runtime-specific CTR table concatenation with byte-safe balanced joining
 - [x] materialize stream chunk tables with balanced byte concatenation
 - [x] reject malformed, non-ASCII, or non-canonical SSH name-lists
+- [x] discard exactly one peer KEX packet after an incorrect optimistic guess
+- [x] enforce the zero KEXINIT reserved word
+- [x] honor channel-request `want_reply` and ignore unknown request-specific data
+- [x] enforce channel-open, outstanding-request, EOF, and close state transitions
+- [x] avoid per-byte xstring rebuilding for valid stdout/stderr text
+- [x] align transport payload ceilings with the advertised channel packet size
+- [x] keep APC wait completion synchronized on callback success and failure
+- [x] reject malformed, even, undersized, or resource-exhausting RSA host keys early
+- [x] accumulate every HMAC byte difference before packet rejection
+- [x] abort curve25519 key exchange when the shared secret is all zero
+- [x] enforce authentication reply ordering before changing authentication state
+- [x] avoid quadratic byte-by-byte rebuilding of valid SSH protocol text
+- [x] ignore legal server pre-banner lines and enforce SSH identification bounds
+- [x] reject empty, non-token, or NUL-containing server identifications
+- [x] preserve full RFC channel-window range without signed ABAP overflow
+- [x] distinguish a valid channel-open refusal from malformed channel traffic
+- [x] prevent filtered algorithm strings from matching canonical host-key names
+- [x] prevent filtered service/request/method strings from matching protocol tokens
+- [x] eliminate user/peer-triggerable execute assertions before channel completion
+- [x] encode API credentials and command text as UTF-8 instead of asserting ASCII
+- [x] decode internationalized command output without dropping multibyte bytes
+- [x] propagate socket-close completion into typed execute failure handling
+- [x] collapse APC outbound packet writes from O(packet bytes) calls to one call
+- [x] cap diagnostic pre-banner lines to prevent unbounded receive-buffer growth
+- [x] retain the version scan cursor to avoid quadratic fragmented-input work
+- [x] separate execute lifecycle from command content so empty SSH exec strings
+      start after authentication and cannot bypass the one-shot API guard
+- [x] filter exceptional binary command output with balanced valid-run joining
+      instead of quadratic byte-by-byte prefix rebuilding
+- [x] size the transport payload ceiling for a full 32 KiB
+      `CHANNEL_EXTENDED_DATA` message, not only the smaller DATA envelope
+- [x] require host-key negotiation to intersect the actual client proposal,
+      including optional Ed25519 offer state
+- [x] preserve optional-password presence separately from its value so RFC
+      password authentication can encode an explicitly empty password
+- [x] retain a supplied password for one RFC 4252 fallback after public-key
+      rejection, without allowing repeated password attempts to loop
+- [x] eliminate quadratic block-output concatenation from maximum-size
+      OpenSSH ChaCha20 packet encryption/decryption
+- [x] maintain pending receive-byte length separately so incomplete encrypted
+      packets are balanced-joined once instead of once per APC callback
+- [x] retain plaintext KEX frame length until completion so fragmented packets
+      are not re-peeked and recopied on every receive callback
+- [x] make identification parsing truly incremental over pending stream chunks,
+      materializing only completed pre-banner/version lines
+- [x] enforce RFC 4253 immediate termination after a received disconnect,
+      without consuming subsequently buffered SSH packets
+- [x] ignore late data callbacks after disconnect and discard empty stream
+      appends before they can grow the pending-chunk table
+- [x] make channel parsing atomic so malformed trailing bytes cannot partially
+      mutate channel fields, flow-control, captured data, or lifecycle state
+- [x] defer disconnect/auth/KEX state changes until exact parsing succeeds,
+      and invoke host trust only after the server signature proves possession
+- [x] enforce Montgomery's reduced-operand precondition for equal-width values
+      and make bigint leading-zero normalization linear
+- [x] remove the redundant Montgomery `1² × base` work at the first exponent bit
+      while preserving zero-, one-, and multi-bit exponent behavior
+- [x] enforce fixed-width Montgomery limb results and remove repeated operand
+      table copying/padding from every multiplication in the exponent loop
+- [x] reject RSA public exponents outside `[3, n - 1]` before modular
+      exponentiation to preserve key validity and bound attacker-controlled work
+- [x] distinguish 1017..1023-bit RSA moduli from valid 1024-bit keys even
+      though each occupies 128 canonical octets
+- [x] prevent zero-length channel DATA/EXTENDED_DATA packets from amplifying
+      output-table memory while preserving their valid no-op wire semantics
+- [x] distinguish unsupported messages from recognized-but-invalid state
+      transitions in plaintext/encrypted loops and return UNIMPLEMENTED with
+      the exact packet sequence
+- [x] parse and explicitly refuse server-created channels while keeping the
+      existing outbound session channel and transport alive
 - [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
       deterministic malformed/MAC/oversize packet fixtures
 

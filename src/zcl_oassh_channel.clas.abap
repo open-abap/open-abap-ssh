@@ -26,13 +26,14 @@ CLASS zcl_oassh_channel DEFINITION
     METHODS get_exit_status RETURNING VALUE(rv_status) TYPE i.
 
   PRIVATE SECTION.
+    TYPES ty_uint32 TYPE x LENGTH 4.
     CONSTANTS c_local_channel TYPE i VALUE 0.
     CONSTANTS c_window_size TYPE i VALUE 1048576.
     CONSTANTS c_max_packet TYPE i VALUE 32768.
     DATA mv_state TYPE i.
     DATA mv_remote_channel TYPE i.
-    DATA mv_remote_window TYPE i.
-    DATA mv_remote_max_packet TYPE i.
+    DATA mv_remote_window TYPE ty_uint32.
+    DATA mv_remote_max_packet TYPE ty_uint32.
     DATA mv_local_window TYPE i VALUE c_window_size.
     TYPES ty_chunks TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
     DATA mt_stdout TYPE ty_chunks.
@@ -48,6 +49,31 @@ CLASS zcl_oassh_channel DEFINITION
       RETURNING
         VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
+    METHODS ensure_channel_open
+      RAISING zcx_oassh_error.
+    METHODS ensure_consumed
+      IMPORTING io_stream TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
+    METHODS receive_open_confirmation
+      IMPORTING io_stream TYPE REF TO zcl_oassh_stream
+      RAISING zcx_oassh_error.
+    CLASS-METHODS ensure_data_length
+      IMPORTING iv_data TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS handle_server_request
+      IMPORTING
+        io_stream        TYPE REF TO zcl_oassh_stream
+      RETURNING
+        VALUE(rv_payload) TYPE xstring
+      RAISING zcx_oassh_error.
+    CLASS-METHODS add_uint32
+      IMPORTING
+        iv_left       TYPE ty_uint32
+        iv_right      TYPE ty_uint32
+      RETURNING
+        VALUE(rv_sum) TYPE ty_uint32
+      RAISING
+        zcx_oassh_error.
     CLASS-METHODS join_chunks
       IMPORTING
         it_chunks     TYPE ty_chunks
@@ -79,7 +105,8 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     lo_stream->uint32_encode( mv_remote_channel ).
     lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( 'exec' ) ).
     lo_stream->boolean_encode( abap_true ).
-    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring( iv_command ) ).
+* The exec command is application text, not an ASCII protocol identifier.
+    lo_stream->string_encode( zcl_oassh_ascii=>to_xstring_text( iv_command ) ).
     rv_payload = lo_stream->get( ).
     mv_state = c_state-exec_sent.
   ENDMETHOD.
@@ -91,34 +118,59 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     DATA lv_recipient TYPE i.
     DATA lv_data TYPE xstring.
     DATA lv_type TYPE i.
-    DATA lv_request TYPE xstring.
-    DATA lv_want_reply TYPE abap_bool.
+    DATA lv_uint32 TYPE ty_uint32.
+    DATA lv_new_window TYPE ty_uint32.
     lo_stream = NEW #( iv_payload ).
     lv_id = lo_stream->take( 1 ).
     CASE lv_id.
       WHEN '5B'. " CHANNEL_OPEN_CONFIRMATION (91)
+        receive_open_confirmation( lo_stream ).
+      WHEN '5C'. " CHANNEL_OPEN_FAILURE (92)
         IF mv_state <> c_state-open_sent.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
-        mv_remote_channel = lo_stream->uint32_decode( ).
-        mv_remote_window = lo_stream->uint32_decode( ).
-        mv_remote_max_packet = lo_stream->uint32_decode( ).
-        mv_state = c_state-open.
+* RFC 4254 section 5.1: reason, UTF-8 description, and language tag must all
+* be consumed even though this API exposes only the typed channel failure.
+        lv_uint32 = lo_stream->take( 4 ).
+        lo_stream->string_decode( ).
+        lo_stream->string_decode( ).
+        ensure_consumed( lo_stream ).
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
       WHEN '5D'. " WINDOW_ADJUST (93)
+        ensure_channel_open( ).
         lv_recipient = read_recipient( lo_stream ).
-        mv_remote_window = mv_remote_window + lo_stream->uint32_decode( ).
+        lv_uint32 = lo_stream->take( 4 ).
+        ensure_consumed( lo_stream ).
+        lv_new_window = add_uint32(
+          iv_left  = mv_remote_window
+          iv_right = lv_uint32 ).
+        mv_remote_window = lv_new_window.
       WHEN '5E'. " DATA (94)
+        ensure_channel_open( ).
+        IF mv_state = c_state-eof_received.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         lv_data = lo_stream->string_decode( ).
+        ensure_consumed( lo_stream ).
+        ensure_data_length( lv_data ).
         rv_payload = consume_local_window( xstrlen( lv_data ) ).
-        APPEND lv_data TO mt_stdout.
+        IF lv_data IS NOT INITIAL.
+          APPEND lv_data TO mt_stdout.
+        ENDIF.
       WHEN '5F'. " EXTENDED_DATA (95), type 1 is stderr
+        ensure_channel_open( ).
+        IF mv_state = c_state-eof_received.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         lv_type = lo_stream->uint32_decode( ).
         lv_data = lo_stream->string_decode( ).
+        ensure_consumed( lo_stream ).
+        ensure_data_length( lv_data ).
         rv_payload = consume_local_window( xstrlen( lv_data ) ).
-        IF lv_type = 1.
+        IF lv_type = 1 AND lv_data IS NOT INITIAL.
           APPEND lv_data TO mt_stderr.
         ENDIF.
       WHEN '63'. " CHANNEL_SUCCESS (99)
@@ -126,25 +178,32 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
+        ensure_consumed( lo_stream ).
         mv_state = c_state-running.
       WHEN '64'. " CHANNEL_FAILURE (100)
+        IF mv_state <> c_state-exec_sent.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         IF lo_stream->get_length( ) <> 0.
           zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
         ENDIF.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
       WHEN '62'. " server channel request: exit-status
-        lv_recipient = read_recipient( lo_stream ).
-        lv_request = lo_stream->string_decode( ).
-        lv_want_reply = lo_stream->boolean_decode( ).
-        IF zcl_oassh_ascii=>from_xstring( lv_request ) = 'exit-status'.
-          mv_exit_status = lo_stream->uint32_decode( ).
-        ENDIF.
+        ensure_channel_open( ).
+        rv_payload = handle_server_request( lo_stream ).
       WHEN '60'. " EOF (96)
+        ensure_channel_open( ).
+        IF mv_state = c_state-eof_received.
+          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        ENDIF.
         lv_recipient = read_recipient( lo_stream ).
+        ensure_consumed( lo_stream ).
         mv_state = c_state-eof_received.
       WHEN '61'. " CLOSE (97): echo CLOSE exactly once
+        ensure_channel_open( ).
         lv_recipient = read_recipient( lo_stream ).
+        ensure_consumed( lo_stream ).
         lo_reply = NEW #( ).
         lo_reply->append( '61' ).
         lo_reply->uint32_encode( mv_remote_channel ).
@@ -153,7 +212,119 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       WHEN OTHERS.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDCASE.
-    IF lo_stream->get_length( ) <> 0.
+    ensure_consumed( lo_stream ).
+  ENDMETHOD.
+
+
+  METHOD receive_open_confirmation.
+    DATA lv_recipient TYPE i.
+    DATA lv_remote_channel TYPE i.
+    DATA lv_remote_window TYPE ty_uint32.
+    DATA lv_remote_max_packet TYPE ty_uint32.
+    IF mv_state <> c_state-open_sent.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+    lv_recipient = read_recipient( io_stream ).
+    lv_remote_channel = io_stream->uint32_decode( ).
+    lv_remote_window = io_stream->take( 4 ).
+    lv_remote_max_packet = io_stream->take( 4 ).
+    ensure_consumed( io_stream ).
+    mv_remote_channel = lv_remote_channel.
+    mv_remote_window = lv_remote_window.
+    mv_remote_max_packet = lv_remote_max_packet.
+    mv_state = c_state-open.
+  ENDMETHOD.
+
+
+  METHOD ensure_consumed.
+    IF io_stream->get_length( ) <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD add_uint32.
+* RFC 4254 section 5.2 requires windows through 2^32 - 1 and forbids
+* overflow. Keep the value as four wire-order bytes because ABAP i is signed.
+    DATA lv_offset TYPE i.
+    DATA lv_left_byte TYPE x LENGTH 1.
+    DATA lv_right_byte TYPE x LENGTH 1.
+    DATA lv_result_byte TYPE x LENGTH 1.
+    DATA lv_left TYPE i.
+    DATA lv_right TYPE i.
+    DATA lv_total TYPE i.
+    DATA lv_carry TYPE i.
+    rv_sum = iv_left.
+    DO 4 TIMES.
+      lv_offset = 4 - sy-index.
+      lv_left_byte = iv_left+lv_offset(1).
+      lv_right_byte = iv_right+lv_offset(1).
+      lv_left = lv_left_byte.
+      lv_right = lv_right_byte.
+      lv_total = lv_left + lv_right + lv_carry.
+      IF lv_total > 255.
+        lv_total = lv_total - 256.
+        lv_carry = 1.
+      ELSE.
+        CLEAR lv_carry.
+      ENDIF.
+      lv_result_byte = lv_total.
+      rv_sum+lv_offset(1) = lv_result_byte.
+    ENDDO.
+    IF lv_carry <> 0.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD handle_server_request.
+    DATA lo_reply TYPE REF TO zcl_oassh_stream.
+    DATA lv_recipient TYPE i.
+    DATA lv_request TYPE xstring.
+    DATA lv_exit_status TYPE xstring.
+    DATA lv_want_reply TYPE abap_bool.
+    DATA lv_recognized TYPE abap_bool.
+    DATA lv_remaining TYPE i.
+    lv_recipient = read_recipient( io_stream ).
+    lv_request = io_stream->string_decode( ).
+    lv_want_reply = io_stream->boolean_decode( ).
+    lv_exit_status = zcl_oassh_ascii=>to_xstring( 'exit-status' ).
+    IF lv_request = lv_exit_status.
+      IF io_stream->get_length( ) <> 4.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      ENDIF.
+      mv_exit_status = io_stream->uint32_decode( ).
+      lv_recognized = abap_true.
+    ELSE.
+* Unknown request-specific data has no generic shape. RFC 4254 section 5.4
+* requires it to be ignored and answered with CHANNEL_FAILURE when requested.
+      lv_remaining = io_stream->get_length( ).
+      io_stream->take( lv_remaining ).
+    ENDIF.
+    IF lv_want_reply = abap_true.
+      lo_reply = NEW #( ).
+      IF lv_recognized = abap_true.
+        lo_reply->append( '63' ). " CHANNEL_SUCCESS (99)
+      ELSE.
+        lo_reply->append( '64' ). " CHANNEL_FAILURE (100)
+      ENDIF.
+      lo_reply->uint32_encode( mv_remote_channel ).
+      rv_payload = lo_reply->get( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD ensure_channel_open.
+    IF mv_state < c_state-open OR mv_state = c_state-closed.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD ensure_data_length.
+* RFC 4254 section 5.2: maximum packet size limits the data string for both
+* ordinary and extended channel data, independent of their envelope sizes.
+    IF xstrlen( iv_data ) > c_max_packet.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDIF.
   ENDMETHOD.

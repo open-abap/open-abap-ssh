@@ -66,6 +66,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
         mv_complete = mi_handler->is_complete( ).
       CATCH cx_root INTO lx_error.
         mi_handler->on_error( ).
+        mv_complete = mi_handler->is_complete( ).
     ENDTRY.
 
   ENDMETHOD.
@@ -81,8 +82,10 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
     TRY.
         mi_handler->on_open( ).
+        mv_complete = mi_handler->is_complete( ).
       CATCH cx_root INTO lx_error.
         mi_handler->on_error( ).
+        mv_complete = mi_handler->is_complete( ).
     ENDTRY.
 
   ENDMETHOD.
@@ -124,20 +127,16 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
-    DATA lv_index           TYPE i.
-    DATA lv_hex             TYPE xstring.
 
     ASSERT iv_data IS NOT INITIAL.
 
     li_message_manager ?= mi_client->get_message_manager( ).
     li_message = li_message_manager->create_message( ).
-
-    DO xstrlen( iv_data ) TIMES.
-      lv_index = sy-index - 1.
-      lv_hex = iv_data+lv_index(1).
-      li_message->set_binary( lv_hex ).
-      li_message_manager->send( li_message ).
-    ENDDO.
+* SAP's APC TCP client API accepts a complete binary frame. SSH packets are
+* bounded below APC's frame ceiling, so send once instead of issuing one APC
+* message per byte.
+    li_message->set_binary( iv_data ).
+    li_message_manager->send( li_message ).
 
   ENDMETHOD.
 

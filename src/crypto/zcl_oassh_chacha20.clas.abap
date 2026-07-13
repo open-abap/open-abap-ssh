@@ -300,7 +300,9 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
     DATA lv_block TYPE xstring.
     DATA lv_data TYPE xstring.
     DATA lv_result TYPE xstring.
+    DATA lo_output TYPE REF TO zcl_oassh_stream.
     lv_counter = iv_counter.
+    lo_output = NEW #( ).
     WHILE xstrlen( iv_data ) > lv_offset.
       lv_length = xstrlen( iv_data ) - lv_offset.
       IF lv_length > 64.
@@ -312,9 +314,10 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
         iv_nonce   = iv_nonce ).
       lv_data = iv_data+lv_offset(lv_length).
       lv_result = lv_data BIT-XOR lv_block(lv_length).
-      CONCATENATE rv_data lv_result INTO rv_data IN BYTE MODE.
+      lo_output->append( lv_result ).
       lv_offset = lv_offset + lv_length.
       lv_counter = lv_counter + 1.
     ENDWHILE.
+    rv_data = lo_output->get( ).
   ENDMETHOD.
 ENDCLASS.

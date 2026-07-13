@@ -1,3 +1,6 @@
+CLASS ltcl_test DEFINITION DEFERRED.
+CLASS zcl_oassh_stream DEFINITION LOCAL FRIENDS ltcl_test.
+
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
 
   PRIVATE SECTION.
@@ -13,6 +16,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS interleaved_append_take FOR TESTING RAISING cx_static_check.
     METHODS append_after_consume FOR TESTING RAISING cx_static_check.
     METHODS many_chunks FOR TESTING RAISING cx_static_check.
+    METHODS empty_appends FOR TESTING RAISING cx_static_check.
+    METHODS fragmented_length FOR TESTING RAISING cx_static_check.
     METHODS clear FOR TESTING RAISING cx_static_check.
     METHODS boolean_true FOR TESTING RAISING cx_static_check.
     METHODS boolean_false FOR TESTING RAISING cx_static_check.
@@ -246,6 +251,78 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = mo_stream->get_length( )
       exp = 8192 ).
+  ENDMETHOD.
+
+  METHOD empty_appends.
+    DATA lv_empty TYPE xstring.
+    DO 4096 TIMES.
+      mo_stream->append( lv_empty ).
+    ENDDO.
+    cl_abap_unit_assert=>assert_initial( mo_stream->mt_pending ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get_length( )
+      exp = 0 ).
+  ENDMETHOD.
+
+
+  METHOD fragmented_length.
+* APC receive uses fixed one-byte frames. Repeated length polling must leave
+* them pending instead of copying the complete accumulated prefix each time.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lv_expected TYPE xstring.
+    DO 4096 TIMES.
+      mo_stream->append( 'AB' ).
+      cl_abap_unit_assert=>assert_equals(
+        act = mo_stream->find_cr_lf( )
+        exp = -1 ).
+      cl_abap_unit_assert=>assert_equals(
+        act = mo_stream->get_length( )
+        exp = sy-index ).
+    ENDDO.
+    cl_abap_unit_assert=>assert_initial( mo_stream->mv_hex ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( mo_stream->mt_pending )
+      exp = 4096 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->mv_pending_length
+      exp = 4096 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->mv_line_scan_pending
+      exp = 4096 ).
+    mo_stream->append( '0D' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->find_cr_lf( )
+      exp = -1 ).
+    mo_stream->append( '0A' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->find_cr_lf( )
+      exp = 4096 ).
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' ).
+    lv_expected = li_random->bytes( 4096 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->take( 4096 )
+      exp = lv_expected ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->take( 2 )
+      exp = zcl_oassh_ascii=>c_cr_lf ).
+    cl_abap_unit_assert=>assert_initial( mo_stream->mt_pending ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->mv_pending_length
+      exp = 0 ).
+
+* Materializing between partial scans changes the backing layout; scanning
+* must restart there and still find a later terminator correctly.
+    mo_stream->append( '41' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->find_cr_lf( )
+      exp = -1 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->get( )
+      exp = '41' ).
+    mo_stream->append( '0D0A' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_stream->find_cr_lf( )
+      exp = 1 ).
   ENDMETHOD.
 
   METHOD clear.

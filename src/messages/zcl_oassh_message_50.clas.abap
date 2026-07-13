@@ -64,6 +64,7 @@ CLASS zcl_oassh_message_50 IMPLEMENTATION.
   METHOD parse.
 * https://datatracker.ietf.org/doc/html/rfc4252#section-8
 * SSH_MSG_USERAUTH_REQUEST, password method
+    DATA lv_password_method TYPE xstring.
 
     rs_data-message_id = io_stream->take( 1 ).
     IF rs_data-message_id <> gc_message_id.
@@ -72,7 +73,8 @@ CLASS zcl_oassh_message_50 IMPLEMENTATION.
     rs_data-user_name = io_stream->string_decode( ).
     rs_data-service_name = io_stream->string_decode( ).
     rs_data-method_name = io_stream->string_decode( ).
-    IF zcl_oassh_ascii=>from_xstring( rs_data-method_name ) <> 'password'.
+    lv_password_method = zcl_oassh_ascii=>to_xstring( 'password' ).
+    IF rs_data-method_name <> lv_password_method.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
     ENDIF.
 * the boolean FALSE means "this is not a password change request"

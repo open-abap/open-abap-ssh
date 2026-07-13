@@ -17,10 +17,19 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS on_open_sends_version FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
+    METHODS identification_validation FOR TESTING RAISING cx_static_check.
+    METHODS fragmented_kex_header FOR TESTING RAISING cx_static_check.
     METHODS execute_returns_result FOR TESTING RAISING cx_static_check.
     METHODS global_request FOR TESTING RAISING cx_static_check.
+    METHODS server_channel_open FOR TESTING RAISING cx_static_check.
     METHODS transport_messages FOR TESTING RAISING cx_static_check.
+    METHODS disconnect_stops_processing FOR TESTING RAISING cx_static_check.
+    METHODS encrypted_message_recognition FOR TESTING RAISING cx_static_check.
+    METHODS plain_unknown_unimplemented FOR TESTING RAISING cx_static_check.
     METHODS execute_timeout FOR TESTING RAISING cx_static_check.
+    METHODS empty_command_state FOR TESTING RAISING cx_static_check.
+    METHODS execute_early_failure FOR TESTING RAISING cx_static_check.
+    METHODS utf8_credentials FOR TESTING RAISING cx_static_check.
     METHODS recorded_session FOR TESTING RAISING cx_static_check.
     METHODS recorded_inbound
       RETURNING VALUE(rv_data) TYPE xstring.
@@ -31,6 +40,52 @@ ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD encrypted_message_recognition.
+    cl_abap_unit_assert=>assert_true( zcl_oassh=>is_recognized_message( 53 ) ).
+    cl_abap_unit_assert=>assert_true( zcl_oassh=>is_recognized_message( 80 ) ).
+    cl_abap_unit_assert=>assert_true( zcl_oassh=>is_recognized_message( 90 ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh=>is_recognized_message( 83 ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh=>is_recognized_message( 200 ) ).
+  ENDMETHOD.
+
+
+  METHOD plain_unknown_unimplemented.
+* Non-strict KEX must ignore unknown packets after replying with sequence zero.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lo_server_packet TYPE REF TO zcl_oassh_packet.
+    DATA lo_client_packet TYPE REF TO zcl_oassh_packet.
+    DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lv_wire TYPE xstring.
+    lo_mock = NEW #( ).
+    li_socket = lo_mock.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    lo_server_packet = NEW #( li_random ).
+    lo_client_packet = NEW #( li_random ).
+    li_socket->connect( ).
+    lv_wire = lo_server_packet->encode( 'C8' ).
+    lo_ssh->mo_stream->append( lv_wire ).
+
+    lo_ssh->process_kex( ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_client_packet->decode( lo_mock->get_sent( ) )
+      exp = '0300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = 0 ).
+    cl_abap_unit_assert=>assert_true( lo_mock->is_connected( ) ).
+  ENDMETHOD.
 
   METHOD build_ssh.
     DATA li_random TYPE REF TO zif_oassh_random.
@@ -75,14 +130,18 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( lo_ssh->handle_transport_message( '5E00000000' ) ).
 
     " recognized control messages must not hide trailing bytes
+    lo_ssh = build_ssh( ).
     TRY.
-        lo_ssh->handle_transport_message( '02000000017800' ).
+        lo_ssh->handle_transport_message( '010000000B00000004676F6E650000000000' ).
         cl_abap_unit_assert=>fail( 'trailing transport data accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_reason( )
           exp = zcx_oassh_error=>c_reason-malformed_packet ).
     ENDTRY.
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_disconnected ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_command_done ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->get_disconnect_reason( ) ).
   ENDMETHOD.
 
   METHOD global_request.
@@ -163,6 +222,173 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = zcx_oassh_error=>c_reason-timeout ).
+
+    lo_ssh = build_ssh( ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->execute(
+          iv_command         = 'echo hi'
+          iv_timeout_seconds = 0 ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-timeout ).
+  ENDMETHOD.
+
+
+  METHOD server_channel_open.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_ssh = build_ssh( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->reject_channel_open(
+        '5A0000000773657373696F6E000000070020000000008000' )
+      exp = '5C00000007000000010000000000000000' ).
+
+* The common fields are mandatory even though type-specific data is ignored.
+    TRY.
+        lo_ssh->reject_channel_open( '5A0000000773657373696F6E00000007' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+  ENDMETHOD.
+
+  METHOD disconnect_stops_processing.
+* RFC 4253 section 11.1: buffered data after DISCONNECT must not be accepted
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lo_packet TYPE REF TO zcl_oassh_packet.
+    DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lv_disconnect_wire TYPE xstring.
+    DATA lv_trailing_wire TYPE xstring.
+    lo_mock = NEW #( ).
+    li_socket = lo_mock.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    lo_packet = NEW #( li_random ).
+    lv_disconnect_wire = lo_packet->encode( '010000000B00000004676F6E6500000000' ).
+    lv_trailing_wire = lo_packet->encode( '0200000000' ).
+    li_socket->connect( ).
+    lo_ssh->mo_stream->append( lv_disconnect_wire && lv_trailing_wire ).
+
+    lo_ssh->process_kex( ).
+
+    cl_abap_unit_assert=>assert_false( lo_mock->is_connected( ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->get_disconnect_reason( )
+      exp = zcl_oassh_message_1=>c_reason-by_application ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = xstrlen( lv_trailing_wire ) ).
+* A callback already queued by the adapter must also be rejected after close.
+    lo_ssh->zif_oassh_socket_handler~on_message( 'AA' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = xstrlen( lv_trailing_wire ) ).
+  ENDMETHOD.
+
+
+  METHOD empty_command_state.
+* RFC 4254 section 6.5 encodes the command as an unrestricted SSH string.
+* Its empty value must not be confused with "execute was never called".
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->execute(
+          iv_command         = ''
+          iv_timeout_seconds = 1 ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-timeout ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->mv_execute_started ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->mv_command ).
+
+* A second call must still be rejected even though the first command text was
+* empty. This API owns a single session channel and is intentionally one-shot.
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->execute( 'second' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-channel_failed ).
+  ENDMETHOD.
+
+
+  METHOD execute_early_failure.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_ssh = build_ssh( ).
+* APC can report an error before authentication/channel establishment.
+    lo_ssh->zif_oassh_socket_handler~on_error( ).
+    TRY.
+        lo_ssh->execute( 'echo hi' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-channel_failed ).
+
+* A clean TCP close is equally terminal when no SSH channel was completed.
+    lo_ssh = build_ssh( ).
+    lo_ssh->zif_oassh_socket_handler~on_close( ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->execute( 'echo hi' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-channel_failed ).
+  ENDMETHOD.
+
+
+  METHOD utf8_credentials.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lv_user TYPE string.
+    DATA lv_password TYPE string.
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lv_user = cl_abap_codepage=>convert_from( '4AC3B67267' ).
+    lv_password = cl_abap_codepage=>convert_from( '70C3A47373' ).
+    lo_ssh = NEW #(
+      ii_socket        = NEW zcl_oassh_socket_mock( )
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = lv_user
+      iv_password      = lv_password ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_user
+      exp = '4AC3B67267' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_password
+      exp = '70C3A47373' ).
   ENDMETHOD.
 
 
@@ -270,7 +496,8 @@ CLASS ltcl_test IMPLEMENTATION.
     li_socket->connect( ).
     lo_mock->simulate_open( ).
     lv_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ).
-    CONCATENATE lv_version zcl_oassh_ascii=>c_cr_lf INTO lv_version IN BYTE MODE.
+    lv_version = '6C6567616C207365727665722062616E6E65720D0A' &&
+      lv_version && zcl_oassh_ascii=>c_cr_lf.
     CONCATENATE lv_version lv_trailing INTO lv_version IN BYTE MODE.
     lo_mock->simulate_message( lv_version ).
     cl_abap_unit_assert=>assert_equals(
@@ -294,6 +521,130 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true(
       xsdbool( line_exists(
         ls_kexinit-kex_algorithms[ table_line = 'kex-strict-c-v00@openssh.com' ] ) ) ).
+  ENDMETHOD.
+
+
+  METHOD identification_validation.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    DATA lv_line TYPE xstring.
+    DATA lt_malformed TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
+
+* RFC 4253 section 4.2: 253 bytes plus CR LF is the maximum accepted line.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mi_socket->connect( ).
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '41' ).
+    lv_line = '5353482D322E302D' &&
+      li_random->bytes( 245 ) &&
+      zcl_oassh_ascii=>c_cr_lf.
+    lo_ssh->mo_stream->append( lv_line ).
+    lo_ssh->process_version( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_state
+      exp = zcl_oassh=>gc_state-key_exchange ).
+
+* A malformed SSH-prefixed line is rejected with a typed protocol error.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mo_stream->append( '5353482D392E302D6261640D0A' ).
+    TRY.
+        lo_ssh->process_version( ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+
+* 254 bytes before CR LF exceeds the 255-byte inclusive maximum.
+    lo_ssh = build_ssh( ).
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '41' ).
+    lv_line = '5353482D322E302D' &&
+      li_random->bytes( 246 ) &&
+      zcl_oassh_ascii=>c_cr_lf.
+    lo_ssh->mo_stream->append( lv_line ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->process_version( ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+
+* Empty, whitespace-containing, hyphenated software tokens and NUL bytes are
+* forbidden by the identification grammar.
+    APPEND '5353482D322E302D' TO lt_malformed.
+    APPEND '5353482D322E302D20636F6D6D656E74' TO lt_malformed.
+    APPEND '5353482D322E302D6261642D6E616D65' TO lt_malformed.
+    APPEND '5353482D322E302D676F6F642062616400' TO lt_malformed.
+    LOOP AT lt_malformed INTO lv_line.
+      CLEAR lv_reason.
+      TRY.
+          zcl_oassh=>validate_server_identification( lv_line ).
+        CATCH zcx_oassh_error INTO lx_error.
+          lv_reason = lx_error->get_reason( ).
+      ENDTRY.
+      cl_abap_unit_assert=>assert_equals(
+        act = lv_reason
+        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDLOOP.
+
+* An unterminated diagnostic line is bounded even when fragmented.
+    lo_ssh = build_ssh( ).
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = '41' ).
+    lo_ssh->mo_stream->append( li_random->bytes( 35000 ) ).
+    lo_ssh->process_version( ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->mv_version_prefix_checked ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_version_is_ssh ).
+    lo_ssh->mo_stream->append( '41' ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->process_version( ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+
+* New fragments continue from the previous byte rather than rescanning.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mo_stream->append( '41' ).
+    lo_ssh->process_version( ).
+    lo_ssh->mo_stream->append( '42' ).
+    lo_ssh->process_version( ).
+    lo_ssh->mo_stream->append( '43' ).
+    lo_ssh->process_version( ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_version_prefix_checked ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = 3 ).
+  ENDMETHOD.
+
+
+  METHOD fragmented_kex_header.
+* Once the plaintext packet length is available, later one-byte callbacks
+* must reuse it instead of peeking/materializing the growing packet again.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mo_stream->append( '0000800000000000' ).
+    lo_ssh->process_kex( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_plain_packet_length
+      exp = 32768 ).
+    DO 4096 TIMES.
+      lo_ssh->mo_stream->append( 'AA' ).
+      lo_ssh->process_kex( ).
+      cl_abap_unit_assert=>assert_equals(
+        act = lo_ssh->mv_plain_packet_length
+        exp = 32768 ).
+    ENDDO.
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = 4104 ).
   ENDMETHOD.
 
 

@@ -93,6 +93,10 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
     rs_data-languages_s_to_c = io_stream->name_list_decode( ).
     rs_data-first_kex_packet_follows = io_stream->boolean_decode( ).
     rs_data-reserved = io_stream->uint32_decode( ).
+    IF rs_data-reserved <> 0.
+* RFC 4253 section 7.1 requires the future-extension field to be zero.
+      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+    ENDIF.
 
   ENDMETHOD.
 

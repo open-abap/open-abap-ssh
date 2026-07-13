@@ -4,7 +4,9 @@ CLASS zcl_oassh_packet DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    CONSTANTS c_max_payload_length TYPE i VALUE 32768.
+* RFC 4254 sections 5.1 and 5.2: the advertised 32768-byte channel data
+* maximum must fit both DATA (9-byte envelope) and EXTENDED_DATA (13 bytes).
+    CONSTANTS c_max_payload_length TYPE i VALUE 32781.
     CONSTANTS c_max_packet_length TYPE i VALUE 35000.
     CONSTANTS c_cipher_aes128_ctr TYPE string VALUE 'aes128-ctr'.
     CONSTANTS c_cipher_chachapoly TYPE string VALUE 'chacha20-poly1305@openssh.com'.
@@ -70,6 +72,9 @@ CLASS zcl_oassh_packet DEFINITION
     METHODS get_receive_sequence
       RETURNING
         VALUE(rv_sequence) TYPE i.
+    METHODS get_last_receive_sequence
+      RETURNING
+        VALUE(rv_sequence) TYPE i.
     METHODS get_auth_length
       RETURNING VALUE(rv_length) TYPE i.
     METHODS get_header_length
@@ -95,6 +100,12 @@ CLASS zcl_oassh_packet DEFINITION
         iv_plain      TYPE xstring
       RETURNING
         VALUE(rv_mac) TYPE xstring.
+    CLASS-METHODS auth_matches
+      IMPORTING
+        iv_actual         TYPE xstring
+        iv_expected       TYPE xstring
+      RETURNING
+        VALUE(rv_matches) TYPE abap_bool.
     METHODS validate_packet_length
       IMPORTING
         iv_length   TYPE i
@@ -196,6 +207,19 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_last_receive_sequence.
+* decode increments after every accepted packet; invert that step while
+* preserving uint32 rollover in ABAP's signed representation.
+    DATA lv_min_i TYPE i.
+    lv_min_i = -2147483647 - 1.
+    IF mv_receive_sequence = lv_min_i.
+      rv_sequence = 2147483647.
+    ELSE.
+      rv_sequence = mv_receive_sequence - 1.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD get_auth_length.
     IF mo_decrypt_chachapoly IS BOUND.
       rv_length = 16.
@@ -222,6 +246,26 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     rv_mac = zcl_oassh_hmac=>sha256(
       iv_key  = iv_key
       iv_data = lo_stream->get( ) ).
+  ENDMETHOD.
+
+
+  METHOD auth_matches.
+* Accumulate all byte differences so HMAC rejection does not disclose the
+* first mismatching position. Length is checked before any byte access.
+    DATA lv_offset TYPE i.
+    DATA lv_actual TYPE x LENGTH 1.
+    DATA lv_expected TYPE x LENGTH 1.
+    DATA lv_difference TYPE x LENGTH 1.
+    IF xstrlen( iv_actual ) <> xstrlen( iv_expected ).
+      RETURN.
+    ENDIF.
+    DO xstrlen( iv_actual ) TIMES.
+      lv_offset = sy-index - 1.
+      lv_actual = iv_actual+lv_offset(1).
+      lv_expected = iv_expected+lv_offset(1).
+      lv_difference = lv_difference BIT-OR ( lv_actual BIT-XOR lv_expected ).
+    ENDDO.
+    rv_matches = xsdbool( lv_difference = '00' ).
   ENDMETHOD.
 
 
@@ -374,7 +418,9 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_key      = mv_decrypt_mac
         iv_sequence = mv_receive_sequence
         iv_plain    = lv_plain ).
-      IF lv_received_mac <> lv_expected_mac.
+      IF auth_matches(
+          iv_actual   = lv_received_mac
+          iv_expected = lv_expected_mac ) = abap_false.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
       ENDIF.
     ENDIF.
@@ -482,7 +528,9 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_key      = mv_decrypt_mac
         iv_sequence = mv_receive_sequence
         iv_plain    = mv_recv_plain ).
-      IF iv_mac <> lv_expected_mac.
+      IF auth_matches(
+          iv_actual   = iv_mac
+          iv_expected = lv_expected_mac ) = abap_false.
         zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
       ENDIF.
     ENDIF.

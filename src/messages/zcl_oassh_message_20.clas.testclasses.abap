@@ -2,6 +2,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS own_proposal FOR TESTING RAISING cx_static_check.
     METHODS roundtrip FOR TESTING RAISING cx_static_check.
+    METHODS rejects_reserved FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -54,5 +55,26 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_stream->get_length( )
       exp = 0 ).
+  ENDMETHOD.
+
+
+  METHOD rejects_reserved.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_stream TYPE REF TO zcl_oassh_stream.
+    DATA ls_data TYPE zcl_oassh_message_20=>ty_data.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE i.
+    lo_random = NEW #( iv_pattern = 'AB' ).
+    ls_data = zcl_oassh_message_20=>create( lo_random ).
+    ls_data-reserved = 1.
+    lo_stream = zcl_oassh_message_20=>serialize( ls_data ).
+    TRY.
+        zcl_oassh_message_20=>parse( lo_stream ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->get_reason( ).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = zcx_oassh_error=>c_reason-malformed_packet ).
   ENDMETHOD.
 ENDCLASS.
