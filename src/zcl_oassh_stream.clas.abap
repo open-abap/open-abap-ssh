@@ -186,7 +186,9 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
         IF lv_index = lv_count.
           APPEND lt_current[ lv_index ] TO lt_next.
         ELSE.
-          CONCATENATE lt_current[ lv_index ] lt_current[ lv_index + 1 ]
+          DATA(lv_left) = lt_current[ lv_index ].
+          DATA(lv_right) = lt_current[ lv_index + 1 ].
+          CONCATENATE lv_left lv_right
             INTO lv_joined IN BYTE MODE.
           APPEND lv_joined TO lt_next.
         ENDIF.
