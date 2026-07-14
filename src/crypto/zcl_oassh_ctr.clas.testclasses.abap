@@ -54,6 +54,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_ctr TYPE REF TO zcl_oassh_ctr.
     DATA lv_actual TYPE xstring.
     DATA lv_part TYPE xstring.
+    DATA lv_slice TYPE xstring.
     DATA lv_plain TYPE xstring.
     DATA lv_cipher TYPE xstring.
     CONCATENATE c_plain_1 c_plain_2 INTO lv_plain IN BYTE MODE.
@@ -62,10 +63,13 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_ctr = NEW #(
       iv_key     = c_key
       iv_counter = c_ctr ).
-    lv_actual = lo_ctr->crypt( lv_plain(7) ).
-    lv_part = lo_ctr->crypt( lv_plain+7(19) ).
+    lv_slice = lv_plain(7).
+    lv_actual = lo_ctr->crypt( lv_slice ).
+    lv_slice = lv_plain+7(19).
+    lv_part = lo_ctr->crypt( lv_slice ).
     CONCATENATE lv_actual lv_part INTO lv_actual IN BYTE MODE.
-    lv_part = lo_ctr->crypt( lv_plain+26 ).
+    lv_slice = lv_plain+26.
+    lv_part = lo_ctr->crypt( lv_slice ).
     CONCATENATE lv_actual lv_part INTO lv_actual IN BYTE MODE.
 
     cl_abap_unit_assert=>assert_equals(
@@ -82,6 +86,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_expected TYPE xstring.
     DATA lv_actual TYPE xstring.
     DATA lv_part TYPE xstring.
+    DATA lv_slice TYPE xstring.
     DATA lv_offset TYPE i.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = '0011223344556677' ).
     lv_plain = li_random->bytes( 4096 ).
@@ -94,7 +99,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_expected = lo_whole->crypt( lv_plain ).
     DO 64 TIMES.
       lv_offset = ( sy-index - 1 ) * 64.
-      lv_part = lo_split->crypt( lv_plain+lv_offset(64) ).
+      lv_slice = lv_plain+lv_offset(64).
+      lv_part = lo_split->crypt( lv_slice ).
       CONCATENATE lv_actual lv_part INTO lv_actual IN BYTE MODE.
     ENDDO.
     cl_abap_unit_assert=>assert_equals(
