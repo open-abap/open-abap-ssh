@@ -120,7 +120,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
     DATA lx_error           TYPE REF TO cx_static_check.
     DATA lv_offset          TYPE i.
-    DATA lv_byte            TYPE x LENGTH 1.
+    DATA lv_byte            TYPE xstring.
 
     ASSERT iv_data IS NOT INITIAL.
 
