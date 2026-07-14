@@ -6,24 +6,17 @@ CLASS zcl_oassh_socket_mock DEFINITION
   PUBLIC SECTION.
 
 * in-memory zif_oassh_socket for tests. Bytes passed to send( ) are
-* accumulated and readable via get_sent( ); inbound events are injected
-* with the simulate_* methods, which drive the registered handler.
+* accumulated and readable via get_sent( ); inbound bytes are staged with
+* set_replay( ) and handed out by the next read( ). An empty read with no
+* staged bytes simulates a read timeout; set_closed( ) simulates the peer
+* closing the connection or a transport error.
 
     INTERFACES zif_oassh_socket.
 
-    METHODS simulate_open
-      RAISING
-        cx_static_check.
-    METHODS simulate_message
-      IMPORTING
-        iv_data TYPE xstring
-      RAISING
-        cx_static_check.
-    METHODS simulate_close.
-    METHODS simulate_error.
     METHODS set_replay
       IMPORTING
         iv_data TYPE xstring.
+    METHODS set_closed.
     METHODS get_sent
       RETURNING
         VALUE(rv_data) TYPE xstring.
@@ -33,10 +26,10 @@ CLASS zcl_oassh_socket_mock DEFINITION
   PROTECTED SECTION.
   PRIVATE SECTION.
 
-    DATA mi_handler   TYPE REF TO zif_oassh_socket_handler.
     DATA mv_sent      TYPE xstring.
     DATA mv_connected TYPE abap_bool.
     DATA mv_replay    TYPE xstring.
+    DATA mv_closed    TYPE abap_bool.
 ENDCLASS.
 
 
@@ -55,34 +48,12 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
 
 
   METHOD set_replay.
-    mv_replay = iv_data.
+    mv_replay = mv_replay && iv_data.
   ENDMETHOD.
 
 
-  METHOD simulate_close.
-    mv_connected = abap_false.
-    IF mi_handler IS BOUND.
-      mi_handler->on_close( ).
-    ENDIF.
-  ENDMETHOD.
-
-
-  METHOD simulate_error.
-    IF mi_handler IS BOUND.
-      mi_handler->on_error( ).
-    ENDIF.
-  ENDMETHOD.
-
-
-  METHOD simulate_message.
-    ASSERT mi_handler IS BOUND.
-    mi_handler->on_message( iv_data ).
-  ENDMETHOD.
-
-
-  METHOD simulate_open.
-    ASSERT mi_handler IS BOUND.
-    mi_handler->on_open( ).
+  METHOD set_closed.
+    mv_closed = abap_true.
   ENDMETHOD.
 
 
@@ -102,23 +73,15 @@ CLASS zcl_oassh_socket_mock IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket~wait.
-    DATA lv_replay TYPE xstring.
-    IF mv_replay IS INITIAL OR mi_handler IS NOT BOUND.
-      RETURN.
-    ENDIF.
-* Clear before dispatch so a callback cannot replay the same stream twice.
-    lv_replay = mv_replay.
+  METHOD zif_oassh_socket~read.
+* staged bytes are delivered in one piece; the SSH core reassembles packets
+* from its stream buffer, so chunking granularity is irrelevant here
+    rv_data = mv_replay.
     CLEAR mv_replay.
-    TRY.
-        mi_handler->on_message( lv_replay ).
-      CATCH cx_static_check.
-        ASSERT 1 = 2.
-    ENDTRY.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket~set_handler.
-    mi_handler = ii_handler.
+  METHOD zif_oassh_socket~is_closed.
+    rv_closed = mv_closed.
   ENDMETHOD.
 ENDCLASS.

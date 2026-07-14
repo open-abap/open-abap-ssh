@@ -15,7 +15,7 @@ ENDCLASS.
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
 
   PRIVATE SECTION.
-    METHODS on_open_sends_version FOR TESTING RAISING cx_static_check.
+    METHODS connect_sends_version FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
     METHODS identification_validation FOR TESTING RAISING cx_static_check.
     METHODS fragmented_kex_header FOR TESTING RAISING cx_static_check.
@@ -331,8 +331,8 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->mo_stream->get_length( )
       exp = xstrlen( lv_trailing_wire ) ).
-* A callback already queued by the adapter must also be rejected after close.
-    lo_ssh->zif_oassh_socket_handler~on_message( 'AA' ).
+* Bytes already buffered by the adapter must also be rejected after close.
+    lo_ssh->process_inbound( 'AA' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->mo_stream->get_length( )
       exp = xstrlen( lv_trailing_wire ) ).
@@ -374,25 +374,24 @@ CLASS ltcl_test IMPLEMENTATION.
 
 
   METHOD execute_early_failure.
+* A transport close or error before authentication/channel establishment is
+* terminal when no SSH channel was completed.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
     DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_reason TYPE i.
-    lo_ssh = build_ssh( ).
-* APC can report an error before authentication/channel establishment.
-    lo_ssh->zif_oassh_socket_handler~on_error( ).
-    TRY.
-        lo_ssh->execute( 'echo hi' ).
-      CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
-    ENDTRY.
-    cl_abap_unit_assert=>assert_equals(
-      act = lv_reason
-      exp = zcx_oassh_error=>c_reason-channel_failed ).
-
-* A clean TCP close is equally terminal when no SSH channel was completed.
-    lo_ssh = build_ssh( ).
-    lo_ssh->zif_oassh_socket_handler~on_close( ).
-    CLEAR lv_reason.
+    lo_mock = NEW #( ).
+    li_random = NEW zcl_oassh_random_fixed( ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = lo_mock
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    lo_mock->set_closed( ).
     TRY.
         lo_ssh->execute( 'echo hi' ).
       CATCH zcx_oassh_error INTO lx_error.
@@ -449,9 +448,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lo_mock->set_replay( recorded_inbound( ) ).
 
     lv_output = lo_ssh->execute( 'printf open-abap-ssh' ).
@@ -491,9 +489,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lo_mock->set_replay( shell_recorded_inbound( ) ).
 
     lv_output = lo_ssh->shell( '7072696E7466206F70656E2D616261702D7373682D7368656C6C0A657869740A' ).
@@ -608,9 +605,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lv_inbound_a = sftp_list_recorded_in_a( ).
     lv_inbound_b = sftp_list_recorded_in_b( ).
     CONCATENATE lv_inbound_a lv_inbound_b INTO lv_inbound IN BYTE MODE.
@@ -655,9 +651,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lo_mock->set_replay( sftp_stat_recorded_inbound( ) ).
 
     ls_attrs = lo_ssh->sftp_stat( '/config/sftp-fixture.bin' ).
@@ -696,9 +691,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lo_mock->set_replay( sftp_upload_recorded_inbound( ) ).
     lv_data = '010203'.
 
@@ -736,9 +730,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lo_mock->set_replay( sftp_recorded_inbound( ) ).
 
     lv_data = lo_ssh->sftp_download( '/config/sftp-fixture.bin' ).
@@ -755,7 +748,7 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_ssh->close( ).
   ENDMETHOD.
 
-  METHOD on_open_sends_version.
+  METHOD connect_sends_version.
 
     DATA lo_mock   TYPE REF TO zcl_oassh_socket_mock.
     DATA lo_ssh    TYPE REF TO zcl_oassh.
@@ -776,10 +769,8 @@ CLASS ltcl_test IMPLEMENTATION.
         iv_user          = 'test'
         iv_password      = 'test'.
 
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
 
     " the client version string, SSH-2.0-abap followed by CR LF
     cl_abap_unit_assert=>assert_equals(
@@ -814,14 +805,13 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lv_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ).
     lv_version = '6C6567616C207365727665722062616E6E65720D0A' &&
       lv_version && zcl_oassh_ascii=>c_cr_lf.
     CONCATENATE lv_version lv_trailing INTO lv_version IN BYTE MODE.
-    lo_mock->simulate_message( lv_version ).
+    lo_ssh->process_inbound( lv_version ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->mo_stream->get( )
       exp = 'AABB' ).
@@ -1618,9 +1608,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_host_verifier = li_verifier
       iv_user          = 'test'
       iv_password      = 'test' ).
-    li_socket->set_handler( lo_ssh ).
     li_socket->connect( ).
-    lo_mock->simulate_open( ).
+    lo_ssh->send_version( ).
     lv_inbound = sftp_mutation_recorded_in_a( ).
     lv_inbound = lv_inbound && sftp_mutation_recorded_in_b( ).
     lo_mock->set_replay( lv_inbound ).

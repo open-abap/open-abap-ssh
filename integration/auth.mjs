@@ -1,7 +1,5 @@
-import net from "node:net";
-import crypto from "node:crypto";
-
 await import("./load-modules.mjs");
+const {createClient, connectClient} = await import("./socket.mjs");
 
 const host = process.argv[2] ?? process.env.OASSH_HOST ?? "127.0.0.1";
 const port = Number(process.argv[3] ?? process.env.OASSH_PORT ?? "2222");
@@ -13,100 +11,38 @@ const debug = process.env.OASSH_DEBUG === "1" || process.argv.includes("--debug"
 // SSH_MSG_USERAUTH_SUCCESS moves the transport auth state machine to this value.
 const AUTH_STATE_AUTHENTICATED = 3;
 
-let handler;
-let socket;
-let callbackQueue = Promise.resolve();
-let done = false;
-let resolveAuth;
-let rejectAuth;
-const authenticated = new Promise((resolve, reject) => {
-  resolveAuth = resolve;
-  rejectAuth = reject;
-});
-
-const random = {
-  async zif_oassh_random$bytes({iv_length}) {
-    const value = crypto.randomBytes(iv_length.get());
-    return new abap.types.XString().set(value.toString("hex").toUpperCase());
-  },
-};
-const hostVerifier = {
-  async zif_oassh_host_verifier$verify() {
-    return abap.builtin.abap_true;
-  },
-};
+const session = await createClient({host, port, user, password, privateSeed, debug});
+const {client, adapter} = session;
+const core = client.FRIENDS_ACCESS_INSTANCE;
 
 const authState = () => {
-  const client = handler.get().FRIENDS_ACCESS_INSTANCE;
-  const transport = client.mo_transport.get();
+  const transport = core.mo_transport.get();
   if (!transport) return 0;
   return transport.FRIENDS_ACCESS_INSTANCE.mv_auth_state.get();
 };
 
-const socketAdapter = {
-  async zif_oassh_socket$set_handler({ii_handler}) {
-    handler = ii_handler;
-  },
-  async zif_oassh_socket$connect() {
-    socket = net.createConnection({host, port});
-    socket.once("connect", () => {
-      if (debug) console.error("connected");
-      callbackQueue = callbackQueue.then(() => handler.get().zif_oassh_socket_handler$on_open());
-    });
-    socket.on("data", data => {
-      if (done) return;
-      if (debug) console.error(`received ${data.length} bytes`);
-      callbackQueue = callbackQueue
-        .then(() => done || handler.get().zif_oassh_socket_handler$on_message({
-          iv_data: new abap.types.XString().set(data.toString("hex").toUpperCase()),
-        }))
-        .then(() => {
-          if (debug) console.error(`auth state ${authState()}`);
-          if (authState() === AUTH_STATE_AUTHENTICATED) { done = true; resolveAuth(); }
-        })
-        .catch(error => { if (!done) rejectAuth(error); });
-    });
-    socket.once("error", rejectAuth);
-    socket.once("close", () => rejectAuth(new Error("OpenSSH closed before authentication")));
-  },
-  async zif_oassh_socket$send({iv_data}) {
-    const data = Buffer.from(iv_data.get(), "hex");
-    if (debug) console.error(`sending ${data.length} bytes`);
-    socket.write(data);
-  },
-  async zif_oassh_socket$close() {
-    socket.end();
-  },
-  async zif_oassh_socket$wait() {
-    return;
-  },
-};
+await connectClient(session);
 
-const socketRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET"}).set(socketAdapter);
-const randomRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_RANDOM"}).set(random);
-const verifierRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_HOST_VERIFIER"}).set(hostVerifier);
-const client = await new abap.Classes.ZCL_OASSH().constructor_({
-  ii_socket: socketRef,
-  ii_random: randomRef,
-  ii_host_verifier: verifierRef,
-  iv_user: new abap.types.String().set(user),
-  iv_password: new abap.types.String().set(password),
-  iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),
-});
-const clientRef = new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET_HANDLER"}).set(client);
-await socketAdapter.zif_oassh_socket$set_handler({ii_handler: clientRef});
-await socketAdapter.zif_oassh_socket$connect();
-
-// Pure-ABAP RSA host-key verification of a 3072-bit key is slow when
-// transpiled, so allow generous head-room over the handshake crypto.
-let timer;
-const timeout = new Promise((_, reject) => {
-  timer = setTimeout(() => reject(new Error(`Timed out waiting for authentication (auth state ${authState()})`)), 300000);
-});
-try {
-  await Promise.race([authenticated, timeout]);
-} finally {
-  clearTimeout(timer);
+// No public operation runs here, so pump the protocol manually until the
+// transport authenticates. Pure-ABAP RSA host-key verification of a 3072-bit
+// key is slow when transpiled, so allow generous head-room over the
+// handshake crypto.
+const deadline = Date.now() + 300000;
+while (authState() !== AUTH_STATE_AUTHENTICATED) {
+  if (Date.now() >= deadline) {
+    throw new Error(`Timed out waiting for authentication (auth state ${authState()})`);
+  }
+  const data = await adapter.zif_oassh_socket$read({
+    iv_timeout_seconds: new abap.types.Integer().set(30),
+  });
+  if (data.get() === "") {
+    if ((await adapter.zif_oassh_socket$is_closed()).get() === "X") {
+      throw new Error("OpenSSH closed before authentication");
+    }
+    continue;
+  }
+  await core.process_inbound({iv_data: data});
+  if (debug) console.error(`auth state ${authState()}`);
 }
-socket.end();
+await adapter.zif_oassh_socket$close();
 console.log(`password authentication succeeded as ${user}`);
