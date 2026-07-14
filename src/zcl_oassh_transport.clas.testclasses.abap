@@ -663,7 +663,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_password TYPE zcl_oassh_message_50=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_payload TYPE xstring.
-    DATA lv_message_id TYPE xstring.
+    DATA lv_message_id TYPE x LENGTH 1.
     DATA lv_seed TYPE xstring VALUE
       '9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60'.
     DATA lv_reason TYPE i.
