@@ -11,11 +11,11 @@ CLASS zcl_oassh_message_dh_30 DEFINITION
       END OF ty_data.
     CONSTANTS gc_message_id TYPE x LENGTH 1 VALUE '1E'.
     CLASS-METHODS parse
-      IMPORTING io_stream TYPE REF TO zcl_oassh_stream
+      IMPORTING io_stream      TYPE REF TO zcl_oassh_stream
       RETURNING VALUE(rs_data) TYPE ty_data
       RAISING zcx_oassh_error.
     CLASS-METHODS serialize
-      IMPORTING is_data TYPE ty_data
+      IMPORTING is_data          TYPE ty_data
       RETURNING VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
 ENDCLASS.
 

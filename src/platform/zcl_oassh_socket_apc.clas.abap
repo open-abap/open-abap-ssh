@@ -14,13 +14,15 @@ CLASS zcl_oassh_socket_apc DEFINITION
 
     METHODS constructor
       IMPORTING
-        iv_host TYPE string
-        iv_port TYPE string.
+        iv_host   TYPE string
+        iv_port   TYPE string
+        iv_ssl_id TYPE ssfapplssl OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
     DATA mv_host    TYPE string.
     DATA mv_port    TYPE string.
+    DATA mv_ssl_id  TYPE ssfapplssl.
     DATA mi_client  TYPE REF TO if_apc_wsp_client.
     DATA mi_handler TYPE REF TO zif_oassh_socket_handler.
     DATA mv_complete TYPE abap_bool.
@@ -34,6 +36,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD constructor.
     mv_host = iv_host.
     mv_port = iv_port.
+    mv_ssl_id = iv_ssl_id.
   ENDMETHOD.
 
 
@@ -100,10 +103,13 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
     ls_frame-frame_type   = if_apc_tcp_frame_types=>co_frame_type_fixed_length.
     ls_frame-fixed_length = 1.
 
+* i_ssl_id selects an SSL client identity from STRUST for a TLS-wrapped TCP
+* connection. Empty maps to SPACE, which leaves the connection as plain TCP.
     mi_client = cl_apc_tcp_client_manager=>create(
       i_host          = mv_host
       i_port          = mv_port
       i_frame         = ls_frame
+      i_ssl_id        = mv_ssl_id
       i_event_handler = me ).
 
     mi_client->connect( ).

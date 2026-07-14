@@ -9,56 +9,56 @@ CLASS zcl_oassh_chacha20 DEFINITION
 * addition can be implemented bytewise on every supported ABAP runtime.
     CLASS-METHODS block_ietf
       IMPORTING
-        iv_key     TYPE xstring
-        iv_counter TYPE i
-        iv_nonce   TYPE xstring
+        iv_key                  TYPE xstring
+        iv_counter              TYPE i
+        iv_nonce                TYPE xstring
       RETURNING VALUE(rv_block) TYPE xstring.
     CLASS-METHODS block_ssh
       IMPORTING
-        iv_key     TYPE xstring
-        iv_counter TYPE i
-        iv_nonce   TYPE xstring
+        iv_key                  TYPE xstring
+        iv_counter              TYPE i
+        iv_nonce                TYPE xstring
       RETURNING VALUE(rv_block) TYPE xstring.
     CLASS-METHODS crypt_ssh
       IMPORTING
-        iv_key     TYPE xstring
-        iv_nonce   TYPE xstring
-        iv_counter TYPE i
-        iv_data    TYPE xstring
+        iv_key                 TYPE xstring
+        iv_nonce               TYPE xstring
+        iv_counter             TYPE i
+        iv_data                TYPE xstring
       RETURNING VALUE(rv_data) TYPE xstring.
   PRIVATE SECTION.
     TYPES ty_word TYPE x LENGTH 4.
     TYPES ty_words TYPE STANDARD TABLE OF ty_word WITH EMPTY KEY.
     CLASS-METHODS add_word
       IMPORTING
-        iv_a TYPE ty_word
-        iv_b TYPE ty_word
+        iv_a                   TYPE ty_word
+        iv_b                   TYPE ty_word
       RETURNING VALUE(rv_word) TYPE ty_word.
     CLASS-METHODS reverse_word
-      IMPORTING iv_word TYPE ty_word
+      IMPORTING iv_word        TYPE ty_word
       RETURNING VALUE(rv_word) TYPE ty_word.
     CLASS-METHODS rotate_left
       IMPORTING
-        iv_word TYPE ty_word
-        iv_bits TYPE i
+        iv_word                TYPE ty_word
+        iv_bits                TYPE i
       RETURNING VALUE(rv_word) TYPE ty_word.
     CLASS-METHODS quarter_round
       IMPORTING
-        iv_a TYPE i
-        iv_b TYPE i
-        iv_c TYPE i
-        iv_d TYPE i
+        iv_a            TYPE i
+        iv_b            TYPE i
+        iv_c            TYPE i
+        iv_d            TYPE i
       CHANGING ct_state TYPE ty_words.
     CLASS-METHODS rounds
-      IMPORTING it_initial TYPE ty_words
+      IMPORTING it_initial      TYPE ty_words
       RETURNING VALUE(rv_block) TYPE xstring.
 * The 16-word initial state for the OpenSSH layout with a zero counter
 * word; crypt_ssh patches the counter per block instead of rebuilding the
 * key and nonce words for every 64 bytes.
     CLASS-METHODS init_state_ssh
       IMPORTING
-        iv_key   TYPE xstring
-        iv_nonce TYPE xstring
+        iv_key                  TYPE xstring
+        iv_nonce                TYPE xstring
       RETURNING VALUE(rt_state) TYPE ty_words.
 ENDCLASS.
 

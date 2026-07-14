@@ -8,17 +8,17 @@ CLASS zcl_oassh_ed25519 DEFINITION
 * every intermediate remains inside ABAP's signed 32-bit integer range.
     CLASS-METHODS verify
       IMPORTING
-        iv_public_key TYPE xstring
-        iv_message    TYPE xstring
-        iv_signature  TYPE xstring
+        iv_public_key              TYPE xstring
+        iv_message                 TYPE xstring
+        iv_signature               TYPE xstring
       RETURNING VALUE(rv_verified) TYPE abap_bool.
     CLASS-METHODS public_key
-      IMPORTING iv_seed TYPE xstring
+      IMPORTING iv_seed              TYPE xstring
       RETURNING VALUE(rv_public_key) TYPE xstring.
     CLASS-METHODS sign_message
       IMPORTING
-        iv_seed TYPE xstring
-        iv_message TYPE xstring
+        iv_seed                     TYPE xstring
+        iv_message                  TYPE xstring
       RETURNING VALUE(rv_signature) TYPE xstring.
   PRIVATE SECTION.
     TYPES ty_field TYPE STANDARD TABLE OF i WITH EMPTY KEY.
@@ -44,51 +44,51 @@ CLASS zcl_oassh_ed25519 DEFINITION
     CONSTANTS c_base_y TYPE xstring VALUE
       '6666666666666666666666666666666666666666666666666666666666666658'.
     CLASS-METHODS reverse_bytes
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data        TYPE xstring
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS field_from_little
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_from_big
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_to_little
-      IMPORTING it_field TYPE ty_field
+      IMPORTING it_field       TYPE ty_field
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS field_modulus
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_normalize
-      IMPORTING it_field TYPE ty_field
+      IMPORTING it_field        TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_compare
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                      TYPE ty_field
+        it_b                      TYPE ty_field
       RETURNING VALUE(rv_compare) TYPE i.
     CLASS-METHODS field_sub_raw
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_add
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_sub
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_mul
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_pow
       IMPORTING
-        it_base TYPE ty_field
-        iv_exp TYPE xstring
+        it_base                 TYPE ty_field
+        iv_exp                  TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS field_one
       RETURNING VALUE(rt_field) TYPE ty_field.
@@ -96,33 +96,33 @@ CLASS zcl_oassh_ed25519 DEFINITION
       RETURNING VALUE(rs_point) TYPE ty_point.
     CLASS-METHODS point_add
       IMPORTING
-        is_a TYPE ty_point
-        is_b TYPE ty_point
+        is_a                    TYPE ty_point
+        is_b                    TYPE ty_point
       RETURNING VALUE(rs_point) TYPE ty_point.
     CLASS-METHODS point_mul
       IMPORTING
-        iv_scalar TYPE xstring
-        is_point TYPE ty_point
+        iv_scalar               TYPE xstring
+        is_point                TYPE ty_point
       RETURNING VALUE(rs_point) TYPE ty_point.
     CLASS-METHODS point_equal
       IMPORTING
-        is_a TYPE ty_point
-        is_b TYPE ty_point
+        is_a                    TYPE ty_point
+        is_b                    TYPE ty_point
       RETURNING VALUE(rv_equal) TYPE abap_bool.
     CLASS-METHODS point_small_order
-      IMPORTING is_point TYPE ty_point
+      IMPORTING is_point        TYPE ty_point
       RETURNING VALUE(rv_small) TYPE abap_bool.
     CLASS-METHODS point_encode
-      IMPORTING is_point TYPE ty_point
+      IMPORTING is_point          TYPE ty_point
       RETURNING VALUE(rv_encoded) TYPE xstring.
     CLASS-METHODS secret_scalar
-      IMPORTING iv_hash TYPE xstring
+      IMPORTING iv_hash          TYPE xstring
       RETURNING VALUE(rv_scalar) TYPE xstring.
     CLASS-METHODS point_decode
       IMPORTING iv_encoded TYPE xstring
       EXPORTING
-        es_point TYPE ty_point
-        ev_valid TYPE abap_bool.
+        es_point           TYPE ty_point
+        ev_valid           TYPE abap_bool.
 ENDCLASS.
 
 

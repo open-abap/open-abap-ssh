@@ -5,7 +5,7 @@ CLASS zcl_oassh_sha512 DEFINITION
 
   PUBLIC SECTION.
     CLASS-METHODS hash
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data        TYPE xstring
       RETURNING VALUE(rv_hash) TYPE xstring.
 ENDCLASS.
 

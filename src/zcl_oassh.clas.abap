@@ -8,15 +8,16 @@ CLASS zcl_oassh DEFINITION
 
     CLASS-METHODS connect
       IMPORTING
-        iv_host TYPE string
-        iv_port TYPE string
-        iv_user TYPE string
-        iv_password TYPE string OPTIONAL
-        iv_private_seed TYPE xstring OPTIONAL
-        ii_random TYPE REF TO zif_oassh_random OPTIONAL
+        iv_host          TYPE string
+        iv_port          TYPE string
+        iv_user          TYPE string
+        iv_password      TYPE string OPTIONAL
+        iv_private_seed  TYPE xstring OPTIONAL
+        iv_ssl_id        TYPE ssfapplssl OPTIONAL
+        ii_random        TYPE REF TO zif_oassh_random OPTIONAL
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RETURNING
-        VALUE(ro_ssh) TYPE REF TO zcl_oassh
+        VALUE(ro_ssh)    TYPE REF TO zcl_oassh
       RAISING
         cx_static_check.
 
@@ -25,7 +26,7 @@ CLASS zcl_oassh DEFINITION
         iv_command         TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_output) TYPE string
+        VALUE(rv_output)   TYPE string
       RAISING
         cx_static_check.
     METHODS sftp_download
@@ -33,7 +34,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_data) TYPE xstring
+        VALUE(rv_data)     TYPE xstring
       RAISING
         cx_static_check.
     METHODS shell
@@ -44,7 +45,7 @@ CLASS zcl_oassh DEFINITION
         iv_rows            TYPE i DEFAULT 24
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_output) TYPE xstring
+        VALUE(rv_output)   TYPE xstring
       RAISING
         cx_static_check.
     METHODS sftp_upload
@@ -59,7 +60,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_lstat
@@ -67,7 +68,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_list
@@ -75,7 +76,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rt_names) TYPE zcl_oassh_sftp=>ty_names
+        VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
       RAISING
         cx_static_check.
     METHODS sftp_mkdir
@@ -101,8 +102,8 @@ CLASS zcl_oassh DEFINITION
       RAISING cx_static_check.
     METHODS sftp_realpath
       IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
+        iv_path                TYPE string
+        iv_timeout_seconds     TYPE i DEFAULT 300
       RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
       RAISING cx_static_check.
     METHODS get_stderr
@@ -118,13 +119,13 @@ CLASS zcl_oassh DEFINITION
 
     METHODS constructor
       IMPORTING
-        ii_socket TYPE REF TO zif_oassh_socket
-        ii_random TYPE REF TO zif_oassh_random
-        ii_host_verifier TYPE REF TO zif_oassh_host_verifier
-        iv_user TYPE string
-        iv_password TYPE string OPTIONAL
+        ii_socket            TYPE REF TO zif_oassh_socket
+        ii_random            TYPE REF TO zif_oassh_random
+        ii_host_verifier     TYPE REF TO zif_oassh_host_verifier
+        iv_user              TYPE string
+        iv_password          TYPE string OPTIONAL
         iv_password_supplied TYPE abap_bool DEFAULT abap_true
-        iv_private_seed TYPE xstring OPTIONAL.
+        iv_private_seed      TYPE xstring OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -186,9 +187,9 @@ CLASS zcl_oassh DEFINITION
 
     METHODS handle_transport_message
       IMPORTING
-        iv_payload         TYPE xstring
+        iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_handled)  TYPE abap_bool
+        VALUE(rv_handled) TYPE abap_bool
       RAISING zcx_oassh_error.
     METHODS handle
       RAISING
@@ -235,7 +236,7 @@ CLASS zcl_oassh DEFINITION
         iv_lstat           TYPE abap_bool
         iv_timeout_seconds TYPE i
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_mutation
@@ -259,7 +260,7 @@ CLASS zcl_oassh DEFINITION
       RAISING zcx_oassh_error.
     CLASS-METHODS is_recognized_message
       IMPORTING
-        iv_message_number TYPE i
+        iv_message_number    TYPE i
       RETURNING
         VALUE(rv_recognized) TYPE abap_bool.
     METHODS unimplemented_reply
@@ -286,8 +287,9 @@ CLASS zcl_oassh IMPLEMENTATION.
     ENDIF.
 
     li_socket = NEW zcl_oassh_socket_apc(
-      iv_host = iv_host
-      iv_port = iv_port ).
+      iv_host   = iv_host
+      iv_port   = iv_port
+      iv_ssl_id = iv_ssl_id ).
 
     ro_ssh = NEW #(
       ii_socket            = li_socket

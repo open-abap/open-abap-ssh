@@ -15,34 +15,34 @@ CLASS zcl_oassh_field25519 DEFINITION
     TYPES ty_field TYPE STANDARD TABLE OF int8 WITH EMPTY KEY.
 
     CLASS-METHODS from_le
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS from_be
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS to_le
-      IMPORTING it_field TYPE ty_field
+      IMPORTING it_field       TYPE ty_field
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS add
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS sub
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS mul
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS sqr
-      IMPORTING it_a TYPE ty_field
+      IMPORTING it_a            TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS inv
-      IMPORTING it_a TYPE ty_field
+      IMPORTING it_a            TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS one
       RETURNING VALUE(rt_field) TYPE ty_field.
@@ -56,27 +56,27 @@ CLASS zcl_oassh_field25519 DEFINITION
     CONSTANTS c_limbs TYPE i VALUE 10.
 
     CLASS-METHODS reverse_bytes
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data        TYPE xstring
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS modulus
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS normalize
-      IMPORTING it_field TYPE ty_field
+      IMPORTING it_field        TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS compare
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                      TYPE ty_field
+        it_b                      TYPE ty_field
       RETURNING VALUE(rv_compare) TYPE i.
     CLASS-METHODS sub_raw
       IMPORTING
-        it_a TYPE ty_field
-        it_b TYPE ty_field
+        it_a                    TYPE ty_field
+        it_b                    TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS sqr_times
       IMPORTING
-        it_a TYPE ty_field
-        iv_count TYPE i
+        it_a                    TYPE ty_field
+        iv_count                TYPE i
       RETURNING VALUE(rt_field) TYPE ty_field.
 ENDCLASS.
 

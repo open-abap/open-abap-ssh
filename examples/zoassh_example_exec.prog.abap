@@ -48,7 +48,7 @@ FORM run.
   DATA lv_stdout        TYPE string.
   DATA lv_stderr        TYPE string.
   DATA lv_exit_status   TYPE i.
-  DATA lx_error         TYPE REF TO zcx_oassh_error.
+  DATA lx_error         TYPE REF TO cx_static_check.
 
   lo_host_verifier = NEW lcl_accept_host( ).
 

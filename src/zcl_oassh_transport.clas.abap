@@ -36,12 +36,12 @@ CLASS zcl_oassh_transport DEFINITION
         iv_offer_ed25519 TYPE abap_bool DEFAULT abap_true.
     CLASS-METHODS verify_server_signature
       IMPORTING
-        iv_host_key       TYPE xstring
-        iv_signature      TYPE xstring
-        iv_exchange_hash  TYPE xstring
+        iv_host_key           TYPE xstring
+        iv_signature          TYPE xstring
+        iv_exchange_hash      TYPE xstring
         iv_expected_algorithm TYPE string OPTIONAL
       RETURNING
-        VALUE(rv_verified) TYPE abap_bool.
+        VALUE(rv_verified)    TYPE abap_bool.
     METHODS start_kex
       IMPORTING
         iv_client_version TYPE xstring
@@ -72,12 +72,12 @@ CLASS zcl_oassh_transport DEFINITION
       RAISING zcx_oassh_error.
     METHODS start_auth
       IMPORTING
-        iv_user           TYPE xstring
-        iv_password       TYPE xstring OPTIONAL
+        iv_user              TYPE xstring
+        iv_password          TYPE xstring OPTIONAL
         iv_password_supplied TYPE abap_bool DEFAULT abap_true
-        iv_private_seed   TYPE xstring OPTIONAL
+        iv_private_seed      TYPE xstring OPTIONAL
       RETURNING
-        VALUE(rv_payload) TYPE xstring
+        VALUE(rv_payload)    TYPE xstring
       RAISING
         zcx_oassh_error.
     METHODS receive_auth
@@ -164,7 +164,7 @@ CLASS zcl_oassh_transport DEFINITION
       IMPORTING iv_include_strict TYPE abap_bool
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS select_cipher
-      IMPORTING it_algorithms TYPE string_table
+      IMPORTING it_algorithms       TYPE string_table
       RETURNING VALUE(rv_algorithm) TYPE string
       RAISING zcx_oassh_error.
     METHODS select_host_key

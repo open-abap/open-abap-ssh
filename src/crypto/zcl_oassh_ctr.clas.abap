@@ -27,7 +27,7 @@ CLASS zcl_oassh_ctr DEFINITION
     METHODS increment_counter.
     CLASS-METHODS join_blocks
       IMPORTING
-        it_blocks     TYPE ty_blocks
+        it_blocks      TYPE ty_blocks
       RETURNING
         VALUE(rv_data) TYPE xstring.
 ENDCLASS.

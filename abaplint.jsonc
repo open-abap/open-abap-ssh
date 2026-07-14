@@ -21,6 +21,7 @@
     "local_testclass_consistency": true,
     "no_external_form_calls": true,
     "no_inline_in_optional_branches": true,
+    "align_type_expressions": true,
     "no_public_attributes": true,
     "nrob_consistency": true,
     "pragma_style": true,

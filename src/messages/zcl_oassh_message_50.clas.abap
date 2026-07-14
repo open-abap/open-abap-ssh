@@ -40,16 +40,16 @@ CLASS zcl_oassh_message_50 DEFINITION
       RETURNING
         VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
     CLASS-METHODS serialize_publickey_unsigned
-      IMPORTING is_data TYPE ty_publickey
+      IMPORTING is_data          TYPE ty_publickey
       RETURNING VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
     CLASS-METHODS serialize_publickey
-      IMPORTING is_data TYPE ty_publickey
+      IMPORTING is_data          TYPE ty_publickey
       RETURNING VALUE(ro_stream) TYPE REF TO zcl_oassh_stream.
     CLASS-METHODS signed_publickey_request
       IMPORTING
-        iv_user TYPE xstring
-        iv_session_id TYPE xstring
-        iv_private_seed TYPE xstring
+        iv_user                   TYPE xstring
+        iv_session_id             TYPE xstring
+        iv_private_seed           TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring.
 
   PROTECTED SECTION.

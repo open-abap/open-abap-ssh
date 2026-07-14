@@ -10,8 +10,8 @@ CLASS zcl_oassh_poly1305 DEFINITION
 * 10 * 2^14 * 2^13 < 2^31.
     CLASS-METHODS auth
       IMPORTING
-        iv_key  TYPE xstring
-        iv_data TYPE xstring
+        iv_key                TYPE xstring
+        iv_data               TYPE xstring
       RETURNING VALUE(rv_tag) TYPE xstring.
   PRIVATE SECTION.
     TYPES ty_limbs TYPE STANDARD TABLE OF i WITH EMPTY KEY.
@@ -19,35 +19,35 @@ CLASS zcl_oassh_poly1305 DEFINITION
     CONSTANTS c_limb_count TYPE i VALUE 10.
     CLASS-DATA gt_modulus TYPE ty_limbs.
     CLASS-METHODS from_little
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_limbs) TYPE ty_limbs.
     CLASS-METHODS to_little
-      IMPORTING it_limbs TYPE ty_limbs
+      IMPORTING it_limbs       TYPE ty_limbs
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS modulus
       RETURNING VALUE(rt_modulus) TYPE ty_limbs.
     CLASS-METHODS compare
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                      TYPE ty_limbs
+        it_b                      TYPE ty_limbs
       RETURNING VALUE(rv_compare) TYPE i.
     CLASS-METHODS subtract
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS reduce
-      IMPORTING it_value TYPE ty_limbs
+      IMPORTING it_value         TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS add_limbs
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS multiply_mod
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
 ENDCLASS.
 

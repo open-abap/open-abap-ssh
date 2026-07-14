@@ -18,22 +18,22 @@ CLASS zcl_oassh_channel DEFINITION
       END OF c_state.
     METHODS open RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS exec
-      IMPORTING iv_command TYPE string
+      IMPORTING iv_command        TYPE string
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS subsystem
-      IMPORTING iv_name TYPE string
+      IMPORTING iv_name           TYPE string
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS pty
       IMPORTING
-        iv_terminal TYPE string
-        iv_columns  TYPE i
-        iv_rows     TYPE i
+        iv_terminal               TYPE string
+        iv_columns                TYPE i
+        iv_rows                   TYPE i
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS shell
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS data
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data           TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS close
@@ -43,7 +43,7 @@ CLASS zcl_oassh_channel DEFINITION
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS receive
-      IMPORTING iv_payload TYPE xstring
+      IMPORTING iv_payload        TYPE xstring
       RETURNING VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS get_state RETURNING VALUE(rv_state) TYPE i.
@@ -70,12 +70,12 @@ CLASS zcl_oassh_channel DEFINITION
     DATA mt_stderr TYPE ty_chunks.
     DATA mv_exit_status TYPE i VALUE -1.
     METHODS read_recipient
-      IMPORTING io_stream TYPE REF TO zcl_oassh_stream
+      IMPORTING io_stream           TYPE REF TO zcl_oassh_stream
       RETURNING VALUE(rv_recipient) TYPE i
       RAISING zcx_oassh_error.
     METHODS consume_local_window
       IMPORTING
-        iv_length        TYPE i
+        iv_length         TYPE i
       RETURNING
         VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
@@ -89,7 +89,7 @@ CLASS zcl_oassh_channel DEFINITION
       RAISING zcx_oassh_error.
     METHODS receive_close
       IMPORTING
-        io_stream        TYPE REF TO zcl_oassh_stream
+        io_stream         TYPE REF TO zcl_oassh_stream
       RETURNING
         VALUE(rv_payload) TYPE xstring
       RAISING
@@ -99,7 +99,7 @@ CLASS zcl_oassh_channel DEFINITION
       RAISING zcx_oassh_error.
     METHODS handle_server_request
       IMPORTING
-        io_stream        TYPE REF TO zcl_oassh_stream
+        io_stream         TYPE REF TO zcl_oassh_stream
       RETURNING
         VALUE(rv_payload) TYPE xstring
       RAISING zcx_oassh_error.
@@ -132,7 +132,7 @@ CLASS zcl_oassh_channel DEFINITION
         VALUE(rv_capacity) TYPE i.
     CLASS-METHODS join_chunks
       IMPORTING
-        it_chunks     TYPE ty_chunks
+        it_chunks      TYPE ty_chunks
       RETURNING
         VALUE(rv_data) TYPE xstring.
 ENDCLASS.
