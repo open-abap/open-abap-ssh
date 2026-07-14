@@ -63,25 +63,23 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA li_random TYPE REF TO zif_oassh_random.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = '112233' ).
 
-    DATA lv_actual TYPE xstring.
+    
     lv_actual = li_random->bytes( 32768 ).
 
     cl_abap_unit_assert=>assert_equals(
       act = xstrlen( lv_actual )
       exp = 32768 ).
 
-    " every byte follows the repeating pattern at its offset
-    DATA lv_pattern TYPE xstring.
-    lv_pattern = '112233'.
-    DATA lv_offset TYPE i.
-    DATA lv_pos    TYPE i.
-    DO 32768 TIMES.
-      lv_pos = sy-index - 1.
-      lv_offset = lv_pos MOD 3.
-      cl_abap_unit_assert=>assert_equals(
-        act = lv_actual+lv_pos(1)
-        exp = lv_pattern+lv_offset(1) ).
-    ENDDO.
+    " build the expected repeated pattern independently and compare in full
+    DATA lv_expected TYPE xstring.
+    WHILE xstrlen( lv_expected ) < 32768.
+      lv_expected = lv_expected && '112233'.
+    ENDWHILE.
+    lv_expected = lv_expected(32768).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_actual
+      exp = lv_expected ).
 
     " a second call returns the same result (buffer reuse)
     cl_abap_unit_assert=>assert_equals(
