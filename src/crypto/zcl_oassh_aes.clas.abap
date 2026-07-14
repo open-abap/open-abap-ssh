@@ -38,13 +38,19 @@ CLASS zcl_oassh_aes DEFINITION
   PRIVATE SECTION.
 
     TYPES ty_byte TYPE x LENGTH 1.
-    TYPES ty_bytes TYPE STANDARD TABLE OF ty_byte WITH EMPTY KEY.
+* the state is a fixed 16-byte field addressed by offset, column-major as
+* in FIPS 197, so the round transforms work in place without table copies
+    TYPES ty_state TYPE x LENGTH 16.
 
     CLASS-DATA gv_sbox TYPE xstring.
+    CLASS-DATA gv_mul2 TYPE xstring.
 
     CLASS-METHODS sbox
       RETURNING
         VALUE(rv_sbox) TYPE xstring.
+    CLASS-METHODS mul2_table
+      RETURNING
+        VALUE(rv_table) TYPE xstring.
     CLASS-METHODS xtime
       IMPORTING
         iv_a        TYPE x
@@ -66,18 +72,18 @@ CLASS zcl_oassh_aes DEFINITION
         iv_w     TYPE ty_words
         iv_round TYPE i
       CHANGING
-        ct_state TYPE ty_bytes.
+        cv_state TYPE ty_state.
     CLASS-METHODS sub_bytes
       IMPORTING
         iv_sbox  TYPE xstring
       CHANGING
-        ct_state TYPE ty_bytes.
+        cv_state TYPE ty_state.
     CLASS-METHODS shift_rows
       CHANGING
-        ct_state TYPE ty_bytes.
+        cv_state TYPE ty_state.
     CLASS-METHODS mix_columns
       CHANGING
-        ct_state TYPE ty_bytes.
+        cv_state TYPE ty_state.
 ENDCLASS.
 
 
@@ -111,6 +117,25 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
         INTO gv_sbox IN BYTE MODE.
     ENDIF.
     rv_sbox = gv_sbox.
+  ENDMETHOD.
+
+
+  METHOD mul2_table.
+* GF(2^8) multiplication by 2 for every byte value, built once so that
+* mix_columns replaces its per-byte xtime calls with offset lookups
+    DATA lv_value TYPE i.
+    DATA lv_in TYPE x LENGTH 1.
+    DATA lv_out TYPE x LENGTH 1.
+
+    IF gv_mul2 IS INITIAL.
+      DO 256 TIMES.
+        lv_value = sy-index - 1.
+        lv_in = lv_value.
+        lv_out = xtime( lv_in ).
+        CONCATENATE gv_mul2 lv_out INTO gv_mul2 IN BYTE MODE.
+      ENDDO.
+    ENDIF.
+    rv_table = gv_mul2.
   ENDMETHOD.
 
 
@@ -210,117 +235,136 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
   METHOD add_round_key.
 * XOR the four round-key words (one per column) into the state
     DATA lv_c    TYPE i.
-    DATA lv_r    TYPE i.
-    DATA lv_pos  TYPE i.
+    DATA lv_off  TYPE i.
     DATA lv_widx TYPE i.
     DATA lv_word TYPE ty_word.
-    DATA lv_kb   TYPE x LENGTH 1.
-    DATA lv_sb   TYPE x LENGTH 1.
+    DATA lv_col  TYPE ty_word.
 
     DO 4 TIMES.
       lv_c = sy-index - 1.
       lv_widx = 4 * iv_round + lv_c + 1.
       lv_word = iv_w[ lv_widx ].
-      DO 4 TIMES.
-        lv_r = sy-index - 1.
-        lv_pos = 4 * lv_c + lv_r + 1.
-        lv_kb = lv_word+lv_r(1).
-        lv_sb = ct_state[ lv_pos ].
-        ct_state[ lv_pos ] = lv_sb BIT-XOR lv_kb.
-      ENDDO.
+      lv_off = 4 * lv_c.
+      lv_col = cv_state+lv_off(4).
+      lv_col = lv_col BIT-XOR lv_word.
+      cv_state+lv_off(4) = lv_col.
     ENDDO.
   ENDMETHOD.
 
 
   METHOD sub_bytes.
 * replace every state byte with its S-box value
-    DATA lv_i   TYPE i.
+    DATA lv_pos TYPE i.
     DATA lv_off TYPE i.
     DATA lv_b   TYPE x LENGTH 1.
 
     DO 16 TIMES.
-      lv_i = sy-index.
-      lv_b = ct_state[ lv_i ].
+      lv_pos = sy-index - 1.
+      lv_b = cv_state+lv_pos(1).
       lv_off = lv_b.
-      ct_state[ lv_i ] = iv_sbox+lv_off(1).
+      lv_b = iv_sbox+lv_off(1).
+      cv_state+lv_pos(1) = lv_b.
     ENDDO.
   ENDMETHOD.
 
 
   METHOD shift_rows.
 * the state is stored column-major; row r is rotated left by r
-    DATA lt_new TYPE ty_bytes.
+    DATA lv_old TYPE ty_state.
     DATA lv_r   TYPE i.
     DATA lv_c   TYPE i.
     DATA lv_sc  TYPE i.
     DATA lv_src TYPE i.
     DATA lv_dst TYPE i.
 
-    lt_new = ct_state.
+    lv_old = cv_state.
     DO 4 TIMES.
       lv_r = sy-index - 1.
       DO 4 TIMES.
         lv_c = sy-index - 1.
         lv_sc = ( lv_c + lv_r ) MOD 4.
-        lv_src = 4 * lv_sc + lv_r + 1.
-        lv_dst = 4 * lv_c + lv_r + 1.
-        lt_new[ lv_dst ] = ct_state[ lv_src ].
+        lv_src = 4 * lv_sc + lv_r.
+        lv_dst = 4 * lv_c + lv_r.
+        cv_state+lv_dst(1) = lv_old+lv_src(1).
       ENDDO.
     ENDDO.
-    ct_state = lt_new.
   ENDMETHOD.
 
 
   METHOD mix_columns.
-* FIPS 197 section 5.1.3: multiply each column by the fixed polynomial
+* FIPS 197 section 5.1.3: multiply each column by the fixed polynomial,
+* taking the doubled bytes from the precomputed table
+    DATA lv_mul2 TYPE xstring.
     DATA lv_c    TYPE i.
     DATA lv_base TYPE i.
+    DATA lv_off  TYPE i.
     DATA lv_s0   TYPE x LENGTH 1.
     DATA lv_s1   TYPE x LENGTH 1.
     DATA lv_s2   TYPE x LENGTH 1.
     DATA lv_s3   TYPE x LENGTH 1.
+    DATA lv_t0   TYPE x LENGTH 1.
+    DATA lv_t1   TYPE x LENGTH 1.
+    DATA lv_t2   TYPE x LENGTH 1.
+    DATA lv_t3   TYPE x LENGTH 1.
     DATA lv_o0   TYPE x LENGTH 1.
     DATA lv_o1   TYPE x LENGTH 1.
     DATA lv_o2   TYPE x LENGTH 1.
     DATA lv_o3   TYPE x LENGTH 1.
 
+    lv_mul2 = mul2_table( ).
     DO 4 TIMES.
       lv_c = sy-index - 1.
       lv_base = 4 * lv_c.
-      lv_s0 = ct_state[ lv_base + 1 ].
-      lv_s1 = ct_state[ lv_base + 2 ].
-      lv_s2 = ct_state[ lv_base + 3 ].
-      lv_s3 = ct_state[ lv_base + 4 ].
+      lv_s0 = cv_state+lv_base(1).
+      lv_base = lv_base + 1.
+      lv_s1 = cv_state+lv_base(1).
+      lv_base = lv_base + 1.
+      lv_s2 = cv_state+lv_base(1).
+      lv_base = lv_base + 1.
+      lv_s3 = cv_state+lv_base(1).
+      lv_base = lv_base - 3.
+
+      lv_off = lv_s0.
+      lv_t0 = lv_mul2+lv_off(1).
+      lv_off = lv_s1.
+      lv_t1 = lv_mul2+lv_off(1).
+      lv_off = lv_s2.
+      lv_t2 = lv_mul2+lv_off(1).
+      lv_off = lv_s3.
+      lv_t3 = lv_mul2+lv_off(1).
 
 * out0 = 2*s0 ^ 3*s1 ^ s2 ^ s3
-      lv_o0 = xtime( lv_s0 ).
-      lv_o0 = lv_o0 BIT-XOR xtime( lv_s1 ).
+      lv_o0 = lv_t0.
+      lv_o0 = lv_o0 BIT-XOR lv_t1.
       lv_o0 = lv_o0 BIT-XOR lv_s1.
       lv_o0 = lv_o0 BIT-XOR lv_s2.
       lv_o0 = lv_o0 BIT-XOR lv_s3.
 * out1 = s0 ^ 2*s1 ^ 3*s2 ^ s3
       lv_o1 = lv_s0.
-      lv_o1 = lv_o1 BIT-XOR xtime( lv_s1 ).
-      lv_o1 = lv_o1 BIT-XOR xtime( lv_s2 ).
+      lv_o1 = lv_o1 BIT-XOR lv_t1.
+      lv_o1 = lv_o1 BIT-XOR lv_t2.
       lv_o1 = lv_o1 BIT-XOR lv_s2.
       lv_o1 = lv_o1 BIT-XOR lv_s3.
 * out2 = s0 ^ s1 ^ 2*s2 ^ 3*s3
       lv_o2 = lv_s0.
       lv_o2 = lv_o2 BIT-XOR lv_s1.
-      lv_o2 = lv_o2 BIT-XOR xtime( lv_s2 ).
-      lv_o2 = lv_o2 BIT-XOR xtime( lv_s3 ).
+      lv_o2 = lv_o2 BIT-XOR lv_t2.
+      lv_o2 = lv_o2 BIT-XOR lv_t3.
       lv_o2 = lv_o2 BIT-XOR lv_s3.
 * out3 = 3*s0 ^ s1 ^ s2 ^ 2*s3
-      lv_o3 = xtime( lv_s0 ).
+      lv_o3 = lv_t0.
       lv_o3 = lv_o3 BIT-XOR lv_s0.
       lv_o3 = lv_o3 BIT-XOR lv_s1.
       lv_o3 = lv_o3 BIT-XOR lv_s2.
-      lv_o3 = lv_o3 BIT-XOR xtime( lv_s3 ).
+      lv_o3 = lv_o3 BIT-XOR lv_t3.
 
-      ct_state[ lv_base + 1 ] = lv_o0.
-      ct_state[ lv_base + 2 ] = lv_o1.
-      ct_state[ lv_base + 3 ] = lv_o2.
-      ct_state[ lv_base + 4 ] = lv_o3.
+      cv_state+lv_base(1) = lv_o0.
+      lv_base = lv_base + 1.
+      cv_state+lv_base(1) = lv_o1.
+      lv_base = lv_base + 1.
+      cv_state+lv_base(1) = lv_o2.
+      lv_base = lv_base + 1.
+      cv_state+lv_base(1) = lv_o3.
     ENDDO.
   ENDMETHOD.
 
@@ -333,29 +377,24 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
 
 
   METHOD encrypt_block_schedule.
-    DATA lt_state TYPE ty_bytes.
+    DATA lv_state TYPE ty_state.
     DATA lv_sbox  TYPE xstring.
     DATA lv_nr    TYPE i.
     DATA lv_round TYPE i.
-    DATA lv_off   TYPE i.
-    DATA lv_byte  TYPE x LENGTH 1.
 
+    ASSERT xstrlen( iv_block ) = 16.
     lv_sbox = sbox( ).
 * the schedule holds 4 words per round plus the initial round key
     lv_nr = lines( it_w ) / 4 - 1.
 
-    DO 16 TIMES.
-      lv_off = sy-index - 1.
-      lv_byte = iv_block+lv_off(1).
-      APPEND lv_byte TO lt_state.
-    ENDDO.
+    lv_state = iv_block(16).
 
     add_round_key(
       EXPORTING
         iv_w     = it_w
         iv_round = 0
       CHANGING
-        ct_state = lt_state ).
+        cv_state = lv_state ).
 
     lv_round = 1.
     WHILE lv_round < lv_nr.
@@ -363,15 +402,15 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
         EXPORTING
           iv_sbox  = lv_sbox
         CHANGING
-          ct_state = lt_state ).
-      shift_rows( CHANGING ct_state = lt_state ).
-      mix_columns( CHANGING ct_state = lt_state ).
+          cv_state = lv_state ).
+      shift_rows( CHANGING cv_state = lv_state ).
+      mix_columns( CHANGING cv_state = lv_state ).
       add_round_key(
         EXPORTING
           iv_w     = it_w
           iv_round = lv_round
         CHANGING
-          ct_state = lt_state ).
+          cv_state = lv_state ).
       lv_round = lv_round + 1.
     ENDWHILE.
 
@@ -379,17 +418,15 @@ CLASS zcl_oassh_aes IMPLEMENTATION.
       EXPORTING
         iv_sbox  = lv_sbox
       CHANGING
-        ct_state = lt_state ).
-    shift_rows( CHANGING ct_state = lt_state ).
+        cv_state = lv_state ).
+    shift_rows( CHANGING cv_state = lv_state ).
     add_round_key(
       EXPORTING
         iv_w     = it_w
         iv_round = lv_nr
       CHANGING
-        ct_state = lt_state ).
+        cv_state = lv_state ).
 
-    LOOP AT lt_state INTO lv_byte.
-      CONCATENATE rv_block lv_byte INTO rv_block IN BYTE MODE.
-    ENDLOOP.
+    rv_block = lv_state.
   ENDMETHOD.
 ENDCLASS.

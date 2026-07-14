@@ -52,11 +52,20 @@ CLASS zcl_oassh_chacha20 DEFINITION
     CLASS-METHODS rounds
       IMPORTING it_initial TYPE ty_words
       RETURNING VALUE(rv_block) TYPE xstring.
+* The 16-word initial state for the OpenSSH layout with a zero counter
+* word; crypt_ssh patches the counter per block instead of rebuilding the
+* key and nonce words for every 64 bytes.
+    CLASS-METHODS init_state_ssh
+      IMPORTING
+        iv_key   TYPE xstring
+        iv_nonce TYPE xstring
+      RETURNING VALUE(rt_state) TYPE ty_words.
 ENDCLASS.
 
 
 CLASS zcl_oassh_chacha20 IMPLEMENTATION.
   METHOD add_word.
+* write each byte in place; concatenating built four fresh xstrings per call
     DATA lv_offset TYPE i.
     DATA lv_a TYPE x LENGTH 1.
     DATA lv_b TYPE x LENGTH 1.
@@ -70,7 +79,7 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
       lv_sum = lv_a + lv_b + lv_carry.
       lv_out = lv_sum MOD 256.
       lv_carry = lv_sum DIV 256.
-      CONCATENATE lv_out rv_word INTO rv_word IN BYTE MODE.
+      rv_word+lv_offset(1) = lv_out.
     ENDDO.
   ENDMETHOD.
 
@@ -82,35 +91,38 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
 
 
   METHOD rotate_left.
-    DATA lv_byte_shift TYPE i.
-    DATA lv_bits TYPE i.
+* Only the four ChaCha20 rotation amounts occur. 16 and 8 are pure byte
+* moves; 12 and 7 shift with fixed factors instead of recomputing the
+* powers of two on every call.
     DATA lv_index TYPE i.
-    DATA lv_source TYPE i.
     DATA lv_next TYPE i.
-    DATA lv_factor TYPE i VALUE 1.
-    DATA lv_divisor TYPE i VALUE 1.
+    DATA lv_factor TYPE i.
+    DATA lv_divisor TYPE i.
     DATA lv_current_byte TYPE x LENGTH 1.
     DATA lv_next_byte TYPE x LENGTH 1.
     DATA lv_out TYPE x LENGTH 1.
     DATA lv_shifted TYPE ty_word.
 
-    lv_byte_shift = iv_bits DIV 8.
-    lv_bits = iv_bits MOD 8.
-    DO 4 TIMES.
-      lv_index = sy-index - 1.
-      lv_source = ( lv_index + lv_byte_shift ) MOD 4.
-      lv_shifted+lv_index(1) = iv_word+lv_source(1).
-    ENDDO.
-    IF lv_bits = 0.
-      rv_word = lv_shifted.
-      RETURN.
-    ENDIF.
-    DO lv_bits TIMES.
-      lv_factor = lv_factor * 2.
-    ENDDO.
-    DO 8 - lv_bits TIMES.
-      lv_divisor = lv_divisor * 2.
-    ENDDO.
+    CASE iv_bits.
+      WHEN 16.
+        CONCATENATE iv_word+2(2) iv_word(2) INTO rv_word IN BYTE MODE.
+        RETURN.
+      WHEN 8.
+        CONCATENATE iv_word+1(3) iv_word(1) INTO rv_word IN BYTE MODE.
+        RETURN.
+      WHEN 12.
+* rotate by the 8-bit byte move, then by the remaining 4 bits
+        CONCATENATE iv_word+1(3) iv_word(1) INTO lv_shifted IN BYTE MODE.
+        lv_factor = 16.
+        lv_divisor = 16.
+      WHEN 7.
+        lv_shifted = iv_word.
+        lv_factor = 128.
+        lv_divisor = 2.
+      WHEN OTHERS.
+        ASSERT 1 = 2.
+    ENDCASE.
+
     DO 4 TIMES.
       lv_index = sy-index - 1.
       lv_next = ( lv_index + 1 ) MOD 4.
@@ -168,6 +180,8 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
   METHOD rounds.
     DATA lt_state TYPE ty_words.
     DATA lv_word TYPE ty_word.
+    DATA lv_buffer TYPE x LENGTH 64.
+    DATA lv_offset TYPE i.
     lt_state = it_initial.
     DO 10 TIMES.
       quarter_round(
@@ -232,8 +246,10 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
         iv_a = lt_state[ sy-index ]
         iv_b = it_initial[ sy-index ] ).
       lv_word = reverse_word( lv_word ).
-      CONCATENATE rv_block lv_word INTO rv_block IN BYTE MODE.
+      lv_offset = ( sy-index - 1 ) * 4.
+      lv_buffer+lv_offset(4) = lv_word.
     ENDDO.
+    rv_block = lv_buffer.
   ENDMETHOD.
 
 
@@ -241,7 +257,6 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
     DATA lt_state TYPE ty_words.
     DATA lv_offset TYPE i.
     DATA lv_word TYPE ty_word.
-    DATA lo_stream TYPE REF TO zcl_oassh_stream.
     ASSERT xstrlen( iv_key ) = 32.
     ASSERT xstrlen( iv_nonce ) = 12.
     APPEND '61707865' TO lt_state.
@@ -253,9 +268,8 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
       lv_word = iv_key+lv_offset(4).
       APPEND reverse_word( lv_word ) TO lt_state.
     ENDDO.
-    lo_stream = NEW #( ).
-    lo_stream->uint32_encode( iv_counter ).
-    APPEND lo_stream->get( ) TO lt_state.
+    lv_word = iv_counter.
+    APPEND lv_word TO lt_state.
     DO 3 TIMES.
       lv_offset = ( sy-index - 1 ) * 4.
       lv_word = iv_nonce+lv_offset(4).
@@ -265,53 +279,67 @@ CLASS zcl_oassh_chacha20 IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD block_ssh.
-    DATA lt_state TYPE ty_words.
+  METHOD init_state_ssh.
     DATA lv_offset TYPE i.
     DATA lv_word TYPE ty_word.
-    DATA lo_stream TYPE REF TO zcl_oassh_stream.
     ASSERT xstrlen( iv_key ) = 32.
     ASSERT xstrlen( iv_nonce ) = 8.
-    APPEND '61707865' TO lt_state.
-    APPEND '3320646E' TO lt_state.
-    APPEND '79622D32' TO lt_state.
-    APPEND '6B206574' TO lt_state.
+    APPEND '61707865' TO rt_state.
+    APPEND '3320646E' TO rt_state.
+    APPEND '79622D32' TO rt_state.
+    APPEND '6B206574' TO rt_state.
     DO 8 TIMES.
       lv_offset = ( sy-index - 1 ) * 4.
       lv_word = iv_key+lv_offset(4).
-      APPEND reverse_word( lv_word ) TO lt_state.
+      APPEND reverse_word( lv_word ) TO rt_state.
     ENDDO.
-    lo_stream = NEW #( ).
-    lo_stream->uint32_encode( iv_counter ).
-    APPEND lo_stream->get( ) TO lt_state.
-    APPEND '00000000' TO lt_state.
+* word 13 is the block counter, patched by the caller
+    APPEND '00000000' TO rt_state.
+    APPEND '00000000' TO rt_state.
     lv_word = iv_nonce(4).
-    APPEND reverse_word( lv_word ) TO lt_state.
+    APPEND reverse_word( lv_word ) TO rt_state.
     lv_word = iv_nonce+4(4).
-    APPEND reverse_word( lv_word ) TO lt_state.
+    APPEND reverse_word( lv_word ) TO rt_state.
+  ENDMETHOD.
+
+
+  METHOD block_ssh.
+    DATA lt_state TYPE ty_words.
+    DATA lv_word TYPE ty_word.
+    lt_state = init_state_ssh(
+      iv_key   = iv_key
+      iv_nonce = iv_nonce ).
+    lv_word = iv_counter.
+    lt_state[ 13 ] = lv_word.
     rv_block = rounds( lt_state ).
   ENDMETHOD.
 
 
   METHOD crypt_ssh.
+* the key and nonce words are parsed once; only the counter word changes
+* between the 64-byte blocks of one message
     DATA lv_offset TYPE i.
     DATA lv_length TYPE i.
     DATA lv_counter TYPE i.
+    DATA lv_word TYPE ty_word.
+    DATA lt_state TYPE ty_words.
     DATA lv_block TYPE xstring.
     DATA lv_data TYPE xstring.
     DATA lv_result TYPE xstring.
     DATA lo_output TYPE REF TO zcl_oassh_stream.
     lv_counter = iv_counter.
+    lt_state = init_state_ssh(
+      iv_key   = iv_key
+      iv_nonce = iv_nonce ).
     lo_output = NEW #( ).
     WHILE xstrlen( iv_data ) > lv_offset.
       lv_length = xstrlen( iv_data ) - lv_offset.
       IF lv_length > 64.
         lv_length = 64.
       ENDIF.
-      lv_block = block_ssh(
-        iv_key     = iv_key
-        iv_counter = lv_counter
-        iv_nonce   = iv_nonce ).
+      lv_word = lv_counter.
+      lt_state[ 13 ] = lv_word.
+      lv_block = rounds( lt_state ).
       lv_data = iv_data+lv_offset(lv_length).
       lv_result = lv_data BIT-XOR lv_block(lv_length).
       lo_output->append( lv_result ).
