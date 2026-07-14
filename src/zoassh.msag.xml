@@ -84,7 +84,7 @@
      <SPRSL>E</SPRSL>
      <ARBGB>ZOASSH</ARBGB>
      <MSGNR>013</MSGNR>
-     <TEXT>SSH socket operation failed</TEXT>
+     <TEXT>SSH socket operation failed: &amp;1</TEXT>
     </T100>
    </T100>
   </asx:values>

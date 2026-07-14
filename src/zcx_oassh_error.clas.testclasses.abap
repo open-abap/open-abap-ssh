@@ -9,7 +9,6 @@ CLASS ltcl_test DEFINITION FINAL
   PRIVATE SECTION.
     METHODS message_key FOR TESTING RAISING cx_static_check.
     METHODS sftp_message FOR TESTING RAISING cx_static_check.
-    METHODS previous FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -53,20 +52,4 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = 'SFTP server returned status 4' ).
   ENDMETHOD.
 
-
-  METHOD previous.
-    DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lx_previous TYPE REF TO lcx_previous.
-    lx_previous = NEW #( ).
-    TRY.
-        RAISE EXCEPTION TYPE zcx_oassh_error
-          MESSAGE e013(zoassh)
-          EXPORTING
-            previous = lx_previous.
-      CATCH zcx_oassh_error INTO lx_error.
-    ENDTRY.
-    cl_abap_unit_assert=>assert_equals(
-      act = lx_error->previous
-      exp = lx_previous ).
-  ENDMETHOD.
 ENDCLASS.

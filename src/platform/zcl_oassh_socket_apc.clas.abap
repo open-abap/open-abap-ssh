@@ -94,7 +94,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
         mi_client->connect( ).
       CATCH cx_static_check INTO lx_error.
         RAISE EXCEPTION TYPE zcx_oassh_error
-          MESSAGE e013(zoassh)
+          MESSAGE e013(zoassh) WITH lx_error->get_text( )
           EXPORTING
             previous = lx_error.
     ENDTRY.
@@ -132,7 +132,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
         li_message_manager->send( li_message ).
       CATCH cx_static_check INTO lx_error.
         RAISE EXCEPTION TYPE zcx_oassh_error
-          MESSAGE e013(zoassh)
+          MESSAGE e013(zoassh) WITH lx_error->get_text( )
           EXPORTING
             previous = lx_error.
     ENDTRY.
