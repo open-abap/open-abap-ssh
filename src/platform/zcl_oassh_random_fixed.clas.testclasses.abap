@@ -60,10 +60,12 @@ CLASS ltcl_test IMPLEMENTATION.
 
     " length not a multiple of the (3-byte) pattern, larger than the
     " doubling buffer's first step, and requested twice to exercise reuse
-    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_random  TYPE REF TO zif_oassh_random.
+    DATA lv_actual  TYPE xstring.
+    DATA lv_expected TYPE xstring.
+
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = '112233' ).
 
-    
     lv_actual = li_random->bytes( 32768 ).
 
     cl_abap_unit_assert=>assert_equals(
@@ -71,7 +73,6 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = 32768 ).
 
     " build the expected repeated pattern independently and compare in full
-    DATA lv_expected TYPE xstring.
     WHILE xstrlen( lv_expected ) < 32768.
       lv_expected = lv_expected && '112233'.
     ENDWHILE.
