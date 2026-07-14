@@ -15,7 +15,7 @@ CLASS zcl_oassh_stream DEFINITION
         VALUE(rv_hex) TYPE xstring.
     METHODS take
       IMPORTING
-        iv_length    TYPE i
+        iv_length     TYPE i
       RETURNING
         VALUE(rv_hex) TYPE xstring
       RAISING
@@ -119,7 +119,7 @@ CLASS zcl_oassh_stream DEFINITION
     METHODS materialize.
     CLASS-METHODS join_chunks
       IMPORTING
-        it_chunks     TYPE ty_chunks
+        it_chunks      TYPE ty_chunks
       RETURNING
         VALUE(rv_data) TYPE xstring.
 ENDCLASS.

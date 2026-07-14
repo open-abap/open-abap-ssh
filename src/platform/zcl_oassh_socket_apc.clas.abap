@@ -7,23 +7,27 @@ CLASS zcl_oassh_socket_apc DEFINITION
 
 * zif_oassh_socket implementation on top of ABAP Push Channels (APC). This
 * is the only place in the library that references the SAP standard APC
-* classes; the SSH core talks to zif_oassh_socket / zif_oassh_socket_handler.
+* classes; the SSH core talks to zif_oassh_socket only. The APC event
+* callbacks just buffer inbound bytes and record a close; read( ) waits for
+* push channels and hands the buffer to the SSH core.
 
     INTERFACES zif_oassh_socket.
     INTERFACES if_apc_wsp_event_handler.
 
     METHODS constructor
       IMPORTING
-        iv_host TYPE string
-        iv_port TYPE string.
+        iv_host   TYPE string
+        iv_port   TYPE string
+        iv_ssl_id TYPE ssfapplssl OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
-    DATA mv_host    TYPE string.
-    DATA mv_port    TYPE string.
-    DATA mi_client  TYPE REF TO if_apc_wsp_client.
-    DATA mi_handler TYPE REF TO zif_oassh_socket_handler.
-    DATA mv_complete TYPE abap_bool.
+    DATA mv_host   TYPE string.
+    DATA mv_port   TYPE string.
+    DATA mv_ssl_id TYPE ssfapplssl.
+    DATA mi_client TYPE REF TO if_apc_wsp_client.
+    DATA mv_buffer TYPE xstring.
+    DATA mv_closed TYPE abap_bool.
 ENDCLASS.
 
 
@@ -34,22 +38,17 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD constructor.
     mv_host = iv_host.
     mv_port = iv_port.
+    mv_ssl_id = iv_ssl_id.
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_close.
-    IF mi_handler IS BOUND.
-      mi_handler->on_close( ).
-      mv_complete = mi_handler->is_complete( ).
-    ENDIF.
+    mv_closed = abap_true.
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_error.
-    IF mi_handler IS BOUND.
-      mi_handler->on_error( ).
-      mv_complete = mi_handler->is_complete( ).
-    ENDIF.
+    mv_closed = abap_true.
   ENDMETHOD.
 
 
@@ -57,37 +56,18 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
     DATA lx_error TYPE REF TO cx_root.
 
-    IF mi_handler IS NOT BOUND.
-      RETURN.
-    ENDIF.
-
     TRY.
-        mi_handler->on_message( i_message->get_binary( ) ).
-        mv_complete = mi_handler->is_complete( ).
+        mv_buffer = mv_buffer && i_message->get_binary( ).
       CATCH cx_root INTO lx_error.
-        mi_handler->on_error( ).
-        mv_complete = mi_handler->is_complete( ).
+* an unreadable frame is unrecoverable for a byte-stream transport
+        mv_closed = abap_true.
     ENDTRY.
 
   ENDMETHOD.
 
 
   METHOD if_apc_wsp_event_handler~on_open.
-
-    DATA lx_error TYPE REF TO cx_root.
-
-    IF mi_handler IS NOT BOUND.
-      RETURN.
-    ENDIF.
-
-    TRY.
-        mi_handler->on_open( ).
-        mv_complete = mi_handler->is_complete( ).
-      CATCH cx_root INTO lx_error.
-        mi_handler->on_error( ).
-        mv_complete = mi_handler->is_complete( ).
-    ENDTRY.
-
+    RETURN.
   ENDMETHOD.
 
 
@@ -100,10 +80,13 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
     ls_frame-frame_type   = if_apc_tcp_frame_types=>co_frame_type_fixed_length.
     ls_frame-fixed_length = 1.
 
+* i_ssl_id selects an SSL client identity from STRUST for a TLS-wrapped TCP
+* connection. Empty maps to SPACE, which leaves the connection as plain TCP.
     mi_client = cl_apc_tcp_client_manager=>create(
       i_host          = mv_host
       i_port          = mv_port
       i_frame         = ls_frame
+      i_ssl_id        = mv_ssl_id
       i_event_handler = me ).
 
     mi_client->connect( ).
@@ -141,15 +124,21 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket~set_handler.
-    mi_handler = ii_handler.
-  ENDMETHOD.
-
-
-  METHOD zif_oassh_socket~wait.
+  METHOD zif_oassh_socket~read.
 * APC events are delivered only while the ABAP session is idle or explicitly
 * waiting for push channels. Generic WAIT UNTIL is not sufficient on ECC.
     ASSERT iv_timeout_seconds > 0.
-    WAIT FOR PUSH CHANNELS UNTIL mv_complete = abap_true UP TO iv_timeout_seconds SECONDS.
+    IF mv_buffer IS INITIAL AND mv_closed = abap_false.
+      WAIT FOR PUSH CHANNELS
+        UNTIL mv_buffer IS NOT INITIAL OR mv_closed = abap_true
+        UP TO iv_timeout_seconds SECONDS.
+    ENDIF.
+    rv_data = mv_buffer.
+    CLEAR mv_buffer.
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_socket~is_closed.
+    rv_closed = mv_closed.
   ENDMETHOD.
 ENDCLASS.

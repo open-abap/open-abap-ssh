@@ -7,7 +7,7 @@ CLASS zcl_oassh_x25519 DEFINITION
 
 * X25519 (RFC 7748) scalar multiplication on Curve25519. Scalars and
 * u-coordinates are 32-byte little-endian strings, as used on the wire.
-* Field arithmetic runs on zcl_oassh_field25519's base-2^10 integer limbs,
+* Field arithmetic runs on zcl_oassh_field25519's base-2^26 integer limbs,
 * not the byte-string bignum, so the ladder avoids per-byte xstring work.
 
     CLASS-METHODS scalarmult
@@ -130,15 +130,11 @@ CLASS zcl_oassh_x25519 IMPLEMENTATION.
       lv_a = zcl_oassh_field25519=>add(
         it_a = lv_x2
         it_b = lv_z2 ).
-      lv_aa = zcl_oassh_field25519=>mul(
-        it_a = lv_a
-        it_b = lv_a ).
+      lv_aa = zcl_oassh_field25519=>sqr( lv_a ).
       lv_b = zcl_oassh_field25519=>sub(
         it_a = lv_x2
         it_b = lv_z2 ).
-      lv_bb = zcl_oassh_field25519=>mul(
-        it_a = lv_b
-        it_b = lv_b ).
+      lv_bb = zcl_oassh_field25519=>sqr( lv_b ).
       lv_e = zcl_oassh_field25519=>sub(
         it_a = lv_aa
         it_b = lv_bb ).
@@ -158,16 +154,12 @@ CLASS zcl_oassh_x25519 IMPLEMENTATION.
       lv_sum = zcl_oassh_field25519=>add(
         it_a = lv_da
         it_b = lv_cb ).
-      lv_x3 = zcl_oassh_field25519=>mul(
-        it_a = lv_sum
-        it_b = lv_sum ).
+      lv_x3 = zcl_oassh_field25519=>sqr( lv_sum ).
 
       lv_diff = zcl_oassh_field25519=>sub(
         it_a = lv_da
         it_b = lv_cb ).
-      lv_diff = zcl_oassh_field25519=>mul(
-        it_a = lv_diff
-        it_b = lv_diff ).
+      lv_diff = zcl_oassh_field25519=>sqr( lv_diff ).
       lv_z3 = zcl_oassh_field25519=>mul(
         it_a = lv_x1
         it_b = lv_diff ).

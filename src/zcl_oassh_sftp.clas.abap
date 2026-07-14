@@ -89,30 +89,30 @@ CLASS zcl_oassh_sftp DEFINITION
       RAISING
         zcx_oassh_error.
     METHODS start_mkdir
-      IMPORTING iv_path TYPE string
+      IMPORTING iv_path        TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS start_rmdir
-      IMPORTING iv_path TYPE string
+      IMPORTING iv_path        TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS start_remove
-      IMPORTING iv_path TYPE string
+      IMPORTING iv_path        TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS start_rename
       IMPORTING
-        iv_old_path TYPE string
-        iv_new_path TYPE string
+        iv_old_path            TYPE string
+        iv_new_path            TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS start_realpath
-      IMPORTING iv_path TYPE string
+      IMPORTING iv_path        TYPE string
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS receive
       IMPORTING
-        iv_data TYPE xstring
+        iv_data        TYPE xstring
       RETURNING
         VALUE(rv_data) TYPE xstring
       RAISING
@@ -265,9 +265,9 @@ CLASS zcl_oassh_sftp DEFINITION
       RAISING zcx_oassh_error.
     METHODS start_mutation
       IMPORTING
-        iv_operation TYPE i
-        iv_path      TYPE string
-        iv_path2     TYPE string OPTIONAL
+        iv_operation           TYPE i
+        iv_path                TYPE string
+        iv_path2               TYPE string OPTIONAL
       RETURNING VALUE(rv_data) TYPE xstring
       RAISING zcx_oassh_error.
     METHODS handle_status_response
@@ -297,10 +297,10 @@ CLASS zcl_oassh_sftp DEFINITION
         zcx_oassh_error.
     CLASS-METHODS parse_attrs
       IMPORTING
-        io_packet       TYPE REF TO zcl_oassh_stream
+        io_packet           TYPE REF TO zcl_oassh_stream
         iv_require_consumed TYPE abap_bool DEFAULT abap_true
       RETURNING
-        VALUE(rs_attrs) TYPE ty_attrs
+        VALUE(rs_attrs)     TYPE ty_attrs
       RAISING
         zcx_oassh_error.
     CLASS-METHODS flag_is_set
@@ -311,7 +311,7 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_set) TYPE abap_bool.
     CLASS-METHODS parse_status
       IMPORTING
-        io_packet       TYPE REF TO zcl_oassh_stream
+        io_packet        TYPE REF TO zcl_oassh_stream
       RETURNING
         VALUE(rv_status) TYPE i
       RAISING
@@ -323,7 +323,7 @@ CLASS zcl_oassh_sftp DEFINITION
         zcx_oassh_error.
     CLASS-METHODS join_chunks
       IMPORTING
-        it_chunks     TYPE ty_chunks
+        it_chunks      TYPE ty_chunks
       RETURNING
         VALUE(rv_data) TYPE xstring.
 ENDCLASS.

@@ -6,10 +6,10 @@ CLASS zcl_oassh_rsa DEFINITION
   PUBLIC SECTION.
     CLASS-METHODS verify_pkcs1_sha256
       IMPORTING
-        iv_n              TYPE xstring
-        iv_e              TYPE xstring
-        iv_signature      TYPE xstring
-        iv_message        TYPE xstring
+        iv_n               TYPE xstring
+        iv_e               TYPE xstring
+        iv_signature       TYPE xstring
+        iv_message         TYPE xstring
       RETURNING
         VALUE(rv_verified) TYPE abap_bool.
 ENDCLASS.

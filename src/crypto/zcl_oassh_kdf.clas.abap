@@ -35,14 +35,14 @@ CLASS zcl_oassh_kdf DEFINITION
 
     CLASS-METHODS exchange_hash_dh
       IMPORTING
-        iv_v_c TYPE xstring
-        iv_v_s TYPE xstring
-        iv_i_c TYPE xstring
-        iv_i_s TYPE xstring
-        iv_k_s TYPE xstring
-        iv_e   TYPE xstring
-        iv_f   TYPE xstring
-        iv_k   TYPE xstring
+        iv_v_c                 TYPE xstring
+        iv_v_s                 TYPE xstring
+        iv_i_c                 TYPE xstring
+        iv_i_s                 TYPE xstring
+        iv_k_s                 TYPE xstring
+        iv_e                   TYPE xstring
+        iv_f                   TYPE xstring
+        iv_k                   TYPE xstring
       RETURNING VALUE(rv_hash) TYPE xstring.
   PROTECTED SECTION.
   PRIVATE SECTION.

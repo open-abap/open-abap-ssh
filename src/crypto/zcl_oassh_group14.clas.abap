@@ -9,15 +9,15 @@ CLASS zcl_oassh_group14 DEFINITION
     CLASS-METHODS prime
       RETURNING VALUE(rv_prime) TYPE xstring.
     CLASS-METHODS public_key
-      IMPORTING iv_private TYPE xstring
+      IMPORTING iv_private       TYPE xstring
       RETURNING VALUE(rv_public) TYPE xstring.
     CLASS-METHODS shared_secret
       IMPORTING
-        iv_peer_public TYPE xstring
-        iv_private     TYPE xstring
+        iv_peer_public           TYPE xstring
+        iv_private               TYPE xstring
       RETURNING VALUE(rv_secret) TYPE xstring.
     CLASS-METHODS is_valid_public
-      IMPORTING iv_public TYPE xstring
+      IMPORTING iv_public       TYPE xstring
       RETURNING VALUE(rv_valid) TYPE abap_bool.
   PRIVATE SECTION.
     TYPES ty_limbs TYPE STANDARD TABLE OF i WITH EMPTY KEY.
@@ -42,37 +42,37 @@ CLASS zcl_oassh_group14 DEFINITION
     CLASS-METHODS initialize.
     CLASS-METHODS mod_pow
       IMPORTING
-        iv_base     TYPE xstring
-        iv_exponent TYPE xstring
+        iv_base                  TYPE xstring
+        iv_exponent              TYPE xstring
       RETURNING VALUE(rv_result) TYPE xstring.
     CLASS-METHODS from_xstring
-      IMPORTING iv_value TYPE xstring
+      IMPORTING iv_value        TYPE xstring
       RETURNING VALUE(rt_limbs) TYPE ty_limbs.
     CLASS-METHODS to_xstring
-      IMPORTING it_limbs TYPE ty_limbs
+      IMPORTING it_limbs        TYPE ty_limbs
       RETURNING VALUE(rv_value) TYPE xstring.
     CLASS-METHODS normalize
       CHANGING ct_limbs TYPE ty_limbs.
     CLASS-METHODS pad
-      IMPORTING it_limbs TYPE ty_limbs
+      IMPORTING it_limbs        TYPE ty_limbs
       RETURNING VALUE(rt_limbs) TYPE ty_limbs.
     CLASS-METHODS compare
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                      TYPE ty_limbs
+        it_b                      TYPE ty_limbs
       RETURNING VALUE(rv_compare) TYPE i.
     CLASS-METHODS subtract
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS double_mod
-      IMPORTING it_value TYPE ty_limbs
+      IMPORTING it_value         TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS montgomery_multiply
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
 ENDCLASS.
 

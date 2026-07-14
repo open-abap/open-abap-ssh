@@ -419,6 +419,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_data TYPE xstring.
     DATA lv_tail TYPE xstring.
     DATA lv_out TYPE xstring.
+    DATA lv_prefix TYPE xstring.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = '5A' ).
     lv_data = li_random->bytes( 32768 ).
     lv_tail = 'BB'.
@@ -431,8 +432,9 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = xstrlen( lv_out )
       exp = 32794 ).
+    lv_prefix = lv_out(26).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_out(26)
+      act = lv_prefix
       exp = '0000801606000000020000000148000000000000000000008000' ).
     lv_out = mo_sftp->receive( '000000116500000002000000000000000000000000' ).
     cl_abap_unit_assert=>assert_equals(

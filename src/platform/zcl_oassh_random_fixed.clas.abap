@@ -17,6 +17,8 @@ CLASS zcl_oassh_random_fixed DEFINITION
   PRIVATE SECTION.
 
     DATA mv_pattern TYPE xstring.
+* cache of the repeated pattern, grown by doubling and reused across calls
+    DATA mv_buffer  TYPE xstring.
 ENDCLASS.
 
 
@@ -38,18 +40,25 @@ CLASS zcl_oassh_random_fixed IMPLEMENTATION.
 
   METHOD zif_oassh_random~bytes.
 
-    DATA lv_offset TYPE i.
-    DATA lv_length TYPE i.
-    DATA lv_byte   TYPE x LENGTH 1.
+* bytes( n ) is the first n bytes of the endlessly repeated pattern, so the
+* repeated pattern is cached and grown by doubling: log2( n ) concatenations
+* instead of n, and repeated calls reuse the buffer. Slicing stays correct
+* because the buffer length is always a multiple of the pattern length.
+    IF iv_length = 0.
+      RETURN.
+    ENDIF.
 
-    lv_length = xstrlen( mv_pattern ).
-    ASSERT lv_length > 0.
+    ASSERT xstrlen( mv_pattern ) > 0.
 
-    DO iv_length TIMES.
-      lv_offset = ( sy-index - 1 ) MOD lv_length.
-      lv_byte = mv_pattern+lv_offset(1).
-      rv_hex = rv_hex && lv_byte.
-    ENDDO.
+    IF xstrlen( mv_buffer ) = 0.
+      mv_buffer = mv_pattern.
+    ENDIF.
+
+    WHILE xstrlen( mv_buffer ) < iv_length.
+      mv_buffer = mv_buffer && mv_buffer.
+    ENDWHILE.
+
+    rv_hex = mv_buffer(iv_length).
 
   ENDMETHOD.
 ENDCLASS.

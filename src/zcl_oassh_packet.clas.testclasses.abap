@@ -16,7 +16,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS mac_tamper_positions FOR TESTING RAISING cx_static_check.
     METHODS assert_rejected
       IMPORTING
-        iv_packet         TYPE xstring
+        iv_packet          TYPE xstring
         iv_expected_reason TYPE i.
 ENDCLASS.
 

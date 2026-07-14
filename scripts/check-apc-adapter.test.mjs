@@ -18,20 +18,30 @@ function methodBody(name) {
 }
 
 for (const method of [
-  "if_apc_wsp_event_handler~on_open",
-  "if_apc_wsp_event_handler~on_message",
+  "if_apc_wsp_event_handler~on_close",
+  "if_apc_wsp_event_handler~on_error",
 ]) {
-  test(`${method} propagates error completion`, () => {
-    const body = methodBody(method);
-    const caught = body.match(/CATCH\s+cx_root\s+INTO\s+lx_error\.([\s\S]*?)ENDTRY\./u);
-    assert.ok(caught, `missing catch block in ${method}`);
-    assert.match(caught[1], /mi_handler->on_error\(\s*\)\./u);
-    assert.match(
-      caught[1],
-      /mv_complete\s*=\s*mi_handler->is_complete\(\s*\)\./u,
-    );
+  test(`${method} marks the transport closed`, () => {
+    assert.match(methodBody(method), /mv_closed\s*=\s*abap_true\./u);
   });
 }
+
+test("if_apc_wsp_event_handler~on_message buffers and treats frame errors as terminal", () => {
+  const body = methodBody("if_apc_wsp_event_handler~on_message");
+  assert.match(body, /mv_buffer\s*=\s*mv_buffer\s*&&\s*i_message->get_binary\(\s*\)\./u);
+  const caught = body.match(/CATCH\s+cx_root\s+INTO\s+lx_error\.([\s\S]*?)ENDTRY\./u);
+  assert.ok(caught, "missing catch block in on_message");
+  assert.match(caught[1], /mv_closed\s*=\s*abap_true\./u);
+});
+
+test("zif_oassh_socket~read waits for push channels until data or close", () => {
+  const body = methodBody("zif_oassh_socket~read");
+  assert.match(
+    body,
+    /WAIT FOR PUSH CHANNELS\s+UNTIL mv_buffer IS NOT INITIAL OR mv_closed = abap_true\s+UP TO iv_timeout_seconds SECONDS\./u,
+  );
+  assert.match(body, /CLEAR mv_buffer\./u);
+});
 
 test("zif_oassh_socket~send emits one complete binary frame", () => {
   const body = methodBody("zif_oassh_socket~send");

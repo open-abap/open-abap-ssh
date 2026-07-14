@@ -4,19 +4,18 @@ CLASS zcl_oassh DEFINITION
 
   PUBLIC SECTION.
 
-    INTERFACES zif_oassh_socket_handler.
-
     CLASS-METHODS connect
       IMPORTING
-        iv_host TYPE string
-        iv_port TYPE string
-        iv_user TYPE string
-        iv_password TYPE string OPTIONAL
-        iv_private_seed TYPE xstring OPTIONAL
-        ii_random TYPE REF TO zif_oassh_random OPTIONAL
+        iv_host          TYPE string
+        iv_port          TYPE string
+        iv_user          TYPE string
+        iv_password      TYPE string OPTIONAL
+        iv_private_seed  TYPE xstring OPTIONAL
+        iv_ssl_id        TYPE ssfapplssl OPTIONAL
+        ii_random        TYPE REF TO zif_oassh_random OPTIONAL
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
       RETURNING
-        VALUE(ro_ssh) TYPE REF TO zcl_oassh
+        VALUE(ro_ssh)    TYPE REF TO zcl_oassh
       RAISING
         cx_static_check.
 
@@ -25,7 +24,7 @@ CLASS zcl_oassh DEFINITION
         iv_command         TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_output) TYPE string
+        VALUE(rv_output)   TYPE string
       RAISING
         cx_static_check.
     METHODS sftp_download
@@ -33,7 +32,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_data) TYPE xstring
+        VALUE(rv_data)     TYPE xstring
       RAISING
         cx_static_check.
     METHODS shell
@@ -44,7 +43,7 @@ CLASS zcl_oassh DEFINITION
         iv_rows            TYPE i DEFAULT 24
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rv_output) TYPE xstring
+        VALUE(rv_output)   TYPE xstring
       RAISING
         cx_static_check.
     METHODS sftp_upload
@@ -59,7 +58,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_lstat
@@ -67,7 +66,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_list
@@ -75,7 +74,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rt_names) TYPE zcl_oassh_sftp=>ty_names
+        VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
       RAISING
         cx_static_check.
     METHODS sftp_mkdir
@@ -101,8 +100,8 @@ CLASS zcl_oassh DEFINITION
       RAISING cx_static_check.
     METHODS sftp_realpath
       IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
+        iv_path                TYPE string
+        iv_timeout_seconds     TYPE i DEFAULT 300
       RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
       RAISING cx_static_check.
     METHODS get_stderr
@@ -118,13 +117,13 @@ CLASS zcl_oassh DEFINITION
 
     METHODS constructor
       IMPORTING
-        ii_socket TYPE REF TO zif_oassh_socket
-        ii_random TYPE REF TO zif_oassh_random
-        ii_host_verifier TYPE REF TO zif_oassh_host_verifier
-        iv_user TYPE string
-        iv_password TYPE string OPTIONAL
+        ii_socket            TYPE REF TO zif_oassh_socket
+        ii_random            TYPE REF TO zif_oassh_random
+        ii_host_verifier     TYPE REF TO zif_oassh_host_verifier
+        iv_user              TYPE string
+        iv_password          TYPE string OPTIONAL
         iv_password_supplied TYPE abap_bool DEFAULT abap_true
-        iv_private_seed TYPE xstring OPTIONAL.
+        iv_private_seed      TYPE xstring OPTIONAL.
   PROTECTED SECTION.
   PRIVATE SECTION.
 
@@ -186,11 +185,24 @@ CLASS zcl_oassh DEFINITION
 
     METHODS handle_transport_message
       IMPORTING
-        iv_payload         TYPE xstring
+        iv_payload        TYPE xstring
       RETURNING
-        VALUE(rv_handled)  TYPE abap_bool
+        VALUE(rv_handled) TYPE abap_bool
       RAISING zcx_oassh_error.
     METHODS handle
+      RAISING
+        cx_static_check.
+    METHODS send_version
+      RAISING
+        cx_static_check.
+    METHODS pump
+      IMPORTING
+        iv_timeout_seconds TYPE i
+      RAISING
+        cx_static_check.
+    METHODS process_inbound
+      IMPORTING
+        iv_data TYPE xstring
       RAISING
         cx_static_check.
     METHODS process_version
@@ -235,7 +247,7 @@ CLASS zcl_oassh DEFINITION
         iv_lstat           TYPE abap_bool
         iv_timeout_seconds TYPE i
       RETURNING
-        VALUE(rs_attrs) TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
         cx_static_check.
     METHODS sftp_mutation
@@ -259,7 +271,7 @@ CLASS zcl_oassh DEFINITION
       RAISING zcx_oassh_error.
     CLASS-METHODS is_recognized_message
       IMPORTING
-        iv_message_number TYPE i
+        iv_message_number    TYPE i
       RETURNING
         VALUE(rv_recognized) TYPE abap_bool.
     METHODS unimplemented_reply
@@ -286,8 +298,9 @@ CLASS zcl_oassh IMPLEMENTATION.
     ENDIF.
 
     li_socket = NEW zcl_oassh_socket_apc(
-      iv_host = iv_host
-      iv_port = iv_port ).
+      iv_host   = iv_host
+      iv_port   = iv_port
+      iv_ssl_id = iv_ssl_id ).
 
     ro_ssh = NEW #(
       ii_socket            = li_socket
@@ -298,16 +311,16 @@ CLASS zcl_oassh IMPLEMENTATION.
       iv_password_supplied = xsdbool( iv_password IS SUPPLIED )
       iv_private_seed      = iv_private_seed ).
 
-    li_socket->set_handler( ro_ssh ).
     li_socket->connect( ).
+    ro_ssh->send_version( ).
 
   ENDMETHOD.
 
 
   METHOD execute.
-* Socket callbacks keep driving authentication while WAIT yields. Once the
-* transport authenticates, start_channel sends CHANNEL_OPEN and callbacks
-* drive the channel until the peer closes it.
+* pump( ) drives authentication with inbound bytes as they arrive. Once the
+* transport authenticates, start_channel sends CHANNEL_OPEN and the pump
+* drives the channel until the peer closes it.
     IF mv_operation_started = abap_true.
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
     ENDIF.
@@ -320,7 +333,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -361,7 +374,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -392,7 +405,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -432,7 +445,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -488,7 +501,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -525,7 +538,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -596,7 +609,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -632,7 +645,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
       start_channel( ).
     ENDIF.
-    mi_socket->wait( iv_timeout_seconds ).
+    pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
       zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
@@ -1224,11 +1237,23 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket_handler~on_close.
-* A transport close before SSH channel completion makes the active operation
-* impossible; release APC WAIT immediately and let execute return a typed
-* channel failure.
-    mv_operation_done = abap_true.
+  METHOD pump.
+* drives the protocol: read( ) blocks until the server sends data, the
+* timeout expires (empty result) or the transport closes. A transport close
+* before SSH channel completion makes the active operation impossible; the
+* caller reports it as a typed channel failure. On a read timeout
+* mv_operation_done stays false and the caller reports a timeout.
+    DATA lv_data TYPE xstring.
+    WHILE mv_operation_done = abap_false.
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        RETURN.
+      ENDIF.
+    ENDWHILE.
   ENDMETHOD.
 
 
@@ -1289,19 +1314,9 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket_handler~on_error.
-    mv_operation_done = abap_true.
-  ENDMETHOD.
-
-
-  METHOD zif_oassh_socket_handler~is_complete.
-    rv_complete = mv_operation_done.
-  ENDMETHOD.
-
-
-  METHOD zif_oassh_socket_handler~on_message.
+  METHOD process_inbound.
 * RFC 4253 section 11.1 forbids accepting data after DISCONNECT. A socket
-* adapter may still deliver a callback that was already queued before close.
+* adapter may still have buffered bytes that arrived before the close.
     IF mv_disconnected = abap_true.
       RETURN.
     ENDIF.
@@ -1310,7 +1325,7 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD zif_oassh_socket_handler~on_open.
+  METHOD send_version.
 
 * https://datatracker.ietf.org/doc/html/rfc4253#section-4.2
 

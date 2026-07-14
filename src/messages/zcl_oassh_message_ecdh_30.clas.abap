@@ -15,7 +15,7 @@ CLASS zcl_oassh_message_ecdh_30 DEFINITION
 
     CLASS-METHODS parse
       IMPORTING
-        io_stream     TYPE REF TO zcl_oassh_stream
+        io_stream      TYPE REF TO zcl_oassh_stream
       RETURNING
         VALUE(rs_data) TYPE ty_data
       RAISING zcx_oassh_error.

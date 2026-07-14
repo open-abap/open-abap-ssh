@@ -12,17 +12,17 @@ CLASS zcl_oassh_packet DEFINITION
     CONSTANTS c_cipher_chachapoly TYPE string VALUE 'chacha20-poly1305@openssh.com'.
     METHODS constructor
       IMPORTING
-        ii_random      TYPE REF TO zif_oassh_random
-        iv_encrypt_key TYPE xstring OPTIONAL
-        iv_encrypt_iv  TYPE xstring OPTIONAL
-        iv_encrypt_mac TYPE xstring OPTIONAL
+        ii_random            TYPE REF TO zif_oassh_random
+        iv_encrypt_key       TYPE xstring OPTIONAL
+        iv_encrypt_iv        TYPE xstring OPTIONAL
+        iv_encrypt_mac       TYPE xstring OPTIONAL
         iv_encrypt_algorithm TYPE string DEFAULT c_cipher_aes128_ctr
-        iv_decrypt_key TYPE xstring OPTIONAL
-        iv_decrypt_iv  TYPE xstring OPTIONAL
-        iv_decrypt_mac TYPE xstring OPTIONAL
+        iv_decrypt_key       TYPE xstring OPTIONAL
+        iv_decrypt_iv        TYPE xstring OPTIONAL
+        iv_decrypt_mac       TYPE xstring OPTIONAL
         iv_decrypt_algorithm TYPE string DEFAULT c_cipher_aes128_ctr
-        iv_send_sequence TYPE i OPTIONAL
-        iv_receive_sequence TYPE i OPTIONAL.
+        iv_send_sequence     TYPE i OPTIONAL
+        iv_receive_sequence  TYPE i OPTIONAL.
     METHODS encode
       IMPORTING
         iv_payload       TYPE xstring
@@ -32,7 +32,7 @@ CLASS zcl_oassh_packet DEFINITION
         zcx_oassh_error.
     METHODS decode
       IMPORTING
-        iv_packet        TYPE xstring
+        iv_packet         TYPE xstring
       RETURNING
         VALUE(rv_payload) TYPE xstring
       RAISING
@@ -54,15 +54,15 @@ CLASS zcl_oassh_packet DEFINITION
         zcx_oassh_error.
     METHODS rekey_encrypt
       IMPORTING
-        iv_encrypt_key TYPE xstring OPTIONAL
-        iv_encrypt_iv  TYPE xstring OPTIONAL
-        iv_encrypt_mac TYPE xstring OPTIONAL
+        iv_encrypt_key       TYPE xstring OPTIONAL
+        iv_encrypt_iv        TYPE xstring OPTIONAL
+        iv_encrypt_mac       TYPE xstring OPTIONAL
         iv_encrypt_algorithm TYPE string DEFAULT c_cipher_aes128_ctr.
     METHODS rekey_decrypt
       IMPORTING
-        iv_decrypt_key TYPE xstring OPTIONAL
-        iv_decrypt_iv  TYPE xstring OPTIONAL
-        iv_decrypt_mac TYPE xstring OPTIONAL
+        iv_decrypt_key       TYPE xstring OPTIONAL
+        iv_decrypt_iv        TYPE xstring OPTIONAL
+        iv_decrypt_mac       TYPE xstring OPTIONAL
         iv_decrypt_algorithm TYPE string DEFAULT c_cipher_aes128_ctr.
     METHODS reset_send_sequence.
     METHODS reset_receive_sequence.

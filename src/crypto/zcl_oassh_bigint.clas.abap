@@ -86,16 +86,16 @@ CLASS zcl_oassh_bigint DEFINITION
         VALUE(rv_r) TYPE xstring.
     CLASS-METHODS mont_n0inv
       IMPORTING
-        iv_m0          TYPE i
+        iv_m0           TYPE i
       RETURNING
         VALUE(rv_n0inv) TYPE i.
     CLASS-METHODS mont_mul
       IMPORTING
-        it_a            TYPE ty_limbs
-        it_b            TYPE ty_limbs
-        it_m            TYPE ty_limbs
-        iv_n0inv        TYPE i
-        iv_n            TYPE i
+        it_a             TYPE ty_limbs
+        it_b             TYPE ty_limbs
+        it_m             TYPE ty_limbs
+        iv_n0inv         TYPE i
+        iv_n             TYPE i
       RETURNING
         VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS double_mod

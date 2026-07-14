@@ -663,6 +663,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_password TYPE zcl_oassh_message_50=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_payload TYPE xstring.
+    DATA lv_message_id TYPE x LENGTH 1.
     DATA lv_seed TYPE xstring VALUE
       '9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60'.
     DATA lv_reason TYPE i.
@@ -675,8 +676,9 @@ CLASS ltcl_test IMPLEMENTATION.
     ls_accept-message_id = zcl_oassh_message_6=>gc_message_id.
     ls_accept-service_name = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
     lv_payload = lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
+    lv_message_id = lv_payload(1).
     cl_abap_unit_assert=>assert_equals(
-      act = lv_payload(1)
+      act = lv_message_id
       exp = zcl_oassh_message_50=>gc_message_id ).
 
 * The server rejects publickey but explicitly permits password to continue.

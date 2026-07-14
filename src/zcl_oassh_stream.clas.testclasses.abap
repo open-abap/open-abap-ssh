@@ -410,7 +410,7 @@ CLASS ltcl_test IMPLEMENTATION.
       exp = lv_expected ).
     cl_abap_unit_assert=>assert_equals(
       act = mo_stream->take( 2 )
-      exp = zcl_oassh_ascii=>c_cr_lf ).
+      exp = CONV xstring( zcl_oassh_ascii=>c_cr_lf ) ).
     cl_abap_unit_assert=>assert_initial( mo_stream->mt_pending ).
     cl_abap_unit_assert=>assert_equals(
       act = mo_stream->mv_pending_length

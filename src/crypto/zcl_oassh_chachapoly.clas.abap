@@ -10,37 +10,37 @@ CLASS zcl_oassh_chachapoly DEFINITION
       IMPORTING iv_key TYPE xstring.
     METHODS encode
       IMPORTING
-        iv_sequence TYPE i
-        iv_plain    TYPE xstring
+        iv_sequence            TYPE i
+        iv_plain               TYPE xstring
       RETURNING VALUE(rv_wire) TYPE xstring.
     METHODS decode_length
       IMPORTING
-        iv_sequence TYPE i
-        iv_header   TYPE xstring
+        iv_sequence              TYPE i
+        iv_header                TYPE xstring
       RETURNING VALUE(rv_length) TYPE i
       RAISING zcx_oassh_error.
     METHODS decode
       IMPORTING
-        iv_sequence   TYPE i
-        iv_ciphertext TYPE xstring
-        iv_tag        TYPE xstring
+        iv_sequence             TYPE i
+        iv_ciphertext           TYPE xstring
+        iv_tag                  TYPE xstring
       RETURNING VALUE(rv_plain) TYPE xstring
       RAISING zcx_oassh_error.
   PRIVATE SECTION.
     DATA mv_main_key TYPE xstring.
     DATA mv_header_key TYPE xstring.
     METHODS nonce
-      IMPORTING iv_sequence TYPE i
+      IMPORTING iv_sequence     TYPE i
       RETURNING VALUE(rv_nonce) TYPE xstring.
     METHODS tag
       IMPORTING
-        iv_nonce      TYPE xstring
-        iv_ciphertext TYPE xstring
+        iv_nonce              TYPE xstring
+        iv_ciphertext         TYPE xstring
       RETURNING VALUE(rv_tag) TYPE xstring.
     METHODS tag_matches
       IMPORTING
-        iv_actual   TYPE xstring
-        iv_expected TYPE xstring
+        iv_actual                 TYPE xstring
+        iv_expected               TYPE xstring
       RETURNING VALUE(rv_matches) TYPE abap_bool.
 ENDCLASS.
 

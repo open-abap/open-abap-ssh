@@ -4,47 +4,50 @@ CLASS zcl_oassh_poly1305 DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-* RFC 8439 Poly1305. Ten-bit limbs keep the complete multiplication and
-* reduction below ABAP's signed 32-bit integer ceiling.
+* RFC 8439 Poly1305. Thirteen-bit limbs keep the complete multiplication
+* and reduction below ABAP's signed 32-bit integer ceiling: an unreduced
+* accumulator limb stays below 2^14, so a convolution column peaks at
+* 10 * 2^14 * 2^13 < 2^31.
     CLASS-METHODS auth
       IMPORTING
-        iv_key  TYPE xstring
-        iv_data TYPE xstring
+        iv_key                TYPE xstring
+        iv_data               TYPE xstring
       RETURNING VALUE(rv_tag) TYPE xstring.
   PRIVATE SECTION.
     TYPES ty_limbs TYPE STANDARD TABLE OF i WITH EMPTY KEY.
-    CONSTANTS c_base TYPE i VALUE 1024.
-    CONSTANTS c_limb_count TYPE i VALUE 13.
+    CONSTANTS c_base TYPE i VALUE 8192.
+    CONSTANTS c_limb_count TYPE i VALUE 10.
+    CLASS-DATA gt_modulus TYPE ty_limbs.
     CLASS-METHODS from_little
-      IMPORTING iv_data TYPE xstring
+      IMPORTING iv_data         TYPE xstring
       RETURNING VALUE(rt_limbs) TYPE ty_limbs.
     CLASS-METHODS to_little
-      IMPORTING it_limbs TYPE ty_limbs
+      IMPORTING it_limbs       TYPE ty_limbs
       RETURNING VALUE(rv_data) TYPE xstring.
     CLASS-METHODS modulus
       RETURNING VALUE(rt_modulus) TYPE ty_limbs.
     CLASS-METHODS compare
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                      TYPE ty_limbs
+        it_b                      TYPE ty_limbs
       RETURNING VALUE(rv_compare) TYPE i.
     CLASS-METHODS subtract
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS reduce
-      IMPORTING it_value TYPE ty_limbs
+      IMPORTING it_value         TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS add_limbs
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
     CLASS-METHODS multiply_mod
       IMPORTING
-        it_a TYPE ty_limbs
-        it_b TYPE ty_limbs
+        it_a                     TYPE ty_limbs
+        it_b                     TYPE ty_limbs
       RETURNING VALUE(rt_result) TYPE ty_limbs.
 ENDCLASS.
 
@@ -56,24 +59,20 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
     DATA lv_accumulator TYPE i.
     DATA lv_bits TYPE i.
     DATA lv_factor TYPE i VALUE 1.
+* lv_factor tracks 2^lv_bits incrementally; it peaks at 2^20 and the
+* accumulator below 2^21, both far inside the signed 32-bit range.
     DO xstrlen( iv_data ) TIMES.
       lv_offset = sy-index - 1.
       lv_byte = iv_data+lv_offset(1).
       lv_accumulator = lv_accumulator + lv_byte * lv_factor.
       lv_bits = lv_bits + 8.
-      WHILE lv_bits >= 10.
+      lv_factor = lv_factor * 256.
+      WHILE lv_bits >= 13.
         APPEND lv_accumulator MOD c_base TO rt_limbs.
         lv_accumulator = lv_accumulator DIV c_base.
-        lv_bits = lv_bits - 10.
-        lv_factor = 1.
-        DO lv_bits TIMES.
-          lv_factor = lv_factor * 2.
-        ENDDO.
+        lv_bits = lv_bits - 13.
+        lv_factor = lv_factor DIV c_base.
       ENDWHILE.
-      lv_factor = 1.
-      DO lv_bits TIMES.
-        lv_factor = lv_factor * 2.
-      ENDDO.
     ENDDO.
     IF lv_bits > 0.
       APPEND lv_accumulator TO rt_limbs.
@@ -93,7 +92,7 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
         lv_factor = lv_factor * 2.
       ENDDO.
       lv_accumulator = lv_accumulator + lv_limb * lv_factor.
-      lv_bits = lv_bits + 10.
+      lv_bits = lv_bits + 13.
       WHILE lv_bits >= 8.
         lv_byte = lv_accumulator MOD 256.
         CONCATENATE rv_data lv_byte INTO rv_data IN BYTE MODE.
@@ -109,11 +108,15 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
 
 
   METHOD modulus.
-* 2^130 - 5 in base 2^10, least-significant limb first.
-    APPEND 1019 TO rt_modulus.
-    DO c_limb_count - 1 TIMES.
-      APPEND 1023 TO rt_modulus.
-    ENDDO.
+* 2^130 - 5 in base 2^13, least-significant limb first, built once; reduce
+* requests it after every block.
+    IF gt_modulus IS INITIAL.
+      APPEND 8187 TO gt_modulus.
+      DO c_limb_count - 1 TIMES.
+        APPEND 8191 TO gt_modulus.
+      ENDDO.
+    ENDIF.
+    rt_modulus = gt_modulus.
   ENDMETHOD.
 
 
@@ -164,7 +167,21 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
     WHILE lines( rt_result ) < c_limb_count.
       APPEND 0 TO rt_result.
     ENDWHILE.
-* base^13 = 2^130 is congruent to 5 modulo 2^130-5.
+* Propagate carries over the full convolution first so every limb drops
+* below the base; folding a raw convolution limb (up to 10 * 2^14 * 2^13)
+* by 5 would overflow the signed 32-bit range.
+    CLEAR lv_carry.
+    DO lines( rt_result ) TIMES.
+      lv_index = sy-index.
+      lv_value = rt_result[ lv_index ] + lv_carry.
+      rt_result[ lv_index ] = lv_value MOD c_base.
+      lv_carry = lv_value DIV c_base.
+    ENDDO.
+    WHILE lv_carry > 0.
+      APPEND lv_carry MOD c_base TO rt_result.
+      lv_carry = lv_carry DIV c_base.
+    ENDWHILE.
+* base^10 = 2^130 is congruent to 5 modulo 2^130-5.
     lv_index = lines( rt_result ).
     WHILE lv_index > c_limb_count.
       lv_high = rt_result[ lv_index ].
@@ -198,12 +215,15 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
 
 
   METHOD add_limbs.
+* The sum stays unreduced: both inputs carry limbs below 2^13, so each sum
+* limb is below 2^14 and the following multiply_mod accumulation peaks at
+* 10 * 2^14 * 2^13, inside the signed 32-bit range. multiply_mod reduces
+* its product, so no separate reduction pass is needed here.
     DATA lv_index TYPE i.
     DO c_limb_count TIMES.
       lv_index = sy-index.
       APPEND it_a[ lv_index ] + it_b[ lv_index ] TO rt_result.
     ENDDO.
-    rt_result = reduce( rt_result ).
   ENDMETHOD.
 
 
