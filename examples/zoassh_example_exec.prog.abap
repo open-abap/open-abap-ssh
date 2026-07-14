@@ -76,14 +76,14 @@ FORM run.
       WRITE: / 'exit status:', lv_exit_status.
       SKIP.
       WRITE / 'stdout:'.
-      WRITE: / lv_stdout.
+      WRITE / lv_stdout.
       IF lv_stderr IS NOT INITIAL.
         SKIP.
-        WRITE: / 'stderr:'.
-        WRITE: / lv_stderr.
+        WRITE / 'stderr:'.
+        WRITE / lv_stderr.
       ENDIF.
 
-    CATCH zcx_oassh_error INTO lx_error.
+    CATCH cx_static_check INTO lx_error.
       WRITE: / 'SSH error:', lx_error->get_text( ).
   ENDTRY.
 
