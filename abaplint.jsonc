@@ -153,6 +153,7 @@
     "max_one_method_parameter_per_line": true,
     "max_one_statement": true,
     "message_exists": true,
+    "easy_to_find_messages": false,
     "method_implemented_twice": true,
     "no_exclamation_escape": true,
     "method_length": true,

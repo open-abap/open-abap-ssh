@@ -247,16 +247,16 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     GET BIT 1 OF lv_first INTO lv_bit.
     IF lv_first = '00'.
       IF xstrlen( rv_int ) = 1.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_second = rv_int+1(1).
       GET BIT 1 OF lv_second INTO lv_bit.
       IF lv_bit <> '1'.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       rv_int = rv_int+1.
     ELSEIF lv_bit = '1'.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -410,21 +410,21 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
       lv_code = lv_byte.
       IF lv_byte = '2C'.
         IF lv_name_length = 0.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         CLEAR lv_name_length.
       ELSE.
         IF lv_code < 33 OR lv_code > 126.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_name_length = lv_name_length + 1.
         IF lv_name_length > 64.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
       ENDIF.
     ENDDO.
     IF lv_name_length = 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_text = zcl_oassh_ascii=>from_xstring( lv_hex ).
     SPLIT lv_text AT ',' INTO TABLE rt_list.
@@ -469,10 +469,10 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     materialize( ).
     lv_available = xstrlen( mv_hex ) - mv_pos.
     IF iv_length < 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF iv_length > lv_available.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     rv_hex = mv_hex+mv_pos(iv_length).
     mv_pos = mv_pos + iv_length.
@@ -512,7 +512,7 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     DATA lv_high TYPE x LENGTH 4.
     DATA lv_low TYPE x LENGTH 4.
     IF iv_int < 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_low = iv_int.
     append( lv_high ).
@@ -534,12 +534,12 @@ CLASS ZCL_OASSH_STREAM IMPLEMENTATION.
     lv_high = lv_hex(4).
     lv_low = lv_hex+4(4).
     IF lv_high <> '00000000'.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_first = lv_low(1).
     GET BIT 1 OF lv_first INTO lv_bit.
     IF lv_bit = '1'.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     rv_int = lv_low.
 

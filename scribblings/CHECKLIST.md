@@ -125,6 +125,9 @@
       `OPEN_ADMINISTRATIVELY_PROHIBITED` instead of aborting the connection
 - [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
       deterministic malformed/MAC/oversize packet fixtures
+- [x] expose `zcx_oassh_error` instead of generic `cx_static_check` from the
+      public SSH and socket APIs; raise native `MESSAGE` exceptions from the
+      `ZOASSH` message class and preserve wrapped APC failures as `previous`
 
 ## M9 — Post-1.0
 - [x] `ssh-ed25519` host keys — SHA-512, canonical Edwards decoding,

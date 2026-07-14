@@ -78,7 +78,7 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
 
     rs_data-message_id = io_stream->take( 1 ).
     IF rs_data-message_id <> gc_message_id.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     rs_data-cookie = io_stream->take( 16 ).
     rs_data-kex_algorithms = io_stream->name_list_decode( ).
@@ -95,7 +95,7 @@ CLASS zcl_oassh_message_20 IMPLEMENTATION.
     rs_data-reserved = io_stream->uint32_decode( ).
     IF rs_data-reserved <> 0.
 * RFC 4253 section 7.1 requires the future-extension field to be zero.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
 
   ENDMETHOD.

@@ -9,19 +9,19 @@ INTERFACE zif_oassh_socket
 * transport is gone (closed by the peer or failed).
   METHODS connect
     RAISING
-      cx_static_check.
+      zcx_oassh_error.
   METHODS send
     IMPORTING
       iv_data TYPE xstring
     RAISING
-      cx_static_check.
+      zcx_oassh_error.
   METHODS read
     IMPORTING
       iv_timeout_seconds TYPE i DEFAULT 300
     RETURNING
       VALUE(rv_data)     TYPE xstring
     RAISING
-      cx_static_check.
+      zcx_oassh_error.
   METHODS is_closed
     RETURNING
       VALUE(rv_closed) TYPE abap_bool.

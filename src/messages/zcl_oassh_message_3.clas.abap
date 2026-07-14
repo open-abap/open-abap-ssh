@@ -41,7 +41,7 @@ CLASS zcl_oassh_message_3 IMPLEMENTATION.
 
     rs_data-message_id = io_stream->take( 1 ).
     IF rs_data-message_id <> gc_message_id.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     rs_data-sequence_number = io_stream->uint32_decode( ).
 

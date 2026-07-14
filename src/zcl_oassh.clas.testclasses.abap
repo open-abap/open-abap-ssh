@@ -172,8 +172,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'trailing transport data accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
     cl_abap_unit_assert=>assert_false( lo_ssh->mv_disconnected ).
     cl_abap_unit_assert=>assert_false( lo_ssh->mv_operation_done ).
@@ -246,18 +246,18 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD execute_timeout.
     DATA lo_ssh TYPE REF TO zcl_oassh.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_ssh = build_ssh( ).
     TRY.
         lo_ssh->execute(
           iv_command         = 'echo hi'
           iv_timeout_seconds = 1 ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-timeout ).
+      exp = '001' ).
 
     lo_ssh = build_ssh( ).
     CLEAR lv_reason.
@@ -266,18 +266,18 @@ CLASS ltcl_test IMPLEMENTATION.
           iv_command         = 'echo hi'
           iv_timeout_seconds = 0 ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-timeout ).
+      exp = '001' ).
   ENDMETHOD.
 
 
   METHOD server_channel_open.
     DATA lo_ssh TYPE REF TO zcl_oassh.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_ssh = build_ssh( ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->reject_channel_open(
@@ -288,11 +288,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->reject_channel_open( '5A0000000773657373696F6E00000007' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
   METHOD disconnect_stops_processing.
@@ -344,18 +344,18 @@ CLASS ltcl_test IMPLEMENTATION.
 * Its empty value must not be confused with "execute was never called".
     DATA lo_ssh TYPE REF TO zcl_oassh.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_ssh = build_ssh( ).
     TRY.
         lo_ssh->execute(
           iv_command         = ''
           iv_timeout_seconds = 1 ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-timeout ).
+      exp = '001' ).
     cl_abap_unit_assert=>assert_true( lo_ssh->mv_operation_started ).
     cl_abap_unit_assert=>assert_initial( lo_ssh->mv_command ).
 
@@ -365,11 +365,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->execute( 'second' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-channel_failed ).
+      exp = '010' ).
   ENDMETHOD.
 
 
@@ -381,7 +381,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_mock = NEW #( ).
     li_random = NEW zcl_oassh_random_fixed( ).
     li_verifier = NEW lcl_host_verifier( ).
@@ -395,11 +395,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->execute( 'echo hi' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-channel_failed ).
+      exp = '010' ).
   ENDMETHOD.
 
 
@@ -555,18 +555,18 @@ CLASS ltcl_test IMPLEMENTATION.
 * setup, while retaining binary output as xstring at the API boundary.
     DATA lo_ssh TYPE REF TO zcl_oassh.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_ssh = build_ssh( ).
     TRY.
         lo_ssh->sftp_download(
           iv_path            = '/missing'
           iv_timeout_seconds = 1 ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-timeout ).
+      exp = '001' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->mv_operation
       exp = zcl_oassh=>gc_operation-sftp_download ).
@@ -574,11 +574,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->execute( 'second operation' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-channel_failed ).
+      exp = '010' ).
   ENDMETHOD.
 
 
@@ -840,7 +840,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_ssh TYPE REF TO zcl_oassh.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     DATA lv_line TYPE xstring.
     DATA lt_malformed TYPE STANDARD TABLE OF xstring WITH EMPTY KEY.
 
@@ -863,11 +863,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->process_version( ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
 
 * 254 bytes before CR LF exceeds the 255-byte inclusive maximum.
     lo_ssh = build_ssh( ).
@@ -880,11 +880,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->process_version( ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
 
 * Empty, whitespace-containing, hyphenated software tokens and NUL bytes are
 * forbidden by the identification grammar.
@@ -897,11 +897,11 @@ CLASS ltcl_test IMPLEMENTATION.
       TRY.
           zcl_oassh=>validate_server_identification( lv_line ).
         CATCH zcx_oassh_error INTO lx_error.
-          lv_reason = lx_error->get_reason( ).
+          lv_reason = lx_error->if_t100_message~t100key-msgno.
       ENDTRY.
       cl_abap_unit_assert=>assert_equals(
         act = lv_reason
-        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+        exp = '003' ).
     ENDLOOP.
 
 * An unterminated diagnostic line is bounded even when fragmented.
@@ -916,11 +916,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_ssh->process_version( ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+      exp = '002' ).
 
 * New fragments continue from the previous byte rather than rescanning.
     lo_ssh = build_ssh( ).

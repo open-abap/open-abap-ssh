@@ -140,8 +140,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'zero SFTP length accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
 
     mo_sftp = NEW #( ).
@@ -151,8 +151,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'oversized SFTP length accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -170,8 +170,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'unknown response id accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -189,8 +189,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'unknown response type accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -203,8 +203,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'SFTP version 6 accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
     cl_abap_unit_assert=>assert_initial( mo_sftp->get_version( ) ).
   ENDMETHOD.
@@ -219,8 +219,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'truncated VERSION extension accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
     cl_abap_unit_assert=>assert_initial( mo_sftp->get_version( ) ).
   ENDMETHOD.
@@ -275,8 +275,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'zero-length DATA accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -377,8 +377,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'response for completed READ accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -588,8 +588,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'unsupported ATTRS flag accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
     mo_sftp = NEW #( ).
     lv_out = mo_sftp->start_stat( 'a' ).
@@ -599,8 +599,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'truncated ATTRS size accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -692,8 +692,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'empty NAME batch accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
     mo_sftp = NEW #( ).
     lv_out = mo_sftp->start_list( 'd' ).
@@ -704,8 +704,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'oversized NAME count accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -773,8 +773,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'non-STATUS mutation reply accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -812,8 +812,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'empty REALPATH NAME accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
     mo_sftp = NEW #( ).
     lv_out = mo_sftp->start_realpath( '.' ).
@@ -823,8 +823,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'multiple REALPATH names accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
     mo_sftp = NEW #( ).
     lv_out = mo_sftp->start_realpath( '.' ).
@@ -834,8 +834,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'empty canonical path accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_protocol ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -855,13 +855,14 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD typed_status_error.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     TRY.
-        zcx_oassh_error=>raise(
-          iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-          iv_sftp_status = 2 ).
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH '2'
+          EXPORTING
+            iv_sftp_status = 2.
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-sftp_status ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '012' ).
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_sftp_status( )
           exp = 2 ).

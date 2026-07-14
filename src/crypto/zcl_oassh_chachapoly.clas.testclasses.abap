@@ -53,7 +53,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD tampered_tag.
     DATA lo_cipher TYPE REF TO zcl_oassh_chachapoly.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     DATA lv_ciphertext TYPE xstring.
     lo_cipher = NEW #( key( ) ).
     lv_ciphertext = c_wire(16).
@@ -63,18 +63,18 @@ CLASS ltcl_test IMPLEMENTATION.
           iv_ciphertext = lv_ciphertext
           iv_tag        = '00000000000000000000000000000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+      exp = '004' ).
   ENDMETHOD.
 
 
   METHOD malformed_header.
     DATA lo_cipher TYPE REF TO zcl_oassh_chachapoly.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     DATA lv_header TYPE xstring.
     lo_cipher = NEW #( key( ) ).
     lv_header = c_wire(5).
@@ -83,10 +83,10 @@ CLASS ltcl_test IMPLEMENTATION.
           iv_sequence = 7
           iv_header   = lv_header ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 ENDCLASS.

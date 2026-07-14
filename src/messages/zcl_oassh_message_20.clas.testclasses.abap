@@ -63,7 +63,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA ls_data TYPE zcl_oassh_message_20=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_random = NEW #( iv_pattern = 'AB' ).
     ls_data = zcl_oassh_message_20=>create( lo_random ).
     ls_data-reserved = 1.
@@ -71,10 +71,10 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         zcl_oassh_message_20=>parse( lo_stream ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 ENDCLASS.

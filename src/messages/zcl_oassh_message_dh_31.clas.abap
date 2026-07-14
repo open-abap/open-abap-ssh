@@ -27,7 +27,7 @@ CLASS zcl_oassh_message_dh_31 IMPLEMENTATION.
 * RFC 4253 section 8: K_S and signature are strings; f is an mpint.
     rs_data-message_id = io_stream->take( 1 ).
     IF rs_data-message_id <> gc_message_id.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     rs_data-k_s = io_stream->string_decode( ).
     rs_data-f = io_stream->mpint_decode_positive( ).

@@ -341,7 +341,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 * the protocol version as its complete data payload.
     DATA lo_body TYPE REF TO zcl_oassh_stream.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     lo_body = NEW #( ).
     lo_body->uint32_encode( 3 ).
@@ -356,7 +356,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 * Version 3 file names are UTF-8 strings. The operation begins with INIT; OPEN
 * is emitted only after the server confirms VERSION 3.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_download.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
@@ -366,7 +366,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD start_upload.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_upload.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
@@ -377,7 +377,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD start_stat.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     IF iv_lstat = abap_true.
       mv_operation = c_operation_lstat.
@@ -391,7 +391,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD start_list.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_list.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
@@ -430,7 +430,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD start_realpath.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_realpath.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
@@ -440,7 +440,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
   METHOD start_mutation.
     IF mv_state <> c_state-created.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = iv_operation.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
@@ -459,7 +459,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       IF mv_expected_length = 0.
         lv_length = mo_receive->uint32_decode_peek( ).
         IF lv_length < 1 OR lv_length > c_max_packet_length.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         mv_expected_length = lv_length.
       ENDIF.
@@ -494,7 +494,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     DATA lv_id TYPE i.
     DATA lv_valid TYPE abap_bool.
     IF mv_state < c_state-ready OR mv_state = c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     CASE iv_type.
       WHEN '03' OR '04' OR '05' OR '06' OR '07' OR '08' OR '09' OR '0A'
@@ -505,7 +505,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         lv_valid = abap_false.
     ENDCASE.
     IF lv_valid = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     lv_id = next_request_id( ).
     lo_body = NEW #( ).
@@ -522,7 +522,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 * int4 cannot represent request ids with the high bit set. Exhausting over two
 * billion ids in one SFTP channel is outside the supported operation model.
     IF mv_next_request_id < 1.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     rv_id = mv_next_request_id.
     IF mv_next_request_id = 2147483647.
@@ -548,7 +548,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         io_packet = lo_packet ).
       RETURN.
     ENDIF.
-    zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+    RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
   ENDMETHOD.
 
 
@@ -560,7 +560,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     DATA lv_extension_data TYPE xstring.
     lv_version = io_packet->uint32_decode( ).
     IF lv_version <> 3.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     WHILE io_packet->get_length( ) > 0.
       lv_extension_name = io_packet->string_decode( ).
@@ -601,13 +601,13 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         lv_valid = abap_false.
     ENDCASE.
     IF lv_valid = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     lv_id = io_packet->uint32_decode( ).
     READ TABLE mt_request_ids WITH TABLE KEY table_line = lv_id
       TRANSPORTING NO FIELDS.
     IF sy-subrc <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     IF ( mv_operation = c_operation_download OR mv_operation = c_operation_upload )
         AND mv_state <> c_state-ready.
@@ -660,7 +660,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
             lv_handle = io_packet->string_decode( ).
             ensure_consumed( io_packet ).
             IF lv_handle IS INITIAL OR xstrlen( lv_handle ) > 256.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             mv_handle = lv_handle.
             IF mv_operation = c_operation_download.
@@ -676,12 +676,12 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           WHEN '65'. " SSH_FXP_STATUS: OPEN failed, so no handle exists
             lv_status = parse_status( io_packet ).
             IF lv_status = 0 OR lv_status = 1.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             mv_error_status = lv_status.
             mv_state = c_state-finished.
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDCASE.
       WHEN c_state-read_pending.
         CASE iv_type.
@@ -694,7 +694,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
             lv_max_offset = 2147483647 - lv_length.
             IF lv_length <= 0 OR lv_length > c_read_length
                 OR mv_offset > lv_max_offset.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             APPEND lv_data TO mt_data.
             mv_offset = mv_offset + lv_length.
@@ -703,18 +703,18 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
             lv_status = parse_status( io_packet ).
             IF lv_status <> 1.
               IF lv_status = 0.
-                zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+                RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
               ENDIF.
               mv_error_status = lv_status.
             ENDIF.
             mv_outbound = close_request( ).
             mv_state = c_state-close_pending.
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDCASE.
       WHEN c_state-close_pending.
         IF iv_type <> '65'.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         lv_status = parse_status( io_packet ).
         IF lv_status <> 0 AND mv_error_status < 0.
@@ -726,7 +726,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           iv_type   = iv_type
           io_packet = io_packet ).
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDCASE.
   ENDMETHOD.
 
@@ -735,7 +735,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     DATA lv_status TYPE i.
     DATA lv_upload_length TYPE i.
     IF iv_type <> '65'.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     lv_status = parse_status( io_packet ).
     IF lv_status = 0.
@@ -879,7 +879,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         lv_type = '12'.
         lo_body->string_encode( mv_path2 ).
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDCASE.
     rv_data = build_request(
       iv_type = lv_type
@@ -890,7 +890,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   METHOD handle_status_response.
     DATA lv_status TYPE i.
     IF iv_type <> '65'. " SSH_FXP_STATUS
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     lv_status = parse_status( io_packet ).
     IF lv_status <> 0.
@@ -919,11 +919,11 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN '68'. " SSH_FXP_NAME
         lv_count = io_packet->uint32_decode( ).
         IF lv_count <> 1.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         ms_realpath-filename = io_packet->string_decode( ).
         IF ms_realpath-filename IS INITIAL.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         ms_realpath-longname = io_packet->string_decode( ).
         ms_realpath-attrs = parse_attrs(
@@ -933,11 +933,11 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN '65'. " SSH_FXP_STATUS
         lv_status = parse_status( io_packet ).
         IF lv_status = 0 OR lv_status = 1.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         mv_error_status = lv_status.
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDCASE.
     mv_state = c_state-finished.
   ENDMETHOD.
@@ -958,7 +958,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
             lv_handle = io_packet->string_decode( ).
             ensure_consumed( io_packet ).
             IF lv_handle IS INITIAL OR xstrlen( lv_handle ) > 256.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             mv_handle = lv_handle.
             mv_outbound = readdir_request( ).
@@ -966,23 +966,23 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
           WHEN '65'.
             lv_status = parse_status( io_packet ).
             IF lv_status = 0 OR lv_status = 1.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             mv_error_status = lv_status.
             mv_state = c_state-finished.
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDCASE.
       WHEN c_state-readdir_pending.
         CASE iv_type.
           WHEN '68'. " SSH_FXP_NAME
             lv_count = io_packet->uint32_decode( ).
             IF lv_count <= 0 OR lv_count > 4096.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             lv_total = lines( mt_names ) + lv_count.
             IF lv_total > c_max_directory_entries.
-              zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+              RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
             ENDIF.
             DO lv_count TIMES.
               CLEAR ls_name.
@@ -999,18 +999,18 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
             lv_status = parse_status( io_packet ).
             IF lv_status <> 1.
               IF lv_status = 0.
-                zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+                RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
               ENDIF.
               mv_error_status = lv_status.
             ENDIF.
             mv_outbound = close_request( ).
             mv_state = c_state-close_pending.
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDCASE.
       WHEN c_state-close_pending.
         IF iv_type <> '65'.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         lv_status = parse_status( io_packet ).
         IF lv_status <> 0 AND mv_error_status < 0.
@@ -1018,7 +1018,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         ENDIF.
         mv_state = c_state-finished.
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDCASE.
   ENDMETHOD.
 
@@ -1031,11 +1031,11 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       WHEN '65'. " SSH_FXP_STATUS
         lv_status = parse_status( io_packet ).
         IF lv_status = 0 OR lv_status = 1.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
         ENDIF.
         mv_error_status = lv_status.
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDCASE.
     mv_state = c_state-finished.
   ENDMETHOD.
@@ -1054,7 +1054,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     WHILE lv_bit_index <= 28.
       GET BIT lv_bit_index OF lv_flags INTO lv_bit.
       IF lv_bit = '1'.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
       ENDIF.
       lv_bit_index = lv_bit_index + 1.
     ENDWHILE.
@@ -1090,7 +1090,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
         iv_bit   = 1 ) = abap_true.
       lv_count = io_packet->uint32_decode( ).
       IF lv_count < 0 OR lv_count > 1024.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
       ENDIF.
       DO lv_count TIMES.
         CLEAR ls_extension.
@@ -1119,14 +1119,14 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     io_packet->string_decode( ).
     ensure_consumed( io_packet ).
     IF rv_status < 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
   ENDMETHOD.
 
 
   METHOD ensure_consumed.
     IF io_packet->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-sftp_protocol ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
   ENDMETHOD.
 

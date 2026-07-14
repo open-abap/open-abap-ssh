@@ -23,7 +23,7 @@ CLASS zcl_oassh_message_52 IMPLEMENTATION.
     DATA lv_message_id TYPE x LENGTH 1.
     lv_message_id = io_stream->take( 1 ).
     IF lv_message_id <> gc_message_id.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 

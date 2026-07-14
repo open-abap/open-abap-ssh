@@ -17,7 +17,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(ro_ssh)    TYPE REF TO zcl_oassh
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
 
     METHODS execute
       IMPORTING
@@ -26,7 +26,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_output)   TYPE string
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_download
       IMPORTING
         iv_path            TYPE string
@@ -34,7 +34,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_data)     TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS shell
       IMPORTING
         iv_input           TYPE xstring
@@ -45,14 +45,14 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_output)   TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_upload
       IMPORTING
         iv_path            TYPE string
         iv_data            TYPE xstring
         iv_timeout_seconds TYPE i DEFAULT 300
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_stat
       IMPORTING
         iv_path            TYPE string
@@ -60,7 +60,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_lstat
       IMPORTING
         iv_path            TYPE string
@@ -68,7 +68,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_list
       IMPORTING
         iv_path            TYPE string
@@ -76,34 +76,34 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_mkdir
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_rmdir
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_remove
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_rename
       IMPORTING
         iv_old_path        TYPE string
         iv_new_path        TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_realpath
       IMPORTING
         iv_path                TYPE string
         iv_timeout_seconds     TYPE i DEFAULT 300
       RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -191,23 +191,23 @@ CLASS zcl_oassh DEFINITION
       RAISING zcx_oassh_error.
     METHODS handle
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS send_version
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS pump
       IMPORTING
         iv_timeout_seconds TYPE i
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_inbound
       IMPORTING
         iv_data TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_version
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     CLASS-METHODS validate_server_identification
       IMPORTING
         iv_identification TYPE xstring
@@ -215,32 +215,32 @@ CLASS zcl_oassh DEFINITION
         zcx_oassh_error.
     METHODS process_kex
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_encrypted
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS start_channel
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS advance_channel
       IMPORTING
         iv_payload TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS send_encrypted
       IMPORTING
         iv_payload TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS queue_sftp_output
       IMPORTING
         iv_data TYPE xstring.
     METHODS flush_sftp_output
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS flush_shell_input
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_attributes
       IMPORTING
         iv_path            TYPE string
@@ -249,14 +249,14 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_mutation
       IMPORTING
         iv_operation       TYPE i
         iv_path            TYPE string
         iv_path2           TYPE string OPTIONAL
         iv_timeout_seconds TYPE i
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS process_global_request
       IMPORTING
         iv_payload        TYPE xstring
@@ -322,10 +322,10 @@ CLASS zcl_oassh IMPLEMENTATION.
 * transport authenticates, start_channel sends CHANNEL_OPEN and the pump
 * drives the channel until the peer closes it.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-execute.
@@ -336,15 +336,15 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
 * A socket error or SSH disconnect can complete the wait before a channel is
 * opened or closed. Report that as a typed operation failure, never ASSERT.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     rv_output = zcl_oassh_ascii=>from_xstring_text( mo_channel->get_stdout( ) ).
   ENDMETHOD.
@@ -355,13 +355,13 @@ CLASS zcl_oassh IMPLEMENTATION.
 * transfer byte-safe stdin under channel flow control, then half-close with
 * CHANNEL_EOF while retaining all output until the peer closes the channel.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF iv_columns < 0 OR iv_rows < 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-shell.
@@ -377,11 +377,11 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND
         OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     rv_output = mo_channel->get_stdout( ).
   ENDMETHOD.
@@ -393,10 +393,10 @@ CLASS zcl_oassh IMPLEMENTATION.
 * selected after open differs.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-sftp_download.
@@ -408,20 +408,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
     rv_data = mo_sftp->get_data( ).
   ENDMETHOD.
@@ -432,10 +433,10 @@ CLASS zcl_oassh IMPLEMENTATION.
 * and SSH channel both completed their close handshakes.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-sftp_upload.
@@ -448,20 +449,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
   ENDMETHOD.
 
@@ -485,10 +487,10 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD sftp_attributes.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     IF iv_lstat = abap_true.
@@ -504,20 +506,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
     rs_attrs = mo_sftp->get_attrs( ).
   ENDMETHOD.
@@ -526,10 +529,10 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD sftp_list.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-sftp_list.
@@ -541,20 +544,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
     rt_names = mo_sftp->get_names( ).
   ENDMETHOD.
@@ -596,10 +600,10 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD sftp_mutation.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = iv_operation.
@@ -612,20 +616,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
   ENDMETHOD.
 
@@ -633,10 +638,10 @@ CLASS zcl_oassh IMPLEMENTATION.
   METHOD sftp_realpath.
     DATA lv_status TYPE i.
     IF mv_operation_started = abap_true.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF iv_timeout_seconds <= 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     mv_operation_started = abap_true.
     mv_operation = gc_operation-sftp_realpath.
@@ -648,20 +653,21 @@ CLASS zcl_oassh IMPLEMENTATION.
     pump( iv_timeout_seconds ).
     IF mv_operation_done <> abap_true.
       mi_socket->close( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-timeout ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
     ENDIF.
     IF mo_channel IS NOT BOUND.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed
         OR mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_status = mo_sftp->get_error_status( ).
     IF lv_status >= 0.
-      zcx_oassh_error=>raise(
-        iv_reason      = zcx_oassh_error=>c_reason-sftp_status
-        iv_sftp_status = lv_status ).
+      RAISE EXCEPTION TYPE zcx_oassh_error
+        MESSAGE e012(zoassh) WITH |{ lv_status }|
+        EXPORTING
+          iv_sftp_status = lv_status.
     ENDIF.
     rs_name = mo_sftp->get_realpath( ).
   ENDMETHOD.
@@ -718,7 +724,7 @@ CLASS zcl_oassh IMPLEMENTATION.
         rv_handled = abap_false.
     ENDCASE.
     IF rv_handled = abap_true AND lo_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF rv_handled = abap_true
         AND iv_payload(1) = zcl_oassh_message_1=>gc_message_id.
@@ -783,7 +789,7 @@ CLASS zcl_oassh IMPLEMENTATION.
       lv_line_length = mo_stream->find_cr_lf( ).
       IF lv_line_length >= 0.
         IF lv_line_length + 2 > lc_max_prebanner.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
         ENDIF.
         lv_server_version = mo_stream->take( lv_line_length ).
         mo_stream->take( 2 ).
@@ -807,13 +813,13 @@ CLASS zcl_oassh IMPLEMENTATION.
 * RFC's 255-byte limit while waiting for its terminating CR LF.
       IF mv_version_is_ssh = abap_true
           AND lv_version_length >= lc_max_identification.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
 * RFC 4253 permits diagnostic lines but gives them no size limit. Bound an
 * unterminated/non-SSH line at the transport ceiling to prevent unbounded
 * pre-authentication buffering.
       IF lv_version_length > lc_max_prebanner.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
       ENDIF.
       RETURN.
     ENDWHILE.
@@ -835,14 +841,14 @@ CLASS zcl_oassh IMPLEMENTATION.
         OR xstrlen( iv_identification ) < 9
         OR ( iv_identification(8) <> '5353482D322E302D'
           AND iv_identification(8) <> '5353482D312E39392D' ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_last_offset = xstrlen( iv_identification ) - 1.
     DO xstrlen( iv_identification ) TIMES.
       lv_offset = sy-index - 1.
       lv_byte = iv_identification+lv_offset(1).
       IF lv_byte = '00'.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       IF lv_offset < 8 OR lv_comment_started = abap_true.
         CONTINUE.
@@ -850,19 +856,19 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF lv_byte = '20'.
         IF lv_software_length = 0
             OR lv_offset = lv_last_offset.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_comment_started = abap_true.
         CONTINUE.
       ENDIF.
       lv_code = lv_byte.
       IF lv_code < 33 OR lv_code > 126 OR lv_byte = '2D'.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_software_length = lv_software_length + 1.
     ENDDO.
     IF lv_software_length = 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -881,10 +887,10 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF mv_plain_packet_length = 0.
         mv_plain_packet_length = mo_stream->uint32_decode_peek( ).
         IF mv_plain_packet_length < 12.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         IF mv_plain_packet_length > lv_max_length.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
         ENDIF.
       ENDIF.
       lv_total_length = mv_plain_packet_length + 4.
@@ -900,7 +906,7 @@ CLASS zcl_oassh IMPLEMENTATION.
           AND lv_message_id <> 20
           AND lv_message_id <> 21
           AND ( lv_message_id < 30 OR lv_message_id > 49 ).
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       IF handle_transport_message( lv_payload ) = abap_true.
 * RFC 4253 section 11.1: terminate immediately and accept no later data.
@@ -922,7 +928,7 @@ CLASS zcl_oassh IMPLEMENTATION.
               AND mo_plain_packet->get_receive_sequence( ) <> 1.
 * Strict KEX is negotiated by this packet, so verify retrospectively that it
 * was the server's first binary packet (sequence zero before decode).
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
           ENDIF.
           mi_socket->send( mo_plain_packet->encode( lv_reply ) ).
         WHEN zcl_oassh_transport=>c_state-ecdh_sent.
@@ -1036,7 +1042,7 @@ CLASS zcl_oassh IMPLEMENTATION.
         advance_channel( lv_payload ).
         CLEAR lv_reply.
       ELSE.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       IF lv_reply IS NOT INITIAL.
         mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
@@ -1080,12 +1086,12 @@ CLASS zcl_oassh IMPLEMENTATION.
               OR gc_operation-sftp_rename OR gc_operation-sftp_realpath.
             lv_reply = mo_channel->subsystem( 'sftp' ).
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
         ENDCASE.
         send_encrypted( lv_reply ).
       WHEN zcl_oassh_channel=>c_state-pty_ready.
         IF mv_operation <> gc_operation-shell.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
         ENDIF.
         send_encrypted( mo_channel->shell( ) ).
       WHEN zcl_oassh_channel=>c_state-running.
@@ -1270,7 +1276,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     lo_input = NEW #( iv_payload ).
     lv_message_id = lo_input->take( 1 ).
     IF lv_message_id <> '5A'.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lo_input->string_decode( ).
     lv_sender_channel = lo_input->uint32_decode( ).
