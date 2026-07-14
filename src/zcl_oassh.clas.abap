@@ -17,7 +17,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(ro_ssh)    TYPE REF TO zcl_oassh
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
 
     METHODS execute
       IMPORTING
@@ -26,7 +26,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_output)   TYPE string
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_download
       IMPORTING
         iv_path            TYPE string
@@ -34,7 +34,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_data)     TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS shell
       IMPORTING
         iv_input           TYPE xstring
@@ -45,14 +45,14 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rv_output)   TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_upload
       IMPORTING
         iv_path            TYPE string
         iv_data            TYPE xstring
         iv_timeout_seconds TYPE i DEFAULT 300
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_stat
       IMPORTING
         iv_path            TYPE string
@@ -60,7 +60,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_lstat
       IMPORTING
         iv_path            TYPE string
@@ -68,7 +68,7 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_list
       IMPORTING
         iv_path            TYPE string
@@ -76,34 +76,34 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_mkdir
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_rmdir
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_remove
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_rename
       IMPORTING
         iv_old_path        TYPE string
         iv_new_path        TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS sftp_realpath
       IMPORTING
         iv_path                TYPE string
         iv_timeout_seconds     TYPE i DEFAULT 300
       RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -191,23 +191,23 @@ CLASS zcl_oassh DEFINITION
       RAISING zcx_oassh_error.
     METHODS handle
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS send_version
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS pump
       IMPORTING
         iv_timeout_seconds TYPE i
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_inbound
       IMPORTING
         iv_data TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_version
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     CLASS-METHODS validate_server_identification
       IMPORTING
         iv_identification TYPE xstring
@@ -215,32 +215,32 @@ CLASS zcl_oassh DEFINITION
         zcx_oassh_error.
     METHODS process_kex
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS process_encrypted
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS start_channel
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS advance_channel
       IMPORTING
         iv_payload TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS send_encrypted
       IMPORTING
         iv_payload TYPE xstring
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS queue_sftp_output
       IMPORTING
         iv_data TYPE xstring.
     METHODS flush_sftp_output
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS flush_shell_input
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_attributes
       IMPORTING
         iv_path            TYPE string
@@ -249,14 +249,14 @@ CLASS zcl_oassh DEFINITION
       RETURNING
         VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
       RAISING
-        cx_static_check.
+        zcx_oassh_error.
     METHODS sftp_mutation
       IMPORTING
         iv_operation       TYPE i
         iv_path            TYPE string
         iv_path2           TYPE string OPTIONAL
         iv_timeout_seconds TYPE i
-      RAISING cx_static_check.
+      RAISING zcx_oassh_error.
     METHODS process_global_request
       IMPORTING
         iv_payload        TYPE xstring

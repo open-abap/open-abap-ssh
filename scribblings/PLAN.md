@@ -341,6 +341,8 @@ the remaining cross-cutting tasks.
       existing outbound session channel and transport alive
 - [x] configurable execute/APC timeout with typed error, RFC 4253 payload/wire-size ceilings,
       deterministic malformed/MAC/oversize packet fixtures
+- [x] expose only `zcx_oassh_error` from the public SSH/socket contracts and
+      translate checked APC failures to a typed socket error reason
 
 ### M9 — Nice-to-haves (post-1.0, order by demand)
 - [x] `ssh-ed25519` host keys (RFC 8032 cofactored verification, RFC 8709

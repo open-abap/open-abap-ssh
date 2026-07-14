@@ -52,3 +52,20 @@ test("zif_oassh_socket~send emits one complete binary frame", () => {
     1,
   );
 });
+
+for (const method of [
+  "zif_oassh_socket~connect",
+  "zif_oassh_socket~send",
+]) {
+  test(`${method} translates checked APC failures`, () => {
+    const body = methodBody(method);
+    const caught = body.match(
+      /CATCH\s+cx_static_check\s+INTO\s+lx_error\.([\s\S]*?)ENDTRY\./u,
+    );
+    assert.ok(caught, `missing checked-exception translation in ${method}`);
+    assert.match(
+      caught[1],
+      /zcx_oassh_error=>raise\(\s*zcx_oassh_error=>c_reason-socket_failed\s*\)\./u,
+    );
+  });
+}

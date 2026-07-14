@@ -19,6 +19,7 @@ CLASS zcx_oassh_error DEFINITION
         channel_failed TYPE i VALUE 10,
         sftp_protocol TYPE i VALUE 11,
         sftp_status TYPE i VALUE 12,
+        socket_failed TYPE i VALUE 13,
       END OF c_reason.
     METHODS constructor
       IMPORTING

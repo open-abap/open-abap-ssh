@@ -74,6 +74,7 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
   METHOD zif_oassh_socket~connect.
 
     DATA ls_frame TYPE apc_tcp_frame.
+    DATA lx_error TYPE REF TO cx_static_check.
 
 * SSH has no fixed record length, so read one byte at a time and let the
 * SSH core reassemble the version line and binary packets
@@ -82,14 +83,18 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
 * i_ssl_id selects an SSL client identity from STRUST for a TLS-wrapped TCP
 * connection. Empty maps to SPACE, which leaves the connection as plain TCP.
-    mi_client = cl_apc_tcp_client_manager=>create(
-      i_host          = mv_host
-      i_port          = mv_port
-      i_frame         = ls_frame
-      i_ssl_id        = mv_ssl_id
-      i_event_handler = me ).
+    TRY.
+        mi_client = cl_apc_tcp_client_manager=>create(
+          i_host          = mv_host
+          i_port          = mv_port
+          i_frame         = ls_frame
+          i_ssl_id        = mv_ssl_id
+          i_event_handler = me ).
 
-    mi_client->connect( ).
+        mi_client->connect( ).
+      CATCH cx_static_check INTO lx_error.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-socket_failed ).
+    ENDTRY.
 
   ENDMETHOD.
 
@@ -110,16 +115,21 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
+    DATA lx_error           TYPE REF TO cx_static_check.
 
     ASSERT iv_data IS NOT INITIAL.
 
-    li_message_manager ?= mi_client->get_message_manager( ).
-    li_message = li_message_manager->create_message( ).
+    TRY.
+        li_message_manager ?= mi_client->get_message_manager( ).
+        li_message = li_message_manager->create_message( ).
 * SAP's APC TCP client API accepts a complete binary frame. SSH packets are
 * bounded below APC's frame ceiling, so send once instead of issuing one APC
 * message per byte.
-    li_message->set_binary( iv_data ).
-    li_message_manager->send( li_message ).
+        li_message->set_binary( iv_data ).
+        li_message_manager->send( li_message ).
+      CATCH cx_static_check INTO lx_error.
+        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-socket_failed ).
+    ENDTRY.
 
   ENDMETHOD.
 
