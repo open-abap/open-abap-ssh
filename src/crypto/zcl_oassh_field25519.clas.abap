@@ -6,13 +6,13 @@ CLASS zcl_oassh_field25519 DEFINITION
   PUBLIC SECTION.
 
 * Arithmetic in GF(2^255 - 19), the shared prime field of Curve25519 and
-* Ed25519. Elements are 26 little-endian limbs of base 2^10, chosen so a
-* schoolbook multiply and its folding reduction stay inside ABAP's signed
-* 32-bit integer range. This is the field layer for zcl_oassh_x25519; the
-* implementation is the one proven by the Ed25519 RFC 8032 vectors and can
-* also back zcl_oassh_ed25519.
+* Ed25519. Elements are 10 little-endian limbs of base 2^26 held in int8,
+* so a schoolbook multiply term stays below 2^56 and the folding reduction
+* stays inside the signed 64-bit range. This is the field layer for
+* zcl_oassh_x25519; the implementation is the one proven by the Ed25519
+* RFC 8032 vectors and can also back zcl_oassh_ed25519.
 
-    TYPES ty_field TYPE STANDARD TABLE OF i WITH EMPTY KEY.
+    TYPES ty_field TYPE STANDARD TABLE OF int8 WITH EMPTY KEY.
 
     CLASS-METHODS from_le
       IMPORTING iv_data TYPE xstring
@@ -38,6 +38,9 @@ CLASS zcl_oassh_field25519 DEFINITION
         it_a TYPE ty_field
         it_b TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
+    CLASS-METHODS sqr
+      IMPORTING it_a TYPE ty_field
+      RETURNING VALUE(rt_field) TYPE ty_field.
     CLASS-METHODS inv
       IMPORTING it_a TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
@@ -47,11 +50,10 @@ CLASS zcl_oassh_field25519 DEFINITION
       RETURNING VALUE(rt_field) TYPE ty_field.
 
   PRIVATE SECTION.
-    CONSTANTS c_base TYPE i VALUE 1024.
-    CONSTANTS c_limbs TYPE i VALUE 26.
-* p - 2, the Fermat inverse exponent, big-endian
-    CONSTANTS c_inv_exp TYPE xstring VALUE
-      '7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEB'.
+    CONSTANTS c_base TYPE i VALUE 67108864.
+* the top limb only spans bits 234..254 of p, 21 bits
+    CONSTANTS c_top TYPE i VALUE 2097152.
+    CONSTANTS c_limbs TYPE i VALUE 10.
 
     CLASS-METHODS reverse_bytes
       IMPORTING iv_data TYPE xstring
@@ -71,10 +73,10 @@ CLASS zcl_oassh_field25519 DEFINITION
         it_a TYPE ty_field
         it_b TYPE ty_field
       RETURNING VALUE(rt_field) TYPE ty_field.
-    CLASS-METHODS pow
+    CLASS-METHODS sqr_times
       IMPORTING
-        it_base TYPE ty_field
-        iv_exp TYPE xstring
+        it_a TYPE ty_field
+        iv_count TYPE i
       RETURNING VALUE(rt_field) TYPE ty_field.
 ENDCLASS.
 
@@ -95,27 +97,21 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
   METHOD from_le.
     DATA lv_offset TYPE i.
     DATA lv_byte TYPE x LENGTH 1.
-    DATA lv_acc TYPE i.
+    DATA lv_acc TYPE int8.
     DATA lv_bits TYPE i.
-    DATA lv_factor TYPE i VALUE 1.
+    DATA lv_factor TYPE int8 VALUE 1.
     DO xstrlen( iv_data ) TIMES.
       lv_offset = sy-index - 1.
       lv_byte = iv_data+lv_offset(1).
       lv_acc = lv_acc + lv_byte * lv_factor.
       lv_bits = lv_bits + 8.
-      WHILE lv_bits >= 10.
+      lv_factor = lv_factor * 256.
+      WHILE lv_bits >= 26.
         APPEND lv_acc MOD c_base TO rt_field.
         lv_acc = lv_acc DIV c_base.
-        lv_bits = lv_bits - 10.
-        lv_factor = 1.
-        DO lv_bits TIMES.
-          lv_factor = lv_factor * 2.
-        ENDDO.
+        lv_bits = lv_bits - 26.
+        lv_factor = lv_factor DIV c_base.
       ENDWHILE.
-      lv_factor = 1.
-      DO lv_bits TIMES.
-        lv_factor = lv_factor * 2.
-      ENDDO.
     ENDDO.
     IF lv_bits > 0.
       APPEND lv_acc TO rt_field.
@@ -132,10 +128,11 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
 
 
   METHOD to_le.
-    DATA lv_acc TYPE i.
+    DATA lv_acc TYPE int8.
     DATA lv_bits TYPE i.
-    DATA lv_factor TYPE i.
-    DATA lv_limb TYPE i.
+    DATA lv_factor TYPE int8.
+    DATA lv_limb TYPE int8.
+    DATA lv_low TYPE i.
     DATA lv_byte TYPE x LENGTH 1.
     DATA lv_zero TYPE x LENGTH 1 VALUE '00'.
     LOOP AT it_field INTO lv_limb.
@@ -144,16 +141,18 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
         lv_factor = lv_factor * 2.
       ENDDO.
       lv_acc = lv_acc + lv_limb * lv_factor.
-      lv_bits = lv_bits + 10.
+      lv_bits = lv_bits + 26.
       WHILE lv_bits >= 8.
-        lv_byte = lv_acc MOD 256.
+        lv_low = lv_acc MOD 256.
+        lv_byte = lv_low.
         CONCATENATE rv_data lv_byte INTO rv_data IN BYTE MODE.
         lv_acc = lv_acc DIV 256.
         lv_bits = lv_bits - 8.
       ENDWHILE.
     ENDLOOP.
     IF lv_acc > 0.
-      lv_byte = lv_acc.
+      lv_low = lv_acc.
+      lv_byte = lv_low.
       CONCATENATE rv_data lv_byte INTO rv_data IN BYTE MODE.
     ENDIF.
     WHILE xstrlen( rv_data ) < 32.
@@ -163,11 +162,12 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
 
 
   METHOD modulus.
-    APPEND 1005 TO rt_field.
-    DO 24 TIMES.
-      APPEND 1023 TO rt_field.
+* p = 2^255 - 19: low limb 2^26 - 19, middle limbs full, top limb 2^21 - 1
+    APPEND 67108845 TO rt_field.
+    DO c_limbs - 2 TIMES.
+      APPEND 67108863 TO rt_field.
     ENDDO.
-    APPEND 31 TO rt_field.
+    APPEND 2097151 TO rt_field.
   ENDMETHOD.
 
 
@@ -188,7 +188,7 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
 
   METHOD sub_raw.
     DATA lv_index TYPE i.
-    DATA lv_value TYPE i.
+    DATA lv_value TYPE int8.
     DATA lv_borrow TYPE i.
     rt_field = it_a.
     DO c_limbs TIMES.
@@ -209,9 +209,9 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
   METHOD normalize.
     DATA lv_index TYPE i.
     DATA lv_low_index TYPE i.
-    DATA lv_value TYPE i.
-    DATA lv_carry TYPE i.
-    DATA lv_high TYPE i.
+    DATA lv_value TYPE int8.
+    DATA lv_carry TYPE int8.
+    DATA lv_high TYPE int8.
     DATA lt_p TYPE ty_field.
     rt_field = it_field.
     IF rt_field IS INITIAL.
@@ -254,8 +254,8 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
         rt_field[ 1 ] = rt_field[ 1 ] + 608 * lv_carry.
         CONTINUE.
       ENDIF.
-      lv_high = rt_field[ c_limbs ] DIV 32.
-      rt_field[ c_limbs ] = rt_field[ c_limbs ] MOD 32.
+      lv_high = rt_field[ c_limbs ] DIV c_top.
+      rt_field[ c_limbs ] = rt_field[ c_limbs ] MOD c_top.
       IF lv_high > 0.
         rt_field[ 1 ] = rt_field[ 1 ] + 19 * lv_high.
         CONTINUE.
@@ -306,19 +306,57 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
     DATA lv_i TYPE i.
     DATA lv_j TYPE i.
     DATA lv_position TYPE i.
+    DATA lv_a TYPE int8.
     DO c_limbs * 2 - 1 TIMES.
       APPEND 0 TO rt_field.
     ENDDO.
     DO c_limbs TIMES.
       lv_i = sy-index.
+      lv_a = it_a[ lv_i ].
       DO c_limbs TIMES.
         lv_j = sy-index.
         lv_position = lv_i + lv_j - 1.
         rt_field[ lv_position ] = rt_field[ lv_position ]
-          + it_a[ lv_i ] * it_b[ lv_j ].
+          + lv_a * it_b[ lv_j ].
       ENDDO.
     ENDDO.
     rt_field = normalize( rt_field ).
+  ENDMETHOD.
+
+
+  METHOD sqr.
+* Schoolbook squaring: each cross product appears twice, so only the
+* upper triangle is walked and off-diagonal terms are doubled.
+    DATA lv_i TYPE i.
+    DATA lv_j TYPE i.
+    DATA lv_position TYPE i.
+    DATA lv_a TYPE int8.
+    DO c_limbs * 2 - 1 TIMES.
+      APPEND 0 TO rt_field.
+    ENDDO.
+    DO c_limbs TIMES.
+      lv_i = sy-index.
+      lv_a = it_a[ lv_i ].
+      lv_position = lv_i * 2 - 1.
+      rt_field[ lv_position ] = rt_field[ lv_position ] + lv_a * lv_a.
+      lv_a = lv_a * 2.
+      lv_j = lv_i + 1.
+      WHILE lv_j <= c_limbs.
+        lv_position = lv_i + lv_j - 1.
+        rt_field[ lv_position ] = rt_field[ lv_position ]
+          + lv_a * it_a[ lv_j ].
+        lv_j = lv_j + 1.
+      ENDWHILE.
+    ENDDO.
+    rt_field = normalize( rt_field ).
+  ENDMETHOD.
+
+
+  METHOD sqr_times.
+    rt_field = it_a.
+    DO iv_count TIMES.
+      rt_field = sqr( rt_field ).
+    ENDDO.
   ENDMETHOD.
 
 
@@ -337,30 +375,70 @@ CLASS zcl_oassh_field25519 IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD pow.
-    DATA lv_offset TYPE i.
-    DATA lv_bit_index TYPE i.
-    DATA lv_byte TYPE x LENGTH 1.
-    DATA lv_bit TYPE c LENGTH 1.
-    rt_field = one( ).
-    DO xstrlen( iv_exp ) * 8 TIMES.
-      lv_offset = ( sy-index - 1 ) DIV 8.
-      lv_bit_index = ( sy-index - 1 ) MOD 8 + 1.
-      lv_byte = iv_exp+lv_offset(1).
-      GET BIT lv_bit_index OF lv_byte INTO lv_bit.
-      rt_field = mul( it_a = rt_field
-                      it_b = rt_field ).
-      IF lv_bit = '1'.
-        rt_field = mul( it_a = rt_field
-                        it_b = it_base ).
-      ENDIF.
-    ENDDO.
-  ENDMETHOD.
-
-
   METHOD inv.
-    rt_field = pow( it_base = it_a
-                    iv_exp  = c_inv_exp ).
+* Fermat inversion a^(p-2) with p - 2 = 2^255 - 21, using the standard
+* Curve25519 addition chain: 254 squarings and 11 multiplies instead of
+* generic square-and-multiply over an exponent of mostly one-bits.
+    DATA lt_z2 TYPE ty_field.
+    DATA lt_z9 TYPE ty_field.
+    DATA lt_z11 TYPE ty_field.
+    DATA lt_z2_5_0 TYPE ty_field.
+    DATA lt_z2_10_0 TYPE ty_field.
+    DATA lt_z2_20_0 TYPE ty_field.
+    DATA lt_z2_50_0 TYPE ty_field.
+    DATA lt_z2_100_0 TYPE ty_field.
+    DATA lt_t TYPE ty_field.
+
+    lt_z2 = sqr( it_a ).
+    lt_t = sqr( sqr( lt_z2 ) ).
+    lt_z9 = mul( it_a = lt_t
+                 it_b = it_a ).
+    lt_z11 = mul( it_a = lt_z9
+                  it_b = lt_z2 ).
+    lt_t = sqr( lt_z11 ).
+* a^(2^5 - 1)
+    lt_z2_5_0 = mul( it_a = lt_t
+                     it_b = lt_z9 ).
+* a^(2^10 - 1)
+    lt_t = sqr_times( it_a     = lt_z2_5_0
+                      iv_count = 5 ).
+    lt_z2_10_0 = mul( it_a = lt_t
+                      it_b = lt_z2_5_0 ).
+* a^(2^20 - 1)
+    lt_t = sqr_times( it_a     = lt_z2_10_0
+                      iv_count = 10 ).
+    lt_z2_20_0 = mul( it_a = lt_t
+                      it_b = lt_z2_10_0 ).
+* a^(2^40 - 1)
+    lt_t = sqr_times( it_a     = lt_z2_20_0
+                      iv_count = 20 ).
+    lt_t = mul( it_a = lt_t
+                it_b = lt_z2_20_0 ).
+* a^(2^50 - 1)
+    lt_t = sqr_times( it_a     = lt_t
+                      iv_count = 10 ).
+    lt_z2_50_0 = mul( it_a = lt_t
+                      it_b = lt_z2_10_0 ).
+* a^(2^100 - 1)
+    lt_t = sqr_times( it_a     = lt_z2_50_0
+                      iv_count = 50 ).
+    lt_z2_100_0 = mul( it_a = lt_t
+                       it_b = lt_z2_50_0 ).
+* a^(2^200 - 1)
+    lt_t = sqr_times( it_a     = lt_z2_100_0
+                      iv_count = 100 ).
+    lt_t = mul( it_a = lt_t
+                it_b = lt_z2_100_0 ).
+* a^(2^250 - 1)
+    lt_t = sqr_times( it_a     = lt_t
+                      iv_count = 50 ).
+    lt_t = mul( it_a = lt_t
+                it_b = lt_z2_50_0 ).
+* a^(2^255 - 32) * a^11 = a^(2^255 - 21)
+    lt_t = sqr_times( it_a     = lt_t
+                      iv_count = 5 ).
+    rt_field = mul( it_a = lt_t
+                    it_b = lt_z11 ).
   ENDMETHOD.
 
 ENDCLASS.
