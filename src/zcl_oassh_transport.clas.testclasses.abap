@@ -287,8 +287,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'missing common KEX accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-negotiation_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '005' ).
     ENDTRY.
 
 * An algorithm deliberately omitted from the client proposal cannot become
@@ -309,8 +309,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'unoffered host-key algorithm accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-negotiation_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '005' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -325,7 +325,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_empty_password TYPE xstring.
     DATA lv_payload TYPE xstring.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_random = NEW #( iv_pattern = '01' ).
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
@@ -359,11 +359,11 @@ CLASS ltcl_test IMPLEMENTATION.
           iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
           iv_password_supplied = abap_false ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-invalid_credentials ).
+      exp = '008' ).
   ENDMETHOD.
 
 
@@ -386,8 +386,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'malformed private seed accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-invalid_credentials ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '008' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -418,8 +418,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'invalid group14 public value accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -443,8 +443,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'authentication failure ignored' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-authentication_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '009' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -666,7 +666,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_message_id TYPE x LENGTH 1.
     DATA lv_seed TYPE xstring VALUE
       '9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60'.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = handshake( ).
     lo_transport->start_auth(
       iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
@@ -698,11 +698,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_auth( zcl_oassh_message_51=>serialize( ls_failure )->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-authentication_failed ).
+      exp = '009' ).
   ENDMETHOD.
 
 
@@ -747,7 +747,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_banner TYPE zcl_oassh_message_53=>ty_data.
     DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = handshake( ).
     lo_transport->start_auth(
       iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
@@ -765,11 +765,11 @@ CLASS ltcl_test IMPLEMENTATION.
       TRY.
           lo_transport->receive_auth( lv_payload ).
         CATCH zcx_oassh_error INTO lx_error.
-          lv_reason = lx_error->get_reason( ).
+          lv_reason = lx_error->if_t100_message~t100key-msgno.
       ENDTRY.
       cl_abap_unit_assert=>assert_equals(
         act = lv_reason
-        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+        exp = '003' ).
       cl_abap_unit_assert=>assert_equals(
         act = lo_transport->get_auth_state( )
         exp = zcl_oassh_transport=>c_auth_state-service_requested ).
@@ -784,7 +784,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_accept TYPE xstring.
     DATA lv_malformed TYPE xstring.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = handshake( ).
     lo_transport->start_auth(
       iv_user              = zcl_oassh_ascii=>to_xstring( 'test' )
@@ -798,11 +798,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_auth( lv_malformed ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
       exp = zcl_oassh_transport=>c_auth_state-service_requested ).
@@ -817,11 +817,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_auth( '34AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
       exp = zcl_oassh_transport=>c_auth_state-request_sent ).
@@ -839,18 +839,18 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_reply TYPE xstring.
     DATA lv_malformed TYPE xstring.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = kex_pending( ).
     lv_reply = valid_kex_reply( ).
     lv_malformed = lv_reply && 'AA'.
     TRY.
         lo_transport->receive_kex_reply( lv_malformed ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_initial( lo_transport->get_exchange_hash( ) ).
     cl_abap_unit_assert=>assert_initial( lo_transport->mv_k ).
     cl_abap_unit_assert=>assert_equals(
@@ -873,7 +873,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = kex_pending( ).
     lo_verifier ?= lo_transport->mi_host_verifier.
     lo_stream = NEW #( valid_kex_reply( ) ).
@@ -882,11 +882,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_kex_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-signature_invalid ).
+      exp = '007' ).
     cl_abap_unit_assert=>assert_initial( lo_verifier->received( ) ).
     cl_abap_unit_assert=>assert_initial( lo_transport->get_exchange_hash( ) ).
     cl_abap_unit_assert=>assert_initial( lo_transport->mv_k ).
@@ -897,7 +897,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_transport TYPE REF TO zcl_oassh_transport.
     DATA ls_accept TYPE zcl_oassh_message_6=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_transport = handshake( ).
     lo_transport->start_auth(
       iv_user     = zcl_oassh_ascii=>to_xstring( 'test' )
@@ -908,11 +908,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_auth( zcl_oassh_message_6=>serialize( ls_accept )->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
       exp = zcl_oassh_transport=>c_auth_state-service_requested ).
@@ -926,7 +926,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_server TYPE zcl_oassh_message_20=>ty_data.
     DATA ls_reply TYPE zcl_oassh_message_ecdh_31=>ty_data.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_random = NEW #( iv_pattern = '0102030405060708' ).
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
@@ -944,11 +944,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_transport->receive_kex_reply( zcl_oassh_message_ecdh_31=>serialize( ls_reply )->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 

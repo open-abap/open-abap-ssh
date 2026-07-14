@@ -134,7 +134,7 @@ CLASS zcl_oassh_chachapoly IMPLEMENTATION.
     DATA lv_plain TYPE xstring.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     IF xstrlen( iv_header ) <> 4.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_nonce = nonce( iv_sequence ).
     lv_plain = zcl_oassh_chacha20=>crypt_ssh(
@@ -155,7 +155,7 @@ CLASS zcl_oassh_chachapoly IMPLEMENTATION.
     DATA lv_header_cipher TYPE xstring.
     DATA lv_body_cipher TYPE xstring.
     IF xstrlen( iv_ciphertext ) < 4.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_nonce = nonce( iv_sequence ).
     lv_expected_tag = tag(
@@ -164,7 +164,7 @@ CLASS zcl_oassh_chachapoly IMPLEMENTATION.
     IF tag_matches(
         iv_actual   = iv_tag
         iv_expected = lv_expected_tag ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e004(zoassh).
     ENDIF.
     lv_header_cipher = iv_ciphertext(4).
     lv_body_cipher = iv_ciphertext+4.

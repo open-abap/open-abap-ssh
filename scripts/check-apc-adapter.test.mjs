@@ -65,7 +65,7 @@ for (const method of [
     assert.ok(caught, `missing checked-exception translation in ${method}`);
     assert.match(
       caught[1],
-      /zcx_oassh_error=>raise\(\s*zcx_oassh_error=>c_reason-socket_failed\s*\)\./u,
+      /RAISE EXCEPTION TYPE zcx_oassh_error\s+MESSAGE e013\(zoassh\)\s+EXPORTING\s+previous\s*=\s*lx_error\./u,
     );
   });
 }

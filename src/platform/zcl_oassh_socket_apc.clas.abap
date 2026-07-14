@@ -93,7 +93,10 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
 
         mi_client->connect( ).
       CATCH cx_static_check INTO lx_error.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-socket_failed ).
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e013(zoassh)
+          EXPORTING
+            previous = lx_error.
     ENDTRY.
 
   ENDMETHOD.
@@ -128,7 +131,10 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
         li_message->set_binary( iv_data ).
         li_message_manager->send( li_message ).
       CATCH cx_static_check INTO lx_error.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-socket_failed ).
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e013(zoassh)
+          EXPORTING
+            previous = lx_error.
     ENDTRY.
 
   ENDMETHOD.

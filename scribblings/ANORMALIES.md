@@ -4,6 +4,19 @@ Behaviours where the `@abaplint` transpiler / open-abap runtime diverge from
 standard ABAP (or bit us in a surprising way). Recorded while implementing the
 checklist so we can work around them and, where relevant, report upstream.
 
+## Numeric `MESSAGE ... WITH` values retain type-width padding
+
+**Found in:** public T100-based SSH exceptions
+
+In the open-abap runtime, `MESSAGE e012(zoassh) WITH lv_status` with an integer
+status formatted the value into the 50-character message variable with leading
+spaces. The resulting exception text contained the padding between the fixed
+message text and the number.
+
+**Workaround:** format numeric values explicitly as text at the raise site,
+for example `WITH |{ lv_status }|`. This produces stable user-facing exception
+text and leaves the separately typed status attribute unchanged.
+
 ## Empty character literals pass as `xstring` actual parameters only in the transpiler
 
 **Found in:** M9 — group14 peer-public-value boundary tests

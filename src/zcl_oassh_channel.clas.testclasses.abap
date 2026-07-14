@@ -96,8 +96,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'foreign channel data accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -114,8 +114,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'channel failure ignored' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-channel_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '010' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -162,7 +162,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA lx_error TYPE REF TO zcx_oassh_error.
     DATA lv_data TYPE xstring.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' ).
     lv_data = li_random->bytes( 32768 ).
     lo_channel = NEW #( ).
@@ -196,11 +196,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( lo_stream->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
 
     CLEAR lv_reason.
     lo_stream = NEW #( ).
@@ -211,18 +211,18 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( lo_stream->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 
   METHOD channel_open_failure.
     DATA lo_channel TYPE REF TO zcl_oassh_channel.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     DATA lv_failure TYPE xstring VALUE
       '5C00000000000000010000000664656E69656400000000'.
     lo_channel = NEW #( ).
@@ -230,11 +230,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( lv_failure ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-channel_failed ).
+      exp = '010' ).
 
 * A refusal is only valid while an open request is outstanding.
     lo_channel = NEW #( ).
@@ -242,11 +242,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( lv_failure ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 
@@ -288,18 +288,18 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD lifecycle_rejected.
     DATA lo_channel TYPE REF TO zcl_oassh_channel.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_channel = NEW #( ).
 
 * Channel data is invalid before open confirmation.
     TRY.
         lo_channel->receive( '5E0000000000000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
 
     lo_channel->open( ).
     lo_channel->receive( '5B00000000000000070020000000008000' ).
@@ -309,11 +309,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( '6400000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
 
 * EOF is a one-way transition; duplicate EOF is invalid.
     lo_channel->receive( '6000000000' ).
@@ -321,11 +321,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( '6000000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 
@@ -333,17 +333,17 @@ CLASS ltcl_test IMPLEMENTATION.
 * Reject the complete malformed message before committing its channel fields.
     DATA lo_channel TYPE REF TO zcl_oassh_channel.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_channel = NEW #( ).
     lo_channel->open( ).
     TRY.
         lo_channel->receive( '5B00000000000000070020000000008000AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->get_state( )
       exp = zcl_oassh_channel=>c_state-open_sent ).
@@ -360,7 +360,7 @@ CLASS ltcl_test IMPLEMENTATION.
 * Output, exit status, and lifecycle changes require an exact message shape.
     DATA lo_channel TYPE REF TO zcl_oassh_channel.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_channel = NEW #( ).
     lo_channel->open( ).
     lo_channel->receive( '5B00000000000000070020000000008000' ).
@@ -370,22 +370,22 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( '5E000000000000000178AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_initial( lo_channel->get_stdout( ) ).
 
     CLEAR lv_reason.
     TRY.
         lo_channel->receive( '62000000000000000B657869742D7374617475730000000017AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->get_exit_status( )
       exp = -1 ).
@@ -394,11 +394,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( '6000000000AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->get_state( )
       exp = zcl_oassh_channel=>c_state-running ).
@@ -407,11 +407,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_channel->receive( '6100000000AA' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_channel->get_state( )
       exp = zcl_oassh_channel=>c_state-running ).
@@ -421,7 +421,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD uint32_window.
     DATA lo_channel TYPE REF TO zcl_oassh_channel.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_channel = NEW #( ).
     lo_channel->open( ).
 * Initial remote window 0xFFFFFFFE cannot be represented by signed ABAP i.
@@ -431,11 +431,11 @@ CLASS ltcl_test IMPLEMENTATION.
 * Increasing 0xFFFFFFFF again violates RFC 4254 section 5.2.
         lo_channel->receive( '5D0000000000000001' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 
@@ -472,8 +472,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'subsystem failure ignored' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-channel_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '010' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -567,8 +567,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'PTY rejection ignored' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-channel_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '010' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -596,8 +596,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'remote maximum packet ignored' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-channel_failed ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '010' ).
     ENDTRY.
 
 * Exhaustion stalls at zero and WINDOW_ADJUST resumes up to max-packet credit.

@@ -31,6 +31,18 @@ test("allows APC dependencies only in the APC socket adapter", () => {
   assert.deepEqual(violations, []);
 });
 
+test("allows T100 interfaces only in the public exception", () => {
+  const violations = findPlatformDependencyViolations([{
+    name: "zcx_oassh_error.clas.abap",
+    source: [
+      "INTERFACES if_t100_message.",
+      "INTERFACES if_t100_dyn_msg.",
+    ].join("\n"),
+  }]);
+
+  assert.deepEqual(violations, []);
+});
+
 test("rejects a SAP dependency outside its approved file", () => {
   const violations = findPlatformDependencyViolations([{
     name: "zcl_oassh_transport.clas.abap",

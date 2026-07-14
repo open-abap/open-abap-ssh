@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_MSAG" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <T100A>
+    <ARBGB>ZOASSH</ARBGB>
+    <MASTERLANG>E</MASTERLANG>
+    <STEXT>open-abap-ssh messages</STEXT>
+   </T100A>
+   <T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>001</MSGNR><TEXT>SSH operation timed out</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>002</MSGNR><TEXT>SSH packet exceeds the maximum size</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>003</MSGNR><TEXT>Malformed SSH packet</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>004</MSGNR><TEXT>SSH packet authentication failed</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>005</MSGNR><TEXT>SSH algorithm negotiation failed</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>006</MSGNR><TEXT>SSH host key rejected</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>007</MSGNR><TEXT>SSH signature verification failed</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>008</MSGNR><TEXT>Invalid SSH credentials</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>009</MSGNR><TEXT>SSH authentication failed</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>010</MSGNR><TEXT>SSH channel operation failed</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>011</MSGNR><TEXT>SFTP protocol error</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>012</MSGNR><TEXT>SFTP server returned status &amp;1</TEXT></T100>
+    <T100><SPRSL>E</SPRSL><ARBGB>ZOASSH</ARBGB><MSGNR>013</MSGNR><TEXT>SSH socket operation failed</TEXT></T100>
+   </T100>
+ </asx:values>
+ </asx:abap>
+</abapGit>

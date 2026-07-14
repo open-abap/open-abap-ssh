@@ -5,7 +5,7 @@
   "description": "open-abap-ssh",
   "scripts": {
     "test": "npm run test:dependencies && npx abaplint && npm run unit",
-    "test:dependencies": "node --test scripts/check-platform-dependencies.test.mjs scripts/check-apc-adapter.test.mjs scripts/check-public-api.test.mjs && node scripts/check-platform-dependencies.mjs",
+    "test:dependencies": "node --test scripts/check-platform-dependencies.test.mjs scripts/check-apc-adapter.test.mjs scripts/check-public-api.test.mjs scripts/check-message-exceptions.test.mjs && node scripts/check-platform-dependencies.mjs",
     "build": "rimraf output && abap_transpile test/abap_transpile.json && node scripts/enable-sha512-runtime.mjs",
     "unit": "npm run build && echo RUNNING && node output/index.mjs",
     "integration:transport": "npm run build && node integration/transport.mjs",

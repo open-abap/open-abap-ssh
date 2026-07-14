@@ -33,18 +33,18 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA ls_data TYPE zcl_oassh_message_50=>ty_data.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     ls_data-message_id = zcl_oassh_message_50=>gc_message_id.
     ls_data-method_name = '7061737300776F7264'. " pass<NUL>word
     lo_stream = zcl_oassh_message_50=>serialize( ls_data ).
     TRY.
         zcl_oassh_message_50=>parse( lo_stream ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-malformed_packet ).
+      exp = '003' ).
   ENDMETHOD.
 
 

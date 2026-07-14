@@ -17,7 +17,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS assert_rejected
       IMPORTING
         iv_packet          TYPE xstring
-        iv_expected_reason TYPE i.
+        iv_expected_reason TYPE symsgno.
 ENDCLASS.
 
 
@@ -382,12 +382,12 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD assert_rejected.
     DATA lo_packet TYPE REF TO zcl_oassh_packet.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_packet = NEW #( ii_random = NEW zcl_oassh_random_fixed( ) ).
     TRY.
         lo_packet->decode( iv_packet ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
@@ -400,19 +400,19 @@ CLASS ltcl_test IMPLEMENTATION.
 * insufficient padding, and padding that consumes the full packet.
     assert_rejected(
       iv_packet          = '00000000'
-      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+      iv_expected_reason = '003' ).
     assert_rejected(
       iv_packet          = '0000000C0A00000000000000'
-      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+      iv_expected_reason = '003' ).
     assert_rejected(
       iv_packet          = '0000000D0A1400000000000000000000'
-      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+      iv_expected_reason = '003' ).
     assert_rejected(
       iv_packet          = '0000000C030102030405060708000000'
-      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+      iv_expected_reason = '003' ).
     assert_rejected(
       iv_packet          = '0000000C0C0000000000000000000000'
-      iv_expected_reason = zcx_oassh_error=>c_reason-malformed_packet ).
+      iv_expected_reason = '003' ).
   ENDMETHOD.
 
 
@@ -423,7 +423,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_receiver TYPE REF TO zcl_oassh_packet.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     DATA lv_wire TYPE xstring.
     DATA lv_bad_mac TYPE xstring.
     lo_packet = NEW #( ii_random = NEW zcl_oassh_random_fixed( ) ).
@@ -431,31 +431,31 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_packet->encode( li_random->bytes( 32782 ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+      exp = '002' ).
 
     CLEAR lv_reason.
     TRY.
         lo_packet->decode_length( '00010000000000000000000000000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+      exp = '002' ).
 
     CLEAR lv_reason.
     TRY.
         lo_packet->decode_length( '7FFFFFFF000000000000000000000000' ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+      exp = '002' ).
 
     lo_sender = NEW #(
       ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
@@ -470,11 +470,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_receiver->decode( lv_bad_mac ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+      exp = '004' ).
   ENDMETHOD.
 
 
@@ -487,7 +487,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_payload TYPE xstring.
     DATA lv_data TYPE xstring.
     DATA lv_wire TYPE xstring.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = '41' ).
     lv_data = li_random->bytes( 32768 ).
 * SSH_MSG_CHANNEL_EXTENDED_DATA carries four more envelope bytes than DATA.
@@ -517,11 +517,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_sender->encode( lo_stream->get( ) ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-packet_too_large ).
+      exp = '002' ).
   ENDMETHOD.
 
 
@@ -538,7 +538,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_byte TYPE x LENGTH 1.
     DATA lv_one TYPE x LENGTH 1 VALUE '01'.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
     lo_sender = NEW #(
       ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = '00' )
       iv_encrypt_mac = lc_mac ).
@@ -556,11 +556,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_receiver->decode( lv_bad_packet ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+      exp = '004' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->get_receive_sequence( )
       exp = 0 ).
@@ -576,11 +576,11 @@ CLASS ltcl_test IMPLEMENTATION.
     TRY.
         lo_receiver->decode( lv_bad_packet ).
       CATCH zcx_oassh_error INTO lx_error.
-        lv_reason = lx_error->get_reason( ).
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
     ENDTRY.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
-      exp = zcx_oassh_error=>c_reason-mac_invalid ).
+      exp = '004' ).
     cl_abap_unit_assert=>assert_equals(
       act = lo_receiver->get_receive_sequence( )
       exp = 0 ).

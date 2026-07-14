@@ -156,8 +156,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'oversized uint64 accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -171,8 +171,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'high-half uint64 accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -186,8 +186,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'truncated uint64 accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -198,8 +198,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'negative uint64 accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -307,7 +307,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_builder TYPE REF TO zcl_oassh_stream.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA lx_error TYPE REF TO zcx_oassh_error.
-    DATA lv_reason TYPE i.
+    DATA lv_reason TYPE symsgno.
 * Leading, trailing, and repeated separators; whitespace/control bytes; and a
 * 65-character name all violate RFC 4251's canonical name-list syntax.
     APPEND '000000022C61' TO lt_fixtures.
@@ -325,11 +325,11 @@ CLASS ltcl_test IMPLEMENTATION.
       TRY.
           lo_stream->name_list_decode( ).
         CATCH zcx_oassh_error INTO lx_error.
-          lv_reason = lx_error->get_reason( ).
+          lv_reason = lx_error->if_t100_message~t100key-msgno.
       ENDTRY.
       cl_abap_unit_assert=>assert_equals(
         act = lv_reason
-        exp = zcx_oassh_error=>c_reason-malformed_packet ).
+        exp = '003' ).
     ENDLOOP.
 
 * The upper canonical boundary remains valid.
@@ -600,8 +600,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'negative mpint accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -615,8 +615,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'non-canonical mpint accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -630,8 +630,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'truncated field accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 
@@ -645,8 +645,8 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>fail( 'truncated SSH string accepted' ).
       CATCH zcx_oassh_error INTO lx_error.
         cl_abap_unit_assert=>assert_equals(
-          act = lx_error->get_reason( )
-          exp = zcx_oassh_error=>c_reason-malformed_packet ).
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '003' ).
     ENDTRY.
   ENDMETHOD.
 

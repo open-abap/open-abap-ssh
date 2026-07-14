@@ -190,7 +190,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 * explicit TTY_OP_END is the complete empty terminal-mode stream.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     IF mv_state <> c_state-open OR iv_columns < 0 OR iv_rows < 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lo_stream = NEW #( ).
     lo_stream->append( '62' ).
@@ -228,7 +228,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 * and may not exceed its maximum packet size.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     IF mv_state <> c_state-running.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     IF uint32_fits(
         iv_available = mv_remote_window
@@ -236,7 +236,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         OR uint32_fits(
           iv_available = mv_remote_max_packet
           iv_length    = xstrlen( iv_data ) ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lo_stream = NEW #( ).
     lo_stream->append( '5E' ).
@@ -255,7 +255,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     IF mv_state <> c_state-running AND mv_state <> c_state-eof_received
         AND mv_state <> c_state-eof_sent.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lo_stream = NEW #( ).
     lo_stream->append( '61' ).
@@ -270,7 +270,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 * remains open so all terminal output and the peer's CLOSE can still arrive.
     DATA lo_stream TYPE REF TO zcl_oassh_stream.
     IF mv_state <> c_state-running.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lo_stream = NEW #( ).
     lo_stream->append( '60' ).
@@ -294,7 +294,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         receive_open_confirmation( lo_stream ).
       WHEN '5C'. " CHANNEL_OPEN_FAILURE (92)
         IF mv_state <> c_state-open_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
 * RFC 4254 section 5.1: reason, UTF-8 description, and language tag must all
@@ -303,7 +303,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
         lo_stream->string_decode( ).
         lo_stream->string_decode( ).
         ensure_consumed( lo_stream ).
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
       WHEN '5D'. " WINDOW_ADJUST (93)
         ensure_channel_open( ).
         lv_recipient = read_recipient( lo_stream ).
@@ -316,7 +316,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       WHEN '5E'. " DATA (94)
         ensure_channel_open( ).
         IF mv_state = c_state-eof_received OR mv_state = c_state-close_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         lv_data = lo_stream->string_decode( ).
@@ -329,7 +329,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       WHEN '5F'. " EXTENDED_DATA (95), type 1 is stderr
         ensure_channel_open( ).
         IF mv_state = c_state-eof_received OR mv_state = c_state-close_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         lv_type = lo_stream->uint32_decode( ).
@@ -351,24 +351,24 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
             ensure_consumed( lo_stream ).
             mv_state = c_state-running.
           WHEN OTHERS.
-            zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+            RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDCASE.
       WHEN '64'. " CHANNEL_FAILURE (100)
         IF mv_state <> c_state-exec_sent AND mv_state <> c_state-pty_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         IF lo_stream->get_length( ) <> 0.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
       WHEN '62'. " server channel request: exit-status
         ensure_channel_open( ).
         rv_payload = handle_server_request( lo_stream ).
       WHEN '60'. " EOF (96)
         ensure_channel_open( ).
         IF mv_state = c_state-eof_received.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         lv_recipient = read_recipient( lo_stream ).
         ensure_consumed( lo_stream ).
@@ -378,7 +378,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       WHEN '61'. " CLOSE (97): echo CLOSE exactly once
         rv_payload = receive_close( lo_stream ).
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDCASE.
     ensure_consumed( lo_stream ).
   ENDMETHOD.
@@ -390,7 +390,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     DATA lv_remote_window TYPE ty_uint32.
     DATA lv_remote_max_packet TYPE ty_uint32.
     IF mv_state <> c_state-open_sent.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_recipient = read_recipient( io_stream ).
     lv_remote_channel = io_stream->uint32_decode( ).
@@ -406,7 +406,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 
   METHOD ensure_consumed.
     IF io_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -440,7 +440,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
       rv_sum+lv_offset(1) = lv_result_byte.
     ENDDO.
     IF lv_carry <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -504,7 +504,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     IF uint32_fits(
         iv_available = iv_left
         iv_length    = iv_right ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-channel_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     lv_right = iv_right.
     rv_sum = iv_left.
@@ -556,7 +556,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     lv_exit_status = zcl_oassh_ascii=>to_xstring( 'exit-status' ).
     IF lv_request = lv_exit_status.
       IF io_stream->get_length( ) <> 4.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       mv_exit_status = io_stream->uint32_decode( ).
       lv_recognized = abap_true.
@@ -581,7 +581,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 
   METHOD ensure_channel_open.
     IF mv_state < c_state-open OR mv_state = c_state-closed.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -590,7 +590,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
 * RFC 4254 section 5.2: maximum packet size limits the data string for both
 * ordinary and extended channel data, independent of their envelope sizes.
     IF xstrlen( iv_data ) > c_max_packet.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -603,7 +603,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
     DATA lv_adjust TYPE i.
     DATA lv_threshold TYPE i.
     IF iv_length > mv_local_window.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     mv_local_window = mv_local_window - iv_length.
     lv_threshold = c_window_size DIV 2.
@@ -655,7 +655,7 @@ CLASS zcl_oassh_channel IMPLEMENTATION.
   METHOD read_recipient.
     rv_recipient = io_stream->uint32_decode( ).
     IF rv_recipient <> c_local_channel.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 

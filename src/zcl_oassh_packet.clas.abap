@@ -283,12 +283,12 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
 
   METHOD validate_packet_length.
     IF iv_expected >= 0 AND iv_length <> iv_expected.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND AND iv_length < 5.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ELSEIF mo_decrypt_chachapoly IS NOT BOUND AND iv_length < 12.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -304,7 +304,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_mac TYPE xstring.
 
     IF xstrlen( iv_payload ) > c_max_payload_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     IF mo_encrypt IS BOUND.
       lv_block_size = 16.
@@ -348,7 +348,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       CONCATENATE rv_packet lv_mac INTO rv_packet IN BYTE MODE.
     ENDIF.
     IF xstrlen( rv_packet ) > c_max_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     mv_send_sequence = next_sequence( mv_send_sequence ).
   ENDMETHOD.
@@ -368,32 +368,32 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
 
     lv_cipher_length = xstrlen( iv_packet ).
     IF lv_cipher_length > c_max_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
 * Four-byte encrypted length, one aligned eight-byte packet body, and tag.
       IF lv_cipher_length < 28.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_cipher_length = lv_cipher_length - 16.
       lv_received_mac = iv_packet+lv_cipher_length(16).
     ELSEIF mv_decrypt_mac IS NOT INITIAL.
       IF lv_cipher_length < 32.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_cipher_length = lv_cipher_length - 32.
       lv_received_mac = iv_packet+lv_cipher_length(32).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
       IF lv_cipher_length < 12.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
     ELSEIF lv_cipher_length < 16.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
       IF ( lv_cipher_length - 4 ) MOD 8 <> 0.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_cipher = iv_packet(lv_cipher_length).
       lv_plain = mo_decrypt_chachapoly->decode(
@@ -402,13 +402,13 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
         iv_tag        = lv_received_mac ).
     ELSEIF mo_decrypt IS BOUND.
       IF lv_cipher_length MOD 16 <> 0.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_cipher = iv_packet(lv_cipher_length).
       lv_plain = mo_decrypt->crypt( lv_cipher ).
     ELSE.
       IF lv_cipher_length MOD 8 <> 0.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_plain = iv_packet(lv_cipher_length).
     ENDIF.
@@ -421,7 +421,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       IF auth_matches(
           iv_actual   = lv_received_mac
           iv_expected = lv_expected_mac ) = abap_false.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e004(zoassh).
       ENDIF.
     ENDIF.
 
@@ -433,11 +433,11 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       iv_expected = lv_expected_packet_length ).
     lv_padding_length = lo_stream->byte_decode( ).
     IF lv_padding_length < 4 OR lv_padding_length >= lv_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_payload_length = lv_packet_length - lv_padding_length - 1.
     IF lv_payload_length > c_max_payload_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.
@@ -453,7 +453,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_mac_length TYPE i.
     DATA lv_max_packet_length TYPE i.
     IF xstrlen( iv_first_block ) <> get_header_length( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
       mv_recv_cipher = iv_first_block.
@@ -473,7 +473,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     lv_max_packet_length = c_max_packet_length - 4 - lv_mac_length.
     validate_packet_length( rv_packet_length ).
     IF rv_packet_length > lv_max_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -488,10 +488,10 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
     DATA lv_expected_packet_length TYPE i.
     DATA lv_buffered_length TYPE i.
     IF get_auth_length( ) = 0 AND iv_mac IS NOT INITIAL.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF get_auth_length( ) > 0 AND xstrlen( iv_mac ) <> get_auth_length( ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
       lv_buffered_length = xstrlen( mv_recv_cipher ).
@@ -499,12 +499,12 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       lv_buffered_length = xstrlen( mv_recv_plain ).
     ENDIF.
     IF lv_buffered_length + xstrlen( iv_rest ) + xstrlen( iv_mac ) > c_max_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     IF mo_decrypt_chachapoly IS BOUND.
       CONCATENATE mv_recv_cipher iv_rest INTO mv_recv_cipher IN BYTE MODE.
       IF ( xstrlen( mv_recv_cipher ) - 4 ) MOD 8 <> 0.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       mv_recv_plain = mo_decrypt_chachapoly->decode(
         iv_sequence   = mv_receive_sequence
@@ -513,7 +513,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       CLEAR mv_recv_cipher.
     ELSEIF mo_decrypt IS BOUND.
       IF xstrlen( iv_rest ) MOD 16 <> 0.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_rest_plain = mo_decrypt->crypt( iv_rest ).
     ELSE.
@@ -531,7 +531,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       IF auth_matches(
           iv_actual   = iv_mac
           iv_expected = lv_expected_mac ) = abap_false.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-mac_invalid ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e004(zoassh).
       ENDIF.
     ENDIF.
 
@@ -543,11 +543,11 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
       iv_expected = lv_expected_packet_length ).
     lv_padding_length = lo_stream->byte_decode( ).
     IF lv_padding_length < 4 OR lv_padding_length >= lv_packet_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_payload_length = lv_packet_length - lv_padding_length - 1.
     IF lv_payload_length > c_max_payload_length.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-packet_too_large ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e002(zoassh).
     ENDIF.
     rv_payload = lo_stream->take( lv_payload_length ).
     ASSERT lo_stream->get_length( ) = lv_padding_length.

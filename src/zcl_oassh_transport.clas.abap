@@ -322,7 +322,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     lo_stream = NEW #( iv_payload ).
     ls_server = zcl_oassh_message_20=>parse( lo_stream ).
     IF lo_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
 * RFC 4253 section 7.1 selects the first client-preferred common method.
     IF line_exists( ls_server-kex_algorithms[ table_line = c_kex_curve25519 ] ).
@@ -331,7 +331,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         AND line_exists( ls_server-kex_algorithms[ table_line = c_kex_group14 ] ).
       mv_kex_algorithm = c_kex_group14.
     ELSE.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e005(zoassh).
     ENDIF.
     select_host_key( ls_server-server_host_key_algorithms ).
     mv_cipher_c_to_s = select_cipher( ls_server-encryption_algorithms_c_to_s ).
@@ -340,7 +340,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         OR NOT line_exists( ls_server-mac_algorithms_s_to_c[ table_line = 'hmac-sha2-256' ] )
         OR NOT line_exists( ls_server-compression_algorithms_c_to_s[ table_line = 'none' ] )
         OR NOT line_exists( ls_server-compression_algorithms_s_to_c[ table_line = 'none' ] ).
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e005(zoassh).
     ENDIF.
     IF mv_initial_kex = abap_true.
       mv_strict_kex = xsdbool( mv_offer_strict = abap_true
@@ -392,7 +392,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         AND line_exists( it_algorithms[ table_line = c_host_ed25519 ] ).
       mv_host_key_algorithm = c_host_ed25519.
     ELSE.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e005(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -404,7 +404,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         AND line_exists( it_algorithms[ table_line = c_cipher_chachapoly ] ).
       rv_algorithm = c_cipher_chachapoly.
     ELSE.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-negotiation_failed ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e005(zoassh).
     ENDIF.
   ENDMETHOD.
 
@@ -485,7 +485,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF mv_kex_algorithm = c_kex_curve25519.
       ls_ecdh = zcl_oassh_message_ecdh_31=>parse( lo_stream ).
       IF xstrlen( ls_ecdh-q_s ) <> 32.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_host_key = ls_ecdh-k_s.
       lv_server_public = ls_ecdh-q_s.
@@ -496,7 +496,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
 * RFC 7748 section 6.1 / RFC 8731 section 3: abort when a low-order peer
 * public value produces an all-zero X25519 shared secret.
       IF is_all_zero( lv_shared_le ) = abap_true.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
 * RFC 8731 encodes the X25519 octet string directly as an SSH mpint.
       lv_k = lv_shared_le.
@@ -512,7 +512,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ELSE.
       ls_dh = zcl_oassh_message_dh_31=>parse( lo_stream ).
       IF zcl_oassh_group14=>is_valid_public( ls_dh-f ) = abap_false.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
       ENDIF.
       lv_host_key = ls_dh-k_s.
       lv_server_public = ls_dh-f.
@@ -531,19 +531,19 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         iv_k   = lv_k ).
     ENDIF.
     IF lo_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     IF verify_server_signature(
         iv_host_key           = lv_host_key
         iv_signature          = lv_signature
         iv_exchange_hash      = lv_h
         iv_expected_algorithm = mv_host_key_algorithm ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-signature_invalid ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e007(zoassh).
     ENDIF.
 * Verify proof of host-key possession before invoking a potentially stateful
 * trust callback (for example, a TOFU known-hosts store).
     IF mi_host_verifier->verify( lv_host_key ) = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-host_key_rejected ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e006(zoassh).
     ENDIF.
 * Commit key material only after exact parsing, host trust, and signature
 * authentication have all succeeded.
@@ -579,7 +579,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     lo_stream = NEW #( iv_payload ).
     zcl_oassh_message_21=>parse( lo_stream ).
     IF lo_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     ASSERT mo_packet IS BOUND.
     mo_packet->rekey_decrypt(
@@ -638,10 +638,10 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA ls_data TYPE zcl_oassh_message_5=>ty_data.
     ASSERT mv_state = c_state-encrypted.
     IF iv_private_seed IS NOT INITIAL AND xstrlen( iv_private_seed ) <> 32.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e008(zoassh).
     ENDIF.
     IF iv_private_seed IS INITIAL AND iv_password_supplied = abap_false.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-invalid_credentials ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e008(zoassh).
     ENDIF.
     mv_user = iv_user.
     mv_password = iv_password.
@@ -662,22 +662,22 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     DATA ls_failure TYPE zcl_oassh_message_51=>ty_data.
     DATA lv_userauth_service TYPE xstring.
     IF iv_payload IS INITIAL.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
     lv_id = iv_payload(1).
     lo_stream = NEW #( iv_payload ).
     CASE lv_id.
       WHEN zcl_oassh_message_6=>gc_message_id.
         IF mv_auth_state <> c_auth_state-service_requested.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         ls_accept = zcl_oassh_message_6=>parse( lo_stream ).
         lv_userauth_service = zcl_oassh_ascii=>to_xstring( 'ssh-userauth' ).
         IF ls_accept-service_name <> lv_userauth_service.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         IF lo_stream->get_length( ) <> 0.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         IF mv_private_seed IS NOT INITIAL.
           rv_payload = publickey_request( ).
@@ -688,39 +688,39 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
       WHEN zcl_oassh_message_53=>gc_message_id.
 * USERAUTH_BANNER: informational only, no reply
         IF mv_auth_state <> c_auth_state-request_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         zcl_oassh_message_53=>parse( lo_stream ).
       WHEN zcl_oassh_message_52=>gc_message_id.
         IF mv_auth_state <> c_auth_state-request_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         zcl_oassh_message_52=>parse( lo_stream ).
         IF lo_stream->get_length( ) <> 0.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         mv_auth_state = c_auth_state-authenticated.
       WHEN zcl_oassh_message_51=>gc_message_id.
 * USERAUTH_FAILURE: continue with the supplied password after a preferred
 * public-key attempt when the server says that method can continue.
         IF mv_auth_state <> c_auth_state-request_sent.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         ls_failure = zcl_oassh_message_51=>parse( lo_stream ).
         IF lo_stream->get_length( ) <> 0.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
         IF mv_password_supplied = abap_true
             AND line_exists( ls_failure-authentications[ table_line = 'password' ] ).
           rv_payload = password_request( ).
         ELSE.
-          zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-authentication_failed ).
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e009(zoassh).
         ENDIF.
       WHEN OTHERS.
-        zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDCASE.
     IF lo_stream->get_length( ) <> 0.
-      zcx_oassh_error=>raise( zcx_oassh_error=>c_reason-malformed_packet ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
     ENDIF.
   ENDMETHOD.
 
