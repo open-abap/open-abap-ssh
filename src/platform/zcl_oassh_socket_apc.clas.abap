@@ -119,17 +119,24 @@ CLASS zcl_oassh_socket_apc IMPLEMENTATION.
     DATA li_message_manager TYPE REF TO if_apc_wsp_message_manager.
     DATA li_message         TYPE REF TO if_apc_wsp_message.
     DATA lx_error           TYPE REF TO cx_static_check.
+    DATA lv_offset          TYPE i.
+    DATA lv_byte            TYPE x LENGTH 1.
 
     ASSERT iv_data IS NOT INITIAL.
 
     TRY.
         li_message_manager ?= mi_client->get_message_manager( ).
-        li_message = li_message_manager->create_message( ).
-* SAP's APC TCP client API accepts a complete binary frame. SSH packets are
-* bounded below APC's frame ceiling, so send once instead of issuing one APC
-* message per byte.
-        li_message->set_binary( iv_data ).
-        li_message_manager->send( li_message ).
+* The connection frame is fixed_length = 1, so every outbound APC message
+* must be exactly one byte too. Sending a whole packet at once is rejected
+* with "TCP message violates defined frame format", so emit one byte per
+* message and let the peer's TCP stack reassemble the stream.
+        DO xstrlen( iv_data ) TIMES.
+          lv_offset = sy-index - 1.
+          li_message = li_message_manager->create_message( ).
+          lv_byte = iv_data+lv_offset(1).
+          li_message->set_binary( lv_byte ).
+          li_message_manager->send( li_message ).
+        ENDDO.
       CATCH cx_static_check INTO lx_error.
         RAISE EXCEPTION TYPE zcx_oassh_error
           MESSAGE e013(zoassh) WITH lx_error->get_text( )
