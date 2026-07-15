@@ -4,36 +4,6 @@ CLASS zcl_oassh_sftp DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    TYPES ty_uint32 TYPE x LENGTH 4.
-    TYPES ty_uint64 TYPE x LENGTH 8.
-    TYPES:
-      BEGIN OF ty_extension,
-        extension_type TYPE xstring,
-        extension_data TYPE xstring,
-      END OF ty_extension.
-    TYPES ty_extensions TYPE STANDARD TABLE OF ty_extension WITH EMPTY KEY.
-    TYPES:
-      BEGIN OF ty_attrs,
-        flags           TYPE ty_uint32,
-        has_size        TYPE abap_bool,
-        size            TYPE ty_uint64,
-        has_uid_gid     TYPE abap_bool,
-        uid             TYPE ty_uint32,
-        gid             TYPE ty_uint32,
-        has_permissions TYPE abap_bool,
-        permissions     TYPE ty_uint32,
-        has_acmodtime   TYPE abap_bool,
-        atime           TYPE ty_uint32,
-        mtime           TYPE ty_uint32,
-        extensions      TYPE ty_extensions,
-      END OF ty_attrs.
-    TYPES:
-      BEGIN OF ty_name,
-        filename TYPE xstring,
-        longname TYPE xstring,
-        attrs    TYPE ty_attrs,
-      END OF ty_name.
-    TYPES ty_names TYPE STANDARD TABLE OF ty_name WITH EMPTY KEY.
     CONSTANTS c_max_packet_length TYPE i VALUE 262144.
     CONSTANTS:
       BEGIN OF c_state,
@@ -134,12 +104,12 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_status) TYPE i.
     METHODS get_attrs
       RETURNING
-        VALUE(rs_attrs) TYPE ty_attrs.
+        VALUE(rs_attrs) TYPE zif_oassh_sftp_one_shot=>ty_attrs.
     METHODS get_names
       RETURNING
-        VALUE(rt_names) TYPE ty_names.
+        VALUE(rt_names) TYPE zif_oassh_sftp_one_shot=>ty_names.
     METHODS get_realpath
-      RETURNING VALUE(rs_name) TYPE ty_name.
+      RETURNING VALUE(rs_name) TYPE zif_oassh_sftp_one_shot=>ty_name.
 
   PRIVATE SECTION.
     TYPES ty_request_ids TYPE SORTED TABLE OF i WITH UNIQUE KEY table_line.
@@ -177,9 +147,9 @@ CLASS zcl_oassh_sftp DEFINITION
     DATA mv_upload_data TYPE xstring.
     DATA mv_upload_position TYPE i.
     DATA mv_write_length TYPE i.
-    DATA ms_attrs TYPE ty_attrs.
-    DATA mt_names TYPE ty_names.
-    DATA ms_realpath TYPE ty_name.
+    DATA ms_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
+    DATA mt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
+    DATA ms_realpath TYPE zif_oassh_sftp_one_shot=>ty_name.
 
     METHODS frame
       IMPORTING
@@ -313,12 +283,12 @@ CLASS zcl_oassh_sftp DEFINITION
         io_packet           TYPE REF TO zcl_oassh_stream
         iv_require_consumed TYPE abap_bool DEFAULT abap_true
       RETURNING
-        VALUE(rs_attrs)     TYPE ty_attrs
+        VALUE(rs_attrs)     TYPE zif_oassh_sftp_one_shot=>ty_attrs
       RAISING
         zcx_oassh_error.
     CLASS-METHODS flag_is_set
       IMPORTING
-        iv_flags      TYPE ty_uint32
+        iv_flags      TYPE zif_oassh_sftp_one_shot=>ty_uint32
         iv_bit        TYPE i
       RETURNING
         VALUE(rv_set) TYPE abap_bool.
@@ -1021,7 +991,7 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     DATA lv_status TYPE i.
     DATA lv_count TYPE i.
     DATA lv_total TYPE i.
-    DATA ls_name TYPE ty_name.
+    DATA ls_name TYPE zif_oassh_sftp_one_shot=>ty_name.
     CASE mv_state.
       WHEN c_state-opendir_pending.
         CASE iv_type.
@@ -1115,11 +1085,11 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   METHOD parse_attrs.
 * Section 5 fixes both field order and flag semantics. Unsupported v3 bits
 * are a protocol error; raw unsigned values remain byte-exact for portable ABAP.
-    DATA lv_flags TYPE ty_uint32.
+    DATA lv_flags TYPE zif_oassh_sftp_one_shot=>ty_uint32.
     DATA lv_bit_index TYPE i.
     DATA lv_bit TYPE c LENGTH 1.
     DATA lv_count TYPE i.
-    DATA ls_extension TYPE ty_extension.
+    DATA ls_extension TYPE zif_oassh_sftp_one_shot=>ty_extension.
     lv_flags = io_packet->take( 4 ).
     lv_bit_index = 2.
     WHILE lv_bit_index <= 28.
