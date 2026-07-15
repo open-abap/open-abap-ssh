@@ -58,6 +58,9 @@ CLASS zcl_oassh_sftp DEFINITION
         VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
+    METHODS continue_session
+      RAISING
+        zcx_oassh_error.
     METHODS start_download
       IMPORTING
         iv_path        TYPE string
@@ -195,6 +198,16 @@ CLASS zcl_oassh_sftp DEFINITION
     METHODS next_request_id
       RETURNING
         VALUE(rv_id) TYPE i
+      RAISING
+        zcx_oassh_error.
+    METHODS begin_operation
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS dispatch_operation
+      RETURNING
+        VALUE(rv_data) TYPE xstring
       RAISING
         zcx_oassh_error.
     METHODS handle_packet
@@ -352,31 +365,62 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD continue_session.
+* Reset per-operation result and cursor state so the same INIT/VERSION SFTP
+* channel can run the next operation. Only a finished operation may continue;
+* mv_next_request_id keeps counting so request ids stay unique across the
+* whole session.
+    IF mv_state <> c_state-finished.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
+    ENDIF.
+    CLEAR mv_operation.
+    CLEAR mv_path.
+    CLEAR mv_path2.
+    CLEAR mv_handle.
+    CLEAR mv_offset.
+    CLEAR mt_data.
+    CLEAR mv_upload_data.
+    CLEAR mv_upload_position.
+    CLEAR mv_write_length.
+    CLEAR ms_attrs.
+    CLEAR mt_names.
+    CLEAR ms_realpath.
+    mv_error_status = -1.
+    CLEAR mv_last_response_type.
+    CLEAR mv_last_response_body.
+    CLEAR mv_response_count.
+    CLEAR mt_request_ids.
+    CLEAR mv_outbound.
+    mv_state = c_state-ready.
+  ENDMETHOD.
+
+
   METHOD start_download.
 * Version 3 file names are UTF-8 strings. The operation begins with INIT; OPEN
-* is emitted only after the server confirms VERSION 3.
-    IF mv_state <> c_state-created.
+* is emitted only after the server confirms VERSION 3. Inside an open session
+* (state ready) OPEN is emitted immediately without a fresh INIT.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_download.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
-    rv_data = start( ).
+    rv_data = begin_operation( ).
   ENDMETHOD.
 
 
   METHOD start_upload.
-    IF mv_state <> c_state-created.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_upload.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
     mv_upload_data = iv_data.
-    rv_data = start( ).
+    rv_data = begin_operation( ).
   ENDMETHOD.
 
 
   METHOD start_stat.
-    IF mv_state <> c_state-created.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     IF iv_lstat = abap_true.
@@ -385,17 +429,17 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
       mv_operation = c_operation_stat.
     ENDIF.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
-    rv_data = start( ).
+    rv_data = begin_operation( ).
   ENDMETHOD.
 
 
   METHOD start_list.
-    IF mv_state <> c_state-created.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_list.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
-    rv_data = start( ).
+    rv_data = begin_operation( ).
   ENDMETHOD.
 
 
@@ -429,23 +473,64 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
 
 
   METHOD start_realpath.
-    IF mv_state <> c_state-created.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = c_operation_realpath.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
-    rv_data = start( ).
+    rv_data = begin_operation( ).
   ENDMETHOD.
 
 
   METHOD start_mutation.
-    IF mv_state <> c_state-created.
+    IF mv_state <> c_state-created AND mv_state <> c_state-ready.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
     ENDIF.
     mv_operation = iv_operation.
     mv_path = zcl_oassh_ascii=>to_xstring_text( iv_path ).
     mv_path2 = zcl_oassh_ascii=>to_xstring_text( iv_path2 ).
-    rv_data = start( ).
+    rv_data = begin_operation( ).
+  ENDMETHOD.
+
+
+  METHOD begin_operation.
+* Two entry paths reach the same request set. From created, send INIT alone
+* and let handle_version dispatch the operation once VERSION arrives (the
+* combined-INIT one-shot path). From ready, the INIT/VERSION handshake is
+* already done, so emit the operation's first request immediately.
+    CASE mv_state.
+      WHEN c_state-created.
+        rv_data = start( ).
+      WHEN c_state-ready.
+        rv_data = dispatch_operation( ).
+      WHEN OTHERS.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e011(zoassh).
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD dispatch_operation.
+* Emit the first request for the selected operation from the ready state and
+* move into the matching pending state. Shared by the combined-INIT path
+* (handle_version) and the multi-operation session path (begin_operation).
+    CASE mv_operation.
+      WHEN c_operation_download OR c_operation_upload.
+        rv_data = open_request( ).
+        mv_state = c_state-open_pending.
+      WHEN c_operation_stat OR c_operation_lstat.
+        rv_data = stat_request( ).
+        mv_state = c_state-stat_pending.
+      WHEN c_operation_list.
+        rv_data = opendir_request( ).
+        mv_state = c_state-opendir_pending.
+      WHEN c_operation_mkdir OR c_operation_rmdir
+          OR c_operation_remove OR c_operation_rename.
+        rv_data = mutation_request( ).
+        mv_state = c_state-status_pending.
+      WHEN c_operation_realpath.
+        rv_data = realpath_request( ).
+        mv_state = c_state-name_pending.
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -568,24 +653,10 @@ CLASS zcl_oassh_sftp IMPLEMENTATION.
     ENDWHILE.
     mv_version = lv_version.
     mv_state = c_state-ready.
-    CASE mv_operation.
-      WHEN c_operation_download OR c_operation_upload.
-        mv_outbound = open_request( ).
-        mv_state = c_state-open_pending.
-      WHEN c_operation_stat OR c_operation_lstat.
-        mv_outbound = stat_request( ).
-        mv_state = c_state-stat_pending.
-      WHEN c_operation_list.
-        mv_outbound = opendir_request( ).
-        mv_state = c_state-opendir_pending.
-      WHEN c_operation_mkdir OR c_operation_rmdir
-          OR c_operation_remove OR c_operation_rename.
-        mv_outbound = mutation_request( ).
-        mv_state = c_state-status_pending.
-      WHEN c_operation_realpath.
-        mv_outbound = realpath_request( ).
-        mv_state = c_state-name_pending.
-    ENDCASE.
+* When VERSION arrives with an operation already selected (combined-INIT
+* path), emit its first request. In a decoupled session mv_operation is still
+* unset, so this leaves the instance ready for the first start_x.
+    mv_outbound = dispatch_operation( ).
   ENDMETHOD.
 
 

@@ -53,10 +53,10 @@ FORM run.
 
   lo_host_verifier = NEW lcl_accept_host( ).
 
-* Each open-abap-ssh operation owns its connection, so the directory listing
-* and the download each use a freshly connected session.
+* One authenticated connection runs both operations: sftp_open performs the
+* channel, subsystem, and INIT/VERSION handshake once, then the listing and
+* download reuse that single SFTP session until sftp_close.
   TRY.
-* --- list a directory -----------------------------------------------------
 * ii_random is optional on SAP: zcl_oassh defaults to zcl_oassh_random_secure,
 * which draws from the kernel-backed secure random source.
       lo_ssh = zcl_oassh=>connect(
@@ -66,9 +66,19 @@ FORM run.
         iv_password      = p_pass
         ii_host_verifier = lo_host_verifier ).
       TRY.
+          lo_ssh->sftp_open( p_tmout ).
+
+* --- list a directory -----------------------------------------------------
           lt_names = lo_ssh->sftp_list(
             iv_path            = p_dir
             iv_timeout_seconds = p_tmout ).
+
+* --- download a file ------------------------------------------------------
+          lv_data = lo_ssh->sftp_download(
+            iv_path            = p_file
+            iv_timeout_seconds = p_tmout ).
+
+          lo_ssh->sftp_close( p_tmout ).
         CLEANUP.
           lo_ssh->close( ).
       ENDTRY.
@@ -81,22 +91,6 @@ FORM run.
         lv_filename = zcl_oassh_ascii=>from_xstring_text( ls_name-filename ).
         WRITE / lv_filename.
       ENDLOOP.
-
-* --- download a file ------------------------------------------------------
-      lo_ssh = zcl_oassh=>connect(
-        iv_host          = p_host
-        iv_port          = p_port
-        iv_user          = p_user
-        iv_password      = p_pass
-        ii_host_verifier = lo_host_verifier ).
-      TRY.
-          lv_data = lo_ssh->sftp_download(
-            iv_path            = p_file
-            iv_timeout_seconds = p_tmout ).
-        CLEANUP.
-          lo_ssh->close( ).
-      ENDTRY.
-      lo_ssh->close( ).
 
       SKIP.
       WRITE: / 'downloaded', p_file, '-', xstrlen( lv_data ), 'bytes'.

@@ -42,6 +42,10 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS realpath_invalid_count FOR TESTING RAISING cx_static_check.
     METHODS realpath_status FOR TESTING RAISING cx_static_check.
     METHODS typed_status_error FOR TESTING RAISING cx_static_check.
+    METHODS session_multi_stat FOR TESTING RAISING cx_static_check.
+    METHODS session_status_error_reusable FOR TESTING RAISING cx_static_check.
+    METHODS session_download_reset FOR TESTING RAISING cx_static_check.
+    METHODS session_guards FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
@@ -866,6 +870,156 @@ CLASS ltcl_test IMPLEMENTATION.
         cl_abap_unit_assert=>assert_equals(
           act = lx_error->get_sftp_status( )
           exp = 2 ).
+    ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD session_multi_stat.
+* One INIT/VERSION, then two independent STAT operations on one instance.
+* continue_session returns to ready and request ids keep strictly increasing.
+    DATA lv_out TYPE xstring.
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->start( )
+      exp = '000000050100000003' ).
+    lv_out = mo_sftp->receive( '000000050200000003' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-ready ).
+
+    " first STAT: request id 1 is emitted immediately from ready
+    lv_out = mo_sftp->start_stat( 'a' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A11000000010000000161' ).
+    lv_out = mo_sftp->receive( '00000009690000000100000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+
+    mo_sftp->continue_session( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-ready ).
+
+    " second STAT reuses the channel with the next request id 2
+    lv_out = mo_sftp->start_stat( 'b' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A11000000020000000162' ).
+    lv_out = mo_sftp->receive( '00000009690000000200000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD session_status_error_reusable.
+* An SFTP status error still finishes the operation cleanly; the session stays
+* usable and continue_session clears the retained error before the next op.
+    DATA lv_out TYPE xstring.
+    mo_sftp->start( ).
+    mo_sftp->receive( '000000050200000003' ).
+
+    lv_out = mo_sftp->start_stat( 'missing' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '000000101100000001000000076D697373696E67' ).
+    lv_out = mo_sftp->receive( '000000116500000001000000020000000000000000' ).
+    cl_abap_unit_assert=>assert_initial( lv_out ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = 2 ).
+
+    mo_sftp->continue_session( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = -1 ).
+
+    lv_out = mo_sftp->start_stat( 'a' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A11000000020000000161' ).
+    mo_sftp->receive( '00000009690000000200000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_error_status( )
+      exp = -1 ).
+  ENDMETHOD.
+
+
+  METHOD session_download_reset.
+* A download inside the session emits OPEN immediately from ready; after it
+* finishes, continue_session clears the retained file bytes and cursors while
+* request ids keep counting across the operation's READ/CLOSE exchanges.
+    DATA lv_out TYPE xstring.
+    mo_sftp->start( ).
+    mo_sftp->receive( '000000050200000003' ).
+
+    lv_out = mo_sftp->start_download( 'a' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '00000012030000000100000001610000000100000000' ).
+    mo_sftp->receive( '0000000A66000000010000000148' ).
+    mo_sftp->receive( '0000000C670000000200000003616263' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_data( )
+      exp = '616263' ).
+    mo_sftp->receive( '000000116500000003000000010000000000000000' ).
+    mo_sftp->receive( '000000116500000004000000000000000000000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+
+    mo_sftp->continue_session( ).
+    cl_abap_unit_assert=>assert_initial( mo_sftp->get_data( ) ).
+
+    " OPEN(1) READ(2) READ(3) CLOSE(4) were consumed; the next id is 5
+    lv_out = mo_sftp->start_stat( 'b' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_out
+      exp = '0000000A11000000050000000162' ).
+    mo_sftp->receive( '00000009690000000500000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+  ENDMETHOD.
+
+
+  METHOD session_guards.
+* continue_session is only valid from finished, and a finished operation must
+* be continued before another start_x may reuse the channel.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    TRY.
+        mo_sftp->continue_session( ).
+        cl_abap_unit_assert=>fail( 'continue_session in created accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
+    ENDTRY.
+
+    mo_sftp->start( ).
+    mo_sftp->receive( '000000050200000003' ).
+    mo_sftp->start_stat( 'a' ).
+    mo_sftp->receive( '00000009690000000100000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-finished ).
+
+    TRY.
+        mo_sftp->start_stat( 'b' ).
+        cl_abap_unit_assert=>fail( 'start_x on a finished session accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '011' ).
     ENDTRY.
   ENDMETHOD.
 ENDCLASS.
