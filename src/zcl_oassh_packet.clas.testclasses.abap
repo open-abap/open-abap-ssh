@@ -1,3 +1,6 @@
+CLASS ltcl_test DEFINITION DEFERRED.
+CLASS zcl_oassh_packet DEFINITION LOCAL FRIENDS ltcl_test.
+
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     METHODS plain_framing FOR TESTING RAISING cx_static_check.
@@ -14,6 +17,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS oversize_fixtures FOR TESTING RAISING cx_static_check.
     METHODS channel_max_payload FOR TESTING RAISING cx_static_check.
     METHODS mac_tamper_positions FOR TESTING RAISING cx_static_check.
+    METHODS clear_secrets FOR TESTING RAISING cx_static_check.
     METHODS assert_rejected
       IMPORTING
         iv_packet          TYPE xstring
@@ -22,6 +26,32 @@ ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD clear_secrets.
+    CONSTANTS lc_key TYPE xstring VALUE '2B7E151628AED2A6ABF7158809CF4F3C'.
+    CONSTANTS lc_iv TYPE xstring VALUE 'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'.
+    CONSTANTS lc_mac TYPE xstring VALUE '0102030405060708090A0B0C0D0E0F10'.
+    DATA lo_packet TYPE REF TO zcl_oassh_packet.
+    lo_packet = NEW #(
+      ii_random      = NEW zcl_oassh_random_fixed( iv_pattern = 'AA' )
+      iv_encrypt_key = lc_key
+      iv_encrypt_iv  = lc_iv
+      iv_encrypt_mac = lc_mac
+      iv_decrypt_key = lc_key
+      iv_decrypt_iv  = lc_iv
+      iv_decrypt_mac = lc_mac ).
+    lo_packet->mv_recv_plain = '0102'.
+    lo_packet->mv_recv_cipher = '0304'.
+    lo_packet->clear_secrets( ).
+    cl_abap_unit_assert=>assert_false( xsdbool( lo_packet->mo_encrypt IS BOUND ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( lo_packet->mo_decrypt IS BOUND ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( lo_packet->mo_encrypt_chachapoly IS BOUND ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( lo_packet->mo_decrypt_chachapoly IS BOUND ) ).
+    cl_abap_unit_assert=>assert_initial( lo_packet->mv_encrypt_mac ).
+    cl_abap_unit_assert=>assert_initial( lo_packet->mv_decrypt_mac ).
+    cl_abap_unit_assert=>assert_initial( lo_packet->mv_recv_plain ).
+    cl_abap_unit_assert=>assert_initial( lo_packet->mv_recv_cipher ).
+  ENDMETHOD.
 
   METHOD plain_framing.
     DATA lo_random TYPE REF TO zcl_oassh_random_fixed.

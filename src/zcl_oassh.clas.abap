@@ -168,6 +168,8 @@ CLASS zcl_oassh DEFINITION
         ii_socket            TYPE REF TO zif_oassh_socket
         ii_random            TYPE REF TO zif_oassh_random
         ii_host_verifier     TYPE REF TO zif_oassh_host_verifier
+        iv_host              TYPE string
+        iv_port              TYPE string
         iv_user              TYPE string
         iv_password          TYPE string OPTIONAL
         iv_password_supplied TYPE abap_bool DEFAULT abap_true
@@ -346,6 +348,7 @@ CLASS zcl_oassh DEFINITION
         io_packet       TYPE REF TO zcl_oassh_packet
       RETURNING
         VALUE(rv_reply) TYPE xstring.
+    METHODS clear_credentials.
 ENDCLASS.
 
 
@@ -373,6 +376,8 @@ CLASS zcl_oassh IMPLEMENTATION.
       ii_socket            = li_socket
       ii_random            = li_random
       ii_host_verifier     = ii_host_verifier
+      iv_host              = iv_host
+      iv_port              = iv_port
       iv_user              = iv_user
       iv_password          = iv_password
       iv_password_supplied = xsdbool( iv_password IS SUPPLIED )
@@ -1152,7 +1157,21 @@ CLASS zcl_oassh IMPLEMENTATION.
 
 
   METHOD close.
+    clear_credentials( ).
+    IF mo_transport IS BOUND.
+      mo_transport->clear_secrets( ).
+    ENDIF.
+    IF mo_plain_packet IS BOUND.
+      mo_plain_packet->clear_secrets( ).
+    ENDIF.
     mi_socket->close( ).
+  ENDMETHOD.
+
+
+  METHOD clear_credentials.
+    CLEAR mv_password.
+    CLEAR mv_password_supplied.
+    CLEAR mv_private_seed.
   ENDMETHOD.
 
 
@@ -1194,6 +1213,10 @@ CLASS zcl_oassh IMPLEMENTATION.
       mv_disconnected = abap_true.
       mv_disconnect_reason = ls_disconnect-reason_code.
       mv_operation_done = abap_true.
+      clear_credentials( ).
+      IF mo_transport IS BOUND.
+        mo_transport->clear_secrets( ).
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
@@ -1210,7 +1233,9 @@ CLASS zcl_oassh IMPLEMENTATION.
     mo_plain_packet = NEW #( ii_random = mi_random ).
     mo_transport = NEW #(
       ii_random        = mi_random
-      ii_host_verifier = ii_host_verifier ).
+      ii_host_verifier = ii_host_verifier
+      iv_host          = iv_host
+      iv_port          = iv_port ).
   ENDMETHOD.
 
 
@@ -1404,12 +1429,16 @@ CLASS zcl_oassh IMPLEMENTATION.
         WHEN zcl_oassh_transport=>c_state-newkeys_sent.
           mo_transport->receive_newkeys( lv_payload ).
           mv_state = gc_state-encrypted.
-          lv_reply = mo_transport->start_auth(
-            iv_user              = mv_user
-            iv_password          = mv_password
-            iv_password_supplied = mv_password_supplied
-            iv_private_seed      = mv_private_seed ).
-          CLEAR mv_private_seed.
+          TRY.
+              lv_reply = mo_transport->start_auth(
+                iv_user              = mv_user
+                iv_password          = mv_password
+                iv_password_supplied = mv_password_supplied
+                iv_private_seed      = mv_private_seed ).
+            CLEANUP.
+              clear_credentials( ).
+          ENDTRY.
+          clear_credentials( ).
           mi_socket->send( mo_transport->get_packet( )->encode( lv_reply ) ).
           RETURN.
         WHEN OTHERS.

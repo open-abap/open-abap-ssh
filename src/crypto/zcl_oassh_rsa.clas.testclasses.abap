@@ -77,6 +77,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_large_n TYPE xstring.
     DATA lv_weak_n TYPE xstring.
     DATA lv_weak_suffix TYPE xstring.
+    DATA lv_large_e TYPE xstring.
     DATA lv_offset TYPE i.
     DATA lv_even_last TYPE x LENGTH 1 VALUE '4C'.
     li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'FF' ).
@@ -88,6 +89,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lv_large_n = li_random->bytes( 1025 ).
     lv_weak_suffix = lv_n+1.
     lv_weak_n = '7F' && lv_weak_suffix.
+* FIPS 186-5 bounds generated public exponents below 2^256. Apply the same
+* ceiling to untrusted host keys before exponent-sized Montgomery work.
+    lv_large_e = '01' && li_random->bytes( 32 ).
 
     cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
       iv_n         = lv_even_n
@@ -102,6 +106,11 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
       iv_n         = lv_n
       iv_e         = lv_n
+      iv_signature = signature( )
+      iv_message   = c_message ) ).
+    cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(
+      iv_n         = lv_n
+      iv_e         = lv_large_e
       iv_signature = signature( )
       iv_message   = c_message ) ).
     cl_abap_unit_assert=>assert_false( zcl_oassh_rsa=>verify_pkcs1_sha256(

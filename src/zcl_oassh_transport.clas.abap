@@ -30,6 +30,8 @@ CLASS zcl_oassh_transport DEFINITION
       IMPORTING
         ii_random        TYPE REF TO zif_oassh_random
         ii_host_verifier TYPE REF TO zif_oassh_host_verifier
+        iv_host          TYPE string
+        iv_port          TYPE string
         iv_offer_strict  TYPE abap_bool DEFAULT abap_true
         iv_offer_group14 TYPE abap_bool DEFAULT abap_true
         iv_offer_chacha  TYPE abap_bool DEFAULT abap_true
@@ -119,10 +121,13 @@ CLASS zcl_oassh_transport DEFINITION
     METHODS get_packet
       RETURNING
         VALUE(ro_packet) TYPE REF TO zcl_oassh_packet.
+    METHODS clear_secrets.
 
   PRIVATE SECTION.
     DATA mi_random TYPE REF TO zif_oassh_random.
     DATA mi_host_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA mv_host TYPE string.
+    DATA mv_port TYPE string.
     DATA mv_state TYPE i.
     DATA mv_v_c TYPE xstring.
     DATA mv_v_s TYPE xstring.
@@ -174,6 +179,8 @@ CLASS zcl_oassh_transport DEFINITION
       RETURNING VALUE(rv_payload) TYPE xstring.
     METHODS password_request
       RETURNING VALUE(rv_payload) TYPE xstring.
+    METHODS clear_credentials.
+    METHODS clear_pending_keys.
     CLASS-METHODS is_all_zero
       IMPORTING
         iv_value          TYPE xstring
@@ -184,9 +191,38 @@ ENDCLASS.
 
 CLASS zcl_oassh_transport IMPLEMENTATION.
 
+  METHOD clear_credentials.
+    CLEAR mv_password.
+    CLEAR mv_password_supplied.
+    CLEAR mv_private_seed.
+  ENDMETHOD.
+
+
+  METHOD clear_pending_keys.
+    CLEAR mv_private.
+    CLEAR mv_k.
+    CLEAR mv_iv_c_to_s.
+    CLEAR mv_iv_s_to_c.
+    CLEAR mv_key_c_to_s.
+    CLEAR mv_key_s_to_c.
+    CLEAR mv_mac_c_to_s.
+    CLEAR mv_mac_s_to_c.
+  ENDMETHOD.
+
+
+  METHOD clear_secrets.
+    clear_credentials( ).
+    clear_pending_keys( ).
+    IF mo_packet IS BOUND.
+      mo_packet->clear_secrets( ).
+    ENDIF.
+  ENDMETHOD.
+
   METHOD constructor.
     mi_random = ii_random.
     mi_host_verifier = ii_host_verifier.
+    mv_host = iv_host.
+    mv_port = iv_port.
     mv_offer_strict = iv_offer_strict.
     mv_offer_group14 = iv_offer_group14.
     mv_offer_chacha = iv_offer_chacha.
@@ -542,17 +578,22 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     ENDIF.
 * Verify proof of host-key possession before invoking a potentially stateful
 * trust callback (for example, a TOFU known-hosts store).
-    IF mi_host_verifier->verify( lv_host_key ) = abap_false.
+    IF mi_host_verifier->verify(
+        iv_host     = mv_host
+        iv_port     = mv_port
+        iv_host_key = lv_host_key ) = abap_false.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e006(zoassh).
     ENDIF.
 * Commit key material only after exact parsing, host trust, and signature
 * authentication have all succeeded.
+    CLEAR mv_private.
     mv_k = lv_k.
     mv_h = lv_h.
     IF mv_session_id IS INITIAL.
       mv_session_id = mv_h.
     ENDIF.
     derive_keys( ).
+    CLEAR mv_k.
     rv_payload = zcl_oassh_message_21=>serialize( )->get( ).
     mv_state = c_state-newkeys_sent.
   ENDMETHOD.
@@ -597,6 +638,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     IF lv_was_initial = abap_true.
       CLEAR mv_initial_kex.
     ENDIF.
+    clear_pending_keys( ).
     mv_state = c_state-encrypted.
   ENDMETHOD.
 
@@ -699,6 +741,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
         IF lo_stream->get_length( ) <> 0.
           RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e003(zoassh).
         ENDIF.
+        clear_credentials( ).
         mv_auth_state = c_auth_state-authenticated.
       WHEN zcl_oassh_message_51=>gc_message_id.
 * USERAUTH_FAILURE: continue with the supplied password after a preferred
@@ -714,6 +757,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
             AND line_exists( ls_failure-authentications[ table_line = 'password' ] ).
           rv_payload = password_request( ).
         ELSE.
+          clear_credentials( ).
           RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e009(zoassh).
         ENDIF.
       WHEN OTHERS.
@@ -744,6 +788,7 @@ CLASS zcl_oassh_transport IMPLEMENTATION.
     rv_payload = zcl_oassh_message_50=>serialize( ls_request )->get( ).
 * Consume this credential choice so a rejected password cannot be retried in
 * an unbounded loop merely because the server lists it again.
+    CLEAR mv_password.
     CLEAR mv_password_supplied.
   ENDMETHOD.
 

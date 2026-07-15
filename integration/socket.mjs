@@ -85,8 +85,8 @@ export function createSecureRandom() {
 // Builds a ZCL_OASSH client wired to a fresh socket adapter with Node secure
 // randomness and an accept-all host verifier (local tests only). Returns the
 // client and adapter without connecting.
-export async function createClient({user, password, privateSeed, random, ...adapterOptions}) {
-  const adapter = createSocketAdapter(adapterOptions);
+export async function createClient({user, password, privateSeed, random, host, port, ...adapterOptions}) {
+  const adapter = createSocketAdapter({host, port, ...adapterOptions});
   const hostVerifier = {
     async zif_oassh_host_verifier$verify() {
       return abap.builtin.abap_true;
@@ -96,6 +96,8 @@ export async function createClient({user, password, privateSeed, random, ...adap
     ii_socket: new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_SOCKET"}).set(adapter),
     ii_random: new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_RANDOM"}).set(random ?? createSecureRandom()),
     ii_host_verifier: new abap.types.ABAPObject({qualifiedName: "ZIF_OASSH_HOST_VERIFIER"}).set(hostVerifier),
+    iv_host: new abap.types.String().set(host),
+    iv_port: new abap.types.String().set(String(port)),
     iv_user: new abap.types.String().set(user),
     iv_password: new abap.types.String().set(password),
     iv_private_seed: new abap.types.XString().set(privateSeed ?? ""),

@@ -16,6 +16,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
 
   PRIVATE SECTION.
     METHODS connect_sends_version FOR TESTING RAISING cx_static_check.
+    METHODS close_clears_secrets FOR TESTING RAISING cx_static_check.
     METHODS server_version_starts_kex FOR TESTING RAISING cx_static_check.
     METHODS identification_validation FOR TESTING RAISING cx_static_check.
     METHODS fragmented_kex_header FOR TESTING RAISING cx_static_check.
@@ -98,6 +99,23 @@ ENDCLASS.
 
 CLASS ltcl_test IMPLEMENTATION.
 
+  METHOD close_clears_secrets.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_private_seed = '0102'.
+    lo_ssh->mo_transport->mv_password = '0304'.
+    lo_ssh->mo_transport->mv_private_seed = '0506'.
+    cl_abap_unit_assert=>assert_not_initial( lo_ssh->mv_password ).
+
+    lo_ssh->close( ).
+
+    cl_abap_unit_assert=>assert_initial( lo_ssh->mv_password ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_password_supplied ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->mv_private_seed ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->mo_transport->mv_password ).
+    cl_abap_unit_assert=>assert_initial( lo_ssh->mo_transport->mv_private_seed ).
+  ENDMETHOD.
+
   METHOD encrypted_message_recognition.
     cl_abap_unit_assert=>assert_true( zcl_oassh=>is_recognized_message( 53 ) ).
     cl_abap_unit_assert=>assert_true( zcl_oassh=>is_recognized_message( 80 ) ).
@@ -125,6 +143,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     lo_server_packet = NEW #( li_random ).
@@ -153,6 +173,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = NEW zcl_oassh_socket_mock( )
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
   ENDMETHOD.
@@ -213,6 +235,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = lo_mock
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     cl_abap_unit_assert=>assert_equals(
@@ -236,6 +260,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -449,6 +475,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     lo_packet = NEW #( li_random ).
@@ -525,6 +553,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = lo_mock
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     lo_mock->set_closed( ).
@@ -553,6 +583,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = NEW zcl_oassh_socket_mock( )
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = lv_user
       iv_password      = lv_password ).
     cl_abap_unit_assert=>assert_equals(
@@ -582,6 +614,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -623,6 +657,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -862,6 +898,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -908,6 +946,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -948,6 +988,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -987,6 +1029,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -1025,6 +1069,8 @@ CLASS ltcl_test IMPLEMENTATION.
         ii_socket        = li_socket
         ii_random        = li_random
         ii_host_verifier = li_verifier
+        iv_host          = 'test.example'
+        iv_port          = '22'
         iv_user          = 'test'
         iv_password      = 'test'.
 
@@ -1062,6 +1108,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -1865,6 +1913,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).
@@ -2156,6 +2206,8 @@ CLASS ltcl_test IMPLEMENTATION.
       ii_socket        = li_socket
       ii_random        = li_random
       ii_host_verifier = li_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_user          = 'test'
       iv_password      = 'test' ).
     li_socket->connect( ).

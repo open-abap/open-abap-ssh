@@ -33,7 +33,7 @@ ENDCLASS.
 
 CLASS lcl_accept_host IMPLEMENTATION.
   METHOD zif_oassh_host_verifier~verify.
-* Demo only: production callers must pin or otherwise validate iv_host_key.
+* Demo only: production callers must validate iv_host/iv_port with iv_host_key.
     rv_trusted = abap_true.
   ENDMETHOD.
 ENDCLASS.

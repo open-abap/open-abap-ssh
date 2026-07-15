@@ -5,8 +5,12 @@ CLASS lcl_verifier DEFINITION FINAL.
   PUBLIC SECTION.
     INTERFACES zif_oassh_host_verifier.
     METHODS received RETURNING VALUE(rv_host_key) TYPE xstring.
+    METHODS received_host RETURNING VALUE(rv_host) TYPE string.
+    METHODS received_port RETURNING VALUE(rv_port) TYPE string.
   PRIVATE SECTION.
     DATA mv_received TYPE xstring.
+    DATA mv_received_host TYPE string.
+    DATA mv_received_port TYPE string.
 ENDCLASS.
 
 
@@ -16,7 +20,19 @@ CLASS lcl_verifier IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD received_host.
+    rv_host = mv_received_host.
+  ENDMETHOD.
+
+
+  METHOD received_port.
+    rv_port = mv_received_port.
+  ENDMETHOD.
+
+
   METHOD zif_oassh_host_verifier~verify.
+    mv_received_host = iv_host.
+    mv_received_port = iv_port.
     mv_received = iv_host_key.
     rv_trusted = abap_true.
   ENDMETHOD.
@@ -78,6 +94,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS guessed_kex_packet FOR TESTING RAISING cx_static_check.
     METHODS group14_fallback FOR TESTING RAISING cx_static_check.
     METHODS chacha_fallback FOR TESTING RAISING cx_static_check.
+    METHODS host_endpoint FOR TESTING RAISING cx_static_check.
+    METHODS clear_secrets FOR TESTING RAISING cx_static_check.
     METHODS host_key RETURNING VALUE(rv_host_key) TYPE xstring.
     METHODS signature_bytes RETURNING VALUE(rv_signature) TYPE xstring.
     METHODS signature_blob RETURNING VALUE(rv_signature) TYPE xstring.
@@ -85,6 +103,23 @@ ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+  METHOD host_endpoint.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    lo_transport = handshake( ).
+    lo_verifier ?= lo_transport->mi_host_verifier.
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_verifier->received_host( )
+      exp = 'test.example' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_verifier->received_port( )
+      exp = '22' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_verifier->received( )
+      exp = host_key( ) ).
+  ENDMETHOD.
+
+
   METHOD host_key.
     CONCATENATE c_host_1 c_host_2 c_host_3 c_host_4 c_host_5
       INTO rv_host_key IN BYTE MODE.
@@ -123,6 +158,8 @@ CLASS ltcl_test IMPLEMENTATION.
     ro_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false
       iv_offer_group14 = abap_false
       iv_offer_chacha  = abap_false
@@ -186,6 +223,8 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_transport->get_auth_state( )
       exp = zcl_oassh_transport=>c_auth_state-request_sent ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_password ).
+    cl_abap_unit_assert=>assert_false( lo_transport->mv_password_supplied ).
 
 * a banner in between is informational: no reply, state unchanged
     ls_banner-message_id = zcl_oassh_message_53=>gc_message_id.
@@ -276,7 +315,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-server' ) ).
@@ -296,6 +337,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_ed25519 = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
@@ -330,7 +373,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
     lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
 
 * RFC 4252 section 8 defines the password as an SSH string and does not
@@ -352,7 +397,9 @@ CLASS ltcl_test IMPLEMENTATION.
 * Omitting both supported credential forms remains an API error.
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
     lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
     TRY.
         lo_transport->start_auth(
@@ -376,7 +423,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
     lo_transport->mv_state = zcl_oassh_transport=>c_state-encrypted.
     TRY.
         lo_transport->start_auth(
@@ -404,6 +453,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
@@ -464,6 +515,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false
       iv_offer_group14 = abap_false
       iv_offer_chacha  = abap_false
@@ -635,7 +688,9 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_verifier = NEW #( ).
     lo_transport = NEW #(
       ii_random        = lo_random
-      ii_host_verifier = lo_verifier ).
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
     lv_payload = lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
       iv_server_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-OpenSSH_9.6' ) ).
@@ -680,6 +735,8 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_message_id
       exp = zcl_oassh_message_50=>gc_message_id ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_private_seed ).
+    cl_abap_unit_assert=>assert_not_initial( lo_transport->mv_password ).
 
 * The server rejects publickey but explicitly permits password to continue.
     ls_failure-message_id = zcl_oassh_message_51=>gc_message_id.
@@ -693,6 +750,8 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_stream->get_length( )
       exp = 0 ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_password ).
+    cl_abap_unit_assert=>assert_false( lo_transport->mv_password_supplied ).
 
 * A rejected fallback is terminal even if the server repeats "password".
     TRY.
@@ -703,6 +762,59 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = '009' ).
+  ENDMETHOD.
+
+
+  METHOD clear_secrets.
+    CONSTANTS lc_key TYPE xstring VALUE '2B7E151628AED2A6ABF7158809CF4F3C'.
+    CONSTANTS lc_iv TYPE xstring VALUE 'F0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF'.
+    CONSTANTS lc_mac TYPE xstring VALUE '0102030405060708090A0B0C0D0E0F10'.
+    DATA lo_random TYPE REF TO zcl_oassh_random_fixed.
+    DATA lo_transport TYPE REF TO zcl_oassh_transport.
+    DATA lo_verifier TYPE REF TO lcl_verifier.
+    lo_random = NEW #( iv_pattern = '01' ).
+    lo_verifier = NEW #( ).
+    lo_transport = NEW #(
+      ii_random        = lo_random
+      ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22' ).
+    lo_transport->mv_private = '01'.
+    lo_transport->mv_k = '02'.
+    lo_transport->mv_iv_c_to_s = lc_iv.
+    lo_transport->mv_iv_s_to_c = lc_iv.
+    lo_transport->mv_key_c_to_s = lc_key.
+    lo_transport->mv_key_s_to_c = lc_key.
+    lo_transport->mv_mac_c_to_s = lc_mac.
+    lo_transport->mv_mac_s_to_c = lc_mac.
+    lo_transport->mv_password = '03'.
+    lo_transport->mv_password_supplied = abap_true.
+    lo_transport->mv_private_seed = '04'.
+    lo_transport->mo_packet = NEW #(
+      ii_random      = lo_random
+      iv_encrypt_key = lc_key
+      iv_encrypt_iv  = lc_iv
+      iv_encrypt_mac = lc_mac
+      iv_decrypt_key = lc_key
+      iv_decrypt_iv  = lc_iv
+      iv_decrypt_mac = lc_mac ).
+
+    lo_transport->clear_secrets( ).
+
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_private ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_k ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_iv_c_to_s ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_iv_s_to_c ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_key_c_to_s ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_key_s_to_c ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_mac_c_to_s ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_mac_s_to_c ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_password ).
+    cl_abap_unit_assert=>assert_false( lo_transport->mv_password_supplied ).
+    cl_abap_unit_assert=>assert_initial( lo_transport->mv_private_seed ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_transport->mo_packet->get_auth_length( )
+      exp = 0 ).
   ENDMETHOD.
 
 
@@ -932,6 +1044,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
@@ -962,6 +1076,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
@@ -1003,6 +1119,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )
@@ -1035,6 +1153,8 @@ CLASS ltcl_test IMPLEMENTATION.
     lo_transport = NEW #(
       ii_random        = lo_random
       ii_host_verifier = lo_verifier
+      iv_host          = 'test.example'
+      iv_port          = '22'
       iv_offer_strict  = abap_false ).
     lo_transport->start_kex(
       iv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' )

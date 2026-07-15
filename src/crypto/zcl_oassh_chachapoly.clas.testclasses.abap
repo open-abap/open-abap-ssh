@@ -1,3 +1,6 @@
+CLASS ltcl_test DEFINITION DEFERRED.
+CLASS zcl_oassh_chachapoly DEFINITION LOCAL FRIENDS ltcl_test.
+
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     CONSTANTS c_key_1 TYPE xstring VALUE
@@ -10,11 +13,21 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS openssh_vector FOR TESTING RAISING cx_static_check.
     METHODS tampered_tag FOR TESTING RAISING cx_static_check.
     METHODS malformed_header FOR TESTING RAISING cx_static_check.
+    METHODS clear_secrets FOR TESTING RAISING cx_static_check.
     METHODS key RETURNING VALUE(rv_key) TYPE xstring.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+  METHOD clear_secrets.
+    DATA lo_cipher TYPE REF TO zcl_oassh_chachapoly.
+    lo_cipher = NEW #( key( ) ).
+    lo_cipher->clear_secrets( ).
+    cl_abap_unit_assert=>assert_initial( lo_cipher->mv_main_key ).
+    cl_abap_unit_assert=>assert_initial( lo_cipher->mv_header_key ).
+  ENDMETHOD.
+
+
   METHOD key.
     CONCATENATE c_key_1 c_key_2 INTO rv_key IN BYTE MODE.
   ENDMETHOD.
