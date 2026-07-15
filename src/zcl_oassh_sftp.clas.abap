@@ -4,36 +4,11 @@ CLASS zcl_oassh_sftp DEFINITION
   CREATE PUBLIC.
 
   PUBLIC SECTION.
-    TYPES ty_uint32 TYPE x LENGTH 4.
-    TYPES ty_uint64 TYPE x LENGTH 8.
-    TYPES:
-      BEGIN OF ty_extension,
-        extension_type TYPE xstring,
-        extension_data TYPE xstring,
-      END OF ty_extension.
-    TYPES ty_extensions TYPE STANDARD TABLE OF ty_extension WITH EMPTY KEY.
-    TYPES:
-      BEGIN OF ty_attrs,
-        flags           TYPE ty_uint32,
-        has_size        TYPE abap_bool,
-        size            TYPE ty_uint64,
-        has_uid_gid     TYPE abap_bool,
-        uid             TYPE ty_uint32,
-        gid             TYPE ty_uint32,
-        has_permissions TYPE abap_bool,
-        permissions     TYPE ty_uint32,
-        has_acmodtime   TYPE abap_bool,
-        atime           TYPE ty_uint32,
-        mtime           TYPE ty_uint32,
-        extensions      TYPE ty_extensions,
-      END OF ty_attrs.
-    TYPES:
-      BEGIN OF ty_name,
-        filename TYPE xstring,
-        longname TYPE xstring,
-        attrs    TYPE ty_attrs,
-      END OF ty_name.
-    TYPES ty_names TYPE STANDARD TABLE OF ty_name WITH EMPTY KEY.
+    TYPES ty_uint32 TYPE zif_oassh_sftp_one_shot=>ty_uint32.
+    TYPES ty_extension TYPE zif_oassh_sftp_one_shot=>ty_extension.
+    TYPES ty_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
+    TYPES ty_name TYPE zif_oassh_sftp_one_shot=>ty_name.
+    TYPES ty_names TYPE zif_oassh_sftp_one_shot=>ty_names.
     CONSTANTS c_max_packet_length TYPE i VALUE 262144.
     CONSTANTS:
       BEGIN OF c_state,

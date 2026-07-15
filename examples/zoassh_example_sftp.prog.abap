@@ -44,8 +44,8 @@ START-OF-SELECTION.
 FORM run.
 
   DATA lo_host_verifier TYPE REF TO zif_oassh_host_verifier.
-  DATA lo_ssh           TYPE REF TO zcl_oassh.
-  DATA lt_names         TYPE zcl_oassh_sftp=>ty_names.
+  DATA li_sftp          TYPE REF TO zif_oassh_sftp_session.
+  DATA lt_names         TYPE zif_oassh_sftp_session=>ty_names.
   DATA lv_filename      TYPE string.
   DATA lv_data          TYPE xstring.
   DATA lv_preview       TYPE string.
@@ -59,30 +59,30 @@ FORM run.
   TRY.
 * ii_random is optional on SAP: zcl_oassh defaults to zcl_oassh_random_secure,
 * which draws from the kernel-backed secure random source.
-      lo_ssh = zcl_oassh=>connect(
+      li_sftp = zcl_oassh=>connect(
         iv_host          = p_host
         iv_port          = p_port
         iv_user          = p_user
         iv_password      = p_pass
         ii_host_verifier = lo_host_verifier ).
       TRY.
-          lo_ssh->sftp_open( p_tmout ).
+          li_sftp->sftp_open( p_tmout ).
 
 * --- list a directory -----------------------------------------------------
-          lt_names = lo_ssh->sftp_list(
+          lt_names = li_sftp->sftp_list(
             iv_path            = p_dir
             iv_timeout_seconds = p_tmout ).
 
 * --- download a file ------------------------------------------------------
-          lv_data = lo_ssh->sftp_download(
+          lv_data = li_sftp->sftp_download(
             iv_path            = p_file
             iv_timeout_seconds = p_tmout ).
 
-          lo_ssh->sftp_close( p_tmout ).
+          li_sftp->sftp_close( p_tmout ).
         CLEANUP.
-          lo_ssh->close( ).
+          li_sftp->close( ).
       ENDTRY.
-      lo_ssh->close( ).
+      li_sftp->close( ).
 
       WRITE: / 'listing of', p_dir.
       SKIP.

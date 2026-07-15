@@ -33,6 +33,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS exec_stream_guards FOR TESTING RAISING cx_static_check.
     METHODS sftp_session_dispatch FOR TESTING RAISING cx_static_check.
     METHODS sftp_session_guards FOR TESTING RAISING cx_static_check.
+    METHODS workflow_interfaces FOR TESTING RAISING cx_static_check.
     METHODS sftp_api_state FOR TESTING RAISING cx_static_check.
     METHODS empty_command_state FOR TESTING RAISING cx_static_check.
     METHODS execute_early_failure FOR TESTING RAISING cx_static_check.
@@ -98,6 +99,47 @@ ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD workflow_interfaces.
+    DATA li_exec TYPE REF TO zif_oassh_interactive_exec.
+    DATA li_one_shot TYPE REF TO zif_oassh_sftp_one_shot.
+    DATA li_session TYPE REF TO zif_oassh_sftp_session.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+
+    li_exec = build_ssh( ).
+    TRY.
+        li_exec->exec_open(
+          iv_command         = 'true'
+          iv_timeout_seconds = 0 ).
+        cl_abap_unit_assert=>fail( 'interactive interface did not delegate' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '001' ).
+    ENDTRY.
+
+    li_one_shot = build_ssh( ).
+    TRY.
+        li_one_shot->sftp_download(
+          iv_path            = '/tmp/file'
+          iv_timeout_seconds = 0 ).
+        cl_abap_unit_assert=>fail( 'one-shot interface did not delegate' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '001' ).
+    ENDTRY.
+
+    li_session = build_ssh( ).
+    TRY.
+        li_session->sftp_open( 0 ).
+        cl_abap_unit_assert=>fail( 'session interface did not delegate' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        cl_abap_unit_assert=>assert_equals(
+          act = lx_error->if_t100_message~t100key-msgno
+          exp = '001' ).
+    ENDTRY.
+  ENDMETHOD.
 
   METHOD close_clears_secrets.
     DATA lo_ssh TYPE REF TO zcl_oassh.

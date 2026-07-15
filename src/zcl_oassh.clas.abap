@@ -4,6 +4,10 @@ CLASS zcl_oassh DEFINITION
 
   PUBLIC SECTION.
 
+    INTERFACES zif_oassh_interactive_exec.
+    INTERFACES zif_oassh_sftp_one_shot.
+    INTERFACES zif_oassh_sftp_session.
+
     CLASS-METHODS connect
       IMPORTING
         iv_host          TYPE string
@@ -27,29 +31,6 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output)   TYPE string
       RAISING
         zcx_oassh_error.
-* Multi-operation SFTP session: sftp_open( ) performs the channel, subsystem
-* and INIT/VERSION handshake once, then the sftp_* methods below run inside
-* that single session until sftp_close( ). Without sftp_open( ) each sftp_*
-* method is one-shot (its own connection lifecycle), exactly as before.
-* See docs/sftp-sessions.md.
-    METHODS sftp_open
-      IMPORTING
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_close
-      IMPORTING
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_download
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RETURNING
-        VALUE(rv_data)     TYPE xstring
-      RAISING
-        zcx_oassh_error.
     METHODS shell
       IMPORTING
         iv_input           TYPE xstring
@@ -61,97 +42,6 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output)   TYPE xstring
       RAISING
         zcx_oassh_error.
-* Interactive exec: exec_open starts a command and returns while the channel
-* stays open, so the caller can interleave binary stdin and stdout, for
-* example to speak a request/response protocol such as git-upload-pack.
-* The conversation ends with exec_close. See docs/interactive-exec.md.
-    METHODS exec_open
-      IMPORTING
-        iv_command         TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING
-        zcx_oassh_error.
-    METHODS exec_write
-      IMPORTING
-        iv_data TYPE xstring
-      RAISING
-        zcx_oassh_error.
-    METHODS exec_read
-      IMPORTING
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RETURNING
-        VALUE(rv_data)     TYPE xstring
-      RAISING
-        zcx_oassh_error.
-    METHODS exec_eof
-      RAISING
-        zcx_oassh_error.
-    METHODS exec_close
-      IMPORTING
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING
-        zcx_oassh_error.
-    METHODS exec_is_closed
-      RETURNING
-        VALUE(rv_closed) TYPE abap_bool.
-    METHODS sftp_upload
-      IMPORTING
-        iv_path            TYPE string
-        iv_data            TYPE xstring
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_stat
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RETURNING
-        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_lstat
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RETURNING
-        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_list
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RETURNING
-        VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
-      RAISING
-        zcx_oassh_error.
-    METHODS sftp_mkdir
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING zcx_oassh_error.
-    METHODS sftp_rmdir
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING zcx_oassh_error.
-    METHODS sftp_remove
-      IMPORTING
-        iv_path            TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING zcx_oassh_error.
-    METHODS sftp_rename
-      IMPORTING
-        iv_old_path        TYPE string
-        iv_new_path        TYPE string
-        iv_timeout_seconds TYPE i DEFAULT 300
-      RAISING zcx_oassh_error.
-    METHODS sftp_realpath
-      IMPORTING
-        iv_path                TYPE string
-        iv_timeout_seconds     TYPE i DEFAULT 300
-      RETURNING VALUE(rs_name) TYPE zcl_oassh_sftp=>ty_name
-      RAISING zcx_oassh_error.
     METHODS get_stderr
       RETURNING
         VALUE(rv_output) TYPE string.
@@ -237,6 +127,95 @@ CLASS zcl_oassh DEFINITION
     DATA mv_sftp_session_broken TYPE abap_bool.
     DATA mv_disconnected TYPE abap_bool.
     DATA mv_disconnect_reason TYPE i.
+
+* Concrete implementations shared by the workflow interfaces.
+    METHODS exec_open
+      IMPORTING
+        iv_command         TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS exec_write
+      IMPORTING iv_data TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS exec_read
+      IMPORTING iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rv_data)             TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS exec_eof RAISING zcx_oassh_error.
+    METHODS exec_close
+      IMPORTING iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS exec_is_closed
+      RETURNING VALUE(rv_closed) TYPE abap_bool.
+    METHODS sftp_open
+      IMPORTING iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_close
+      IMPORTING iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_download
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rv_data)     TYPE xstring
+      RAISING zcx_oassh_error.
+    METHODS sftp_upload
+      IMPORTING
+        iv_path            TYPE string
+        iv_data            TYPE xstring
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_stat
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
+      RAISING zcx_oassh_error.
+    METHODS sftp_lstat
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
+      RAISING zcx_oassh_error.
+    METHODS sftp_list
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
+      RAISING zcx_oassh_error.
+    METHODS sftp_mkdir
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_rmdir
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_remove
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_rename
+      IMPORTING
+        iv_old_path        TYPE string
+        iv_new_path        TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING zcx_oassh_error.
+    METHODS sftp_realpath
+      IMPORTING
+        iv_path            TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rs_name)     TYPE zcl_oassh_sftp=>ty_name
+      RAISING zcx_oassh_error.
 
     METHODS handle_transport_message
       IMPORTING
@@ -354,6 +333,232 @@ ENDCLASS.
 
 
 CLASS zcl_oassh IMPLEMENTATION.
+
+
+  METHOD zif_oassh_interactive_exec~exec_open.
+    exec_open(
+      iv_command         = iv_command
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~exec_write.
+    exec_write( iv_data ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~exec_read.
+    rv_data = exec_read( iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~exec_eof.
+    exec_eof( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~exec_close.
+    exec_close( iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~exec_is_closed.
+    rv_closed = exec_is_closed( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~get_stderr.
+    rv_output = get_stderr( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~get_exit_status.
+    rv_status = get_exit_status( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~get_disconnect_reason.
+    rv_reason = get_disconnect_reason( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_interactive_exec~close.
+    close( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_download.
+    rv_data = sftp_download(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_upload.
+    sftp_upload(
+      iv_path            = iv_path
+      iv_data            = iv_data
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_stat.
+    rs_attrs = sftp_stat(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_lstat.
+    rs_attrs = sftp_lstat(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_list.
+    rt_names = sftp_list(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_mkdir.
+    sftp_mkdir(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_rmdir.
+    sftp_rmdir(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_remove.
+    sftp_remove(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_rename.
+    sftp_rename(
+      iv_old_path        = iv_old_path
+      iv_new_path        = iv_new_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~sftp_realpath.
+    rs_name = sftp_realpath(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~get_disconnect_reason.
+    rv_reason = get_disconnect_reason( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_one_shot~close.
+    close( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_open.
+    sftp_open( iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_close.
+    sftp_close( iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_download.
+    rv_data = sftp_download(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_upload.
+    sftp_upload(
+      iv_path            = iv_path
+      iv_data            = iv_data
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_stat.
+    rs_attrs = sftp_stat(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_lstat.
+    rs_attrs = sftp_lstat(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_list.
+    rt_names = sftp_list(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_mkdir.
+    sftp_mkdir(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_rmdir.
+    sftp_rmdir(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_remove.
+    sftp_remove(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_rename.
+    sftp_rename(
+      iv_old_path        = iv_old_path
+      iv_new_path        = iv_new_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~sftp_realpath.
+    rs_name = sftp_realpath(
+      iv_path            = iv_path
+      iv_timeout_seconds = iv_timeout_seconds ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~get_disconnect_reason.
+    rv_reason = get_disconnect_reason( ).
+  ENDMETHOD.
+
+
+  METHOD zif_oassh_sftp_session~close.
+    close( ).
+  ENDMETHOD.
 
 
   METHOD connect.
