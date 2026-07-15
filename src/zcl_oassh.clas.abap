@@ -172,21 +172,21 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zif_oassh_sftp_one_shot=>ty_attrs
       RAISING zcx_oassh_error.
     METHODS sftp_lstat
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zif_oassh_sftp_one_shot=>ty_attrs
       RAISING zcx_oassh_error.
     METHODS sftp_list
       IMPORTING
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rt_names)    TYPE zcl_oassh_sftp=>ty_names
+        VALUE(rt_names)    TYPE zif_oassh_sftp_one_shot=>ty_names
       RAISING zcx_oassh_error.
     METHODS sftp_mkdir
       IMPORTING
@@ -214,7 +214,7 @@ CLASS zcl_oassh DEFINITION
         iv_path            TYPE string
         iv_timeout_seconds TYPE i DEFAULT 300
       RETURNING
-        VALUE(rs_name)     TYPE zcl_oassh_sftp=>ty_name
+        VALUE(rs_name)     TYPE zif_oassh_sftp_one_shot=>ty_name
       RAISING zcx_oassh_error.
 
     METHODS handle_transport_message
@@ -295,7 +295,7 @@ CLASS zcl_oassh DEFINITION
         iv_lstat           TYPE abap_bool
         iv_timeout_seconds TYPE i
       RETURNING
-        VALUE(rs_attrs)    TYPE zcl_oassh_sftp=>ty_attrs
+        VALUE(rs_attrs)    TYPE zif_oassh_sftp_one_shot=>ty_attrs
       RAISING
         zcx_oassh_error.
     METHODS sftp_mutation

@@ -13,9 +13,9 @@ methods then run inside that single subsystem channel until `sftp_close`.
 
 ```abap
 DATA li_sftp TYPE REF TO zif_oassh_sftp_session.
-DATA lt_names TYPE zif_oassh_sftp_session=>ty_names.
+DATA lt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
 DATA lv_data TYPE xstring.
-DATA ls_attrs TYPE zif_oassh_sftp_session=>ty_attrs.
+DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
 
 li_sftp = zcl_oassh=>connect(
   iv_host          = 'ssh.example.com'

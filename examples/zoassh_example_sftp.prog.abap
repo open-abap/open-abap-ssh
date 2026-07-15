@@ -45,7 +45,7 @@ FORM run.
 
   DATA lo_host_verifier TYPE REF TO zif_oassh_host_verifier.
   DATA li_sftp          TYPE REF TO zif_oassh_sftp_session.
-  DATA lt_names         TYPE zif_oassh_sftp_session=>ty_names.
+  DATA lt_names         TYPE zif_oassh_sftp_one_shot=>ty_names.
   DATA lv_filename      TYPE string.
   DATA lv_data          TYPE xstring.
   DATA lv_preview       TYPE string.

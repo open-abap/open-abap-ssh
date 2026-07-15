@@ -2,10 +2,8 @@ INTERFACE zif_oassh_sftp_session
   PUBLIC.
 
 * Reusable SFTP channel. Call sftp_open( ) once, run sequential sftp_*
-* operations, then call sftp_close( ) and close( ).
-  TYPES ty_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
-  TYPES ty_name TYPE zif_oassh_sftp_one_shot=>ty_name.
-  TYPES ty_names TYPE zif_oassh_sftp_one_shot=>ty_names.
+* operations, then call sftp_close( ) and close( ). Result types are owned by
+* zif_oassh_sftp_one_shot and referenced directly by both SFTP contracts.
   METHODS sftp_open
     IMPORTING
       iv_timeout_seconds TYPE i DEFAULT 300
@@ -36,7 +34,7 @@ INTERFACE zif_oassh_sftp_session
       iv_path            TYPE string
       iv_timeout_seconds TYPE i DEFAULT 300
     RETURNING
-      VALUE(rs_attrs)    TYPE ty_attrs
+      VALUE(rs_attrs)    TYPE zif_oassh_sftp_one_shot=>ty_attrs
     RAISING
       zcx_oassh_error.
   METHODS sftp_lstat
@@ -44,7 +42,7 @@ INTERFACE zif_oassh_sftp_session
       iv_path            TYPE string
       iv_timeout_seconds TYPE i DEFAULT 300
     RETURNING
-      VALUE(rs_attrs)    TYPE ty_attrs
+      VALUE(rs_attrs)    TYPE zif_oassh_sftp_one_shot=>ty_attrs
     RAISING
       zcx_oassh_error.
   METHODS sftp_list
@@ -52,7 +50,7 @@ INTERFACE zif_oassh_sftp_session
       iv_path            TYPE string
       iv_timeout_seconds TYPE i DEFAULT 300
     RETURNING
-      VALUE(rt_names)    TYPE ty_names
+      VALUE(rt_names)    TYPE zif_oassh_sftp_one_shot=>ty_names
     RAISING
       zcx_oassh_error.
   METHODS sftp_mkdir
@@ -80,7 +78,7 @@ INTERFACE zif_oassh_sftp_session
     IMPORTING
       iv_path                TYPE string
       iv_timeout_seconds     TYPE i DEFAULT 300
-    RETURNING VALUE(rs_name) TYPE ty_name
+    RETURNING VALUE(rs_name) TYPE zif_oassh_sftp_one_shot=>ty_name
     RAISING zcx_oassh_error.
   METHODS get_disconnect_reason
     RETURNING

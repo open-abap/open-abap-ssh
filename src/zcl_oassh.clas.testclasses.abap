@@ -930,7 +930,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lv_inbound_a TYPE xstring.
     DATA lv_inbound_b TYPE xstring.
     DATA lv_inbound TYPE xstring.
-    DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+    DATA lt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
 
     lo_mock = NEW #( ).
     li_socket = lo_mock.
@@ -978,7 +978,7 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA li_socket TYPE REF TO zif_oassh_socket.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
-    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
 
     lo_mock = NEW #( ).
     li_socket = lo_mock.
@@ -2236,9 +2236,9 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA li_socket TYPE REF TO zif_oassh_socket.
     DATA li_random TYPE REF TO zif_oassh_random.
     DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
-    DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+    DATA lt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
     DATA lv_data TYPE xstring.
-    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
 
     lo_mock = NEW #( ).
     li_socket = lo_mock.

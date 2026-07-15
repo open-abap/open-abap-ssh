@@ -492,7 +492,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD stat_attrs.
 * Sections 5 and 6.8: flags determine the exact order of every ATTRS field.
     DATA lv_out TYPE xstring.
-    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
     lv_out = mo_sftp->start_stat( 'a' ).
     lv_out = mo_sftp->receive( '000000050200000003' ).
     cl_abap_unit_assert=>assert_equals(
@@ -548,7 +548,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD stat_extensions.
 * Unknown extension values are preserved as opaque byte strings.
     DATA lv_out TYPE xstring.
-    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+    DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
     lv_out = mo_sftp->start_stat( 'a' ).
     lv_out = mo_sftp->receive( '000000050200000003' ).
     lv_out = mo_sftp->receive( '0000002169000000018000000000000002000000016100000000000000016200000002CCCC' ).
@@ -612,7 +612,7 @@ CLASS ltcl_test IMPLEMENTATION.
   METHOD list_directory.
 * OPENDIR -> HANDLE -> repeated READDIR/NAME -> EOF -> CLOSE/OK.
     DATA lv_out TYPE xstring.
-    DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+    DATA lt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
     lv_out = mo_sftp->start_list( 'd' ).
     lv_out = mo_sftp->receive( '000000050200000003' ).
     cl_abap_unit_assert=>assert_equals(
@@ -785,7 +785,7 @@ CLASS ltcl_test IMPLEMENTATION.
 
   METHOD realpath_name.
     DATA lv_out TYPE xstring.
-    DATA ls_name TYPE zcl_oassh_sftp=>ty_name.
+    DATA ls_name TYPE zif_oassh_sftp_one_shot=>ty_name.
     lv_out = mo_sftp->start_realpath( '.' ).
     lv_out = mo_sftp->receive( '000000050200000003' ).
     cl_abap_unit_assert=>assert_equals(
