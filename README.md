@@ -11,6 +11,25 @@ after transpilation with open-abap. SAP_BASIS 750 is the compatibility floor.
 Steampunk is not currently supported because it does not provide unrestricted
 TCP/IP sockets.
 
+## Security notice — use at your own risk
+
+Most of the cryptography in this library (AES-CTR, ChaCha20-Poly1305, X25519,
+Ed25519, RSA signature verification, Diffie-Hellman group14, and the
+big-integer arithmetic under them) is implemented from scratch in ABAP; only
+SHA-2 hashing and HMAC delegate to the kernel-backed SAP classes. None of it
+has undergone an independent security audit, and ABAP offers no constant-time
+execution guarantees, so timing side channels cannot be ruled out. The unit
+tests cover published test vectors and the integration tests exercise real
+OpenSSH, but that is not the same as a cryptographic review.
+
+Before relying on this library for anything security-sensitive, review the
+code — the protocol layer as well as everything under `src/crypto/` — against
+your own threat model, and decide deliberately whether a from-scratch ABAP
+implementation is acceptable for your use case. The software is provided "as
+is", without warranty of any kind, as stated in the [MIT license](LICENSE);
+you use it at your own risk. Security findings are welcome as issues or pull
+requests.
+
 ## Installation on an SAP system
 
 Import this repository with [abapGit](https://abapgit.org/) into a package of
