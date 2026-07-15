@@ -79,6 +79,7 @@ CLASS zcl_oassh_packet DEFINITION
       RETURNING VALUE(rv_length) TYPE i.
     METHODS get_header_length
       RETURNING VALUE(rv_length) TYPE i.
+    METHODS clear_secrets.
 
   PRIVATE SECTION.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -116,10 +117,45 @@ CLASS zcl_oassh_packet DEFINITION
         iv_sequence        TYPE i
       RETURNING
         VALUE(rv_sequence) TYPE i.
+    METHODS clear_encrypt_secrets.
+    METHODS clear_decrypt_secrets.
 ENDCLASS.
 
 
 CLASS zcl_oassh_packet IMPLEMENTATION.
+
+  METHOD clear_encrypt_secrets.
+    IF mo_encrypt IS BOUND.
+      mo_encrypt->clear_secrets( ).
+    ENDIF.
+    IF mo_encrypt_chachapoly IS BOUND.
+      mo_encrypt_chachapoly->clear_secrets( ).
+    ENDIF.
+    CLEAR mo_encrypt.
+    CLEAR mo_encrypt_chachapoly.
+    CLEAR mv_encrypt_mac.
+  ENDMETHOD.
+
+
+  METHOD clear_decrypt_secrets.
+    IF mo_decrypt IS BOUND.
+      mo_decrypt->clear_secrets( ).
+    ENDIF.
+    IF mo_decrypt_chachapoly IS BOUND.
+      mo_decrypt_chachapoly->clear_secrets( ).
+    ENDIF.
+    CLEAR mo_decrypt.
+    CLEAR mo_decrypt_chachapoly.
+    CLEAR mv_decrypt_mac.
+    CLEAR mv_recv_plain.
+    CLEAR mv_recv_cipher.
+  ENDMETHOD.
+
+
+  METHOD clear_secrets.
+    clear_encrypt_secrets( ).
+    clear_decrypt_secrets( ).
+  ENDMETHOD.
 
   METHOD constructor.
     mi_random = ii_random.
@@ -141,8 +177,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
   METHOD rekey_encrypt.
 * RFC 4253 section 9: replacing algorithms does not reset packet sequence
 * numbers. The outbound cipher changes after our NEWKEYS has been sent.
-    CLEAR mo_encrypt.
-    CLEAR mo_encrypt_chachapoly.
+    clear_encrypt_secrets( ).
     mv_encrypt_mac = iv_encrypt_mac.
     IF iv_encrypt_key IS NOT INITIAL.
       CASE iv_encrypt_algorithm.
@@ -165,8 +200,7 @@ CLASS zcl_oassh_packet IMPLEMENTATION.
 
   METHOD rekey_decrypt.
 * The inbound cipher changes only after the peer's NEWKEYS has been received.
-    CLEAR mo_decrypt.
-    CLEAR mo_decrypt_chachapoly.
+    clear_decrypt_secrets( ).
     mv_decrypt_mac = iv_decrypt_mac.
     IF iv_decrypt_key IS NOT INITIAL.
       CASE iv_decrypt_algorithm.

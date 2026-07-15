@@ -13,6 +13,7 @@ CLASS zcl_oassh_ctr DEFINITION
         iv_data        TYPE xstring
       RETURNING
         VALUE(rv_data) TYPE xstring.
+    METHODS clear_secrets.
 
   PRIVATE SECTION.
 * The AES key schedule is expanded once in the constructor and reused for
@@ -34,6 +35,14 @@ ENDCLASS.
 
 
 CLASS zcl_oassh_ctr IMPLEMENTATION.
+
+  METHOD clear_secrets.
+* ABAP does not guarantee physical memory erasure, but dropping every live
+* key-derived value narrows its lifetime and prevents later object access.
+    CLEAR mt_schedule.
+    CLEAR mv_counter.
+    CLEAR mv_keystream.
+  ENDMETHOD.
 
   METHOD constructor.
     mt_schedule = zcl_oassh_aes=>expand_key( iv_key ).

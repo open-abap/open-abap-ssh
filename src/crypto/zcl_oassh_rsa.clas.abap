@@ -49,7 +49,8 @@ CLASS zcl_oassh_rsa IMPLEMENTATION.
 * OpenSSH's interoperability floor is 1024 bits; cap accepted host keys at
 * 8192 bits so one packet cannot trigger quadratic work on a huge modulus.
     IF lv_modulus_length < 128 OR lv_modulus_length > 1024
-        OR iv_e IS INITIAL OR iv_signature IS INITIAL
+        OR iv_e IS INITIAL OR xstrlen( iv_e ) > 32
+        OR iv_signature IS INITIAL
         OR lv_exponent_compare < 0 OR lv_exponent_modulus_compare >= 0.
       RETURN.
     ENDIF.

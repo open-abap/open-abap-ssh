@@ -26,6 +26,7 @@ CLASS zcl_oassh_chachapoly DEFINITION
         iv_tag                  TYPE xstring
       RETURNING VALUE(rv_plain) TYPE xstring
       RAISING zcx_oassh_error.
+    METHODS clear_secrets.
   PRIVATE SECTION.
     DATA mv_main_key TYPE xstring.
     DATA mv_header_key TYPE xstring.
@@ -46,6 +47,13 @@ ENDCLASS.
 
 
 CLASS zcl_oassh_chachapoly IMPLEMENTATION.
+  METHOD clear_secrets.
+* Best-effort disposal: remove both long-lived traffic keys from the object.
+    CLEAR mv_main_key.
+    CLEAR mv_header_key.
+  ENDMETHOD.
+
+
   METHOD constructor.
     ASSERT xstrlen( iv_key ) = 64.
     mv_main_key = iv_key(32).
@@ -76,6 +84,7 @@ CLASS zcl_oassh_chachapoly IMPLEMENTATION.
     rv_tag = zcl_oassh_poly1305=>auth(
       iv_key  = lv_poly_key
       iv_data = iv_ciphertext ).
+    CLEAR lv_poly_key.
   ENDMETHOD.
 
 

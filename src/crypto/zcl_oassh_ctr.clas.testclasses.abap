@@ -1,3 +1,6 @@
+CLASS ltcl_test DEFINITION DEFERRED.
+CLASS zcl_oassh_ctr DEFINITION LOCAL FRIENDS ltcl_test.
+
 CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
   PRIVATE SECTION.
     CONSTANTS c_key TYPE xstring VALUE '2B7E151628AED2A6ABF7158809CF4F3C'.
@@ -15,10 +18,24 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS decrypt_is_symmetric FOR TESTING RAISING cx_static_check.
     METHODS split_calls_keep_stream FOR TESTING RAISING cx_static_check.
     METHODS large_stream_matches FOR TESTING RAISING cx_static_check.
+    METHODS clear_secrets FOR TESTING RAISING cx_static_check.
 ENDCLASS.
 
 
 CLASS ltcl_test IMPLEMENTATION.
+
+  METHOD clear_secrets.
+    DATA lo_ctr TYPE REF TO zcl_oassh_ctr.
+    DATA lv_unused TYPE xstring.
+    lo_ctr = NEW #(
+      iv_key     = c_key
+      iv_counter = c_ctr ).
+    lv_unused = lo_ctr->crypt( '00' ).
+    lo_ctr->clear_secrets( ).
+    cl_abap_unit_assert=>assert_initial( lo_ctr->mt_schedule ).
+    cl_abap_unit_assert=>assert_initial( lo_ctr->mv_counter ).
+    cl_abap_unit_assert=>assert_initial( lo_ctr->mv_keystream ).
+  ENDMETHOD.
 
   METHOD sp800_38a_encrypt.
     DATA lo_ctr TYPE REF TO zcl_oassh_ctr.

@@ -101,7 +101,9 @@ lo_ssh->close( ).
 
 Replace `zcl_my_known_hosts_verifier` with an application-specific class
 implementing `zif_oassh_host_verifier`. The verifier is called during key
-exchange and must return `abap_true` only for a trusted host key. Pass
+exchange with `iv_host`, `iv_port`, and the complete `iv_host_key` blob. It
+must return `abap_true` only when that exact endpoint-to-key association is
+trusted. Pass
 `ii_random` explicitly only when a platform-specific implementation or a
 deterministic test source is required.
 
