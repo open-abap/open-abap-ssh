@@ -1217,6 +1217,9 @@ CLASS zcl_oassh IMPLEMENTATION.
       IF mo_transport IS BOUND.
         mo_transport->clear_secrets( ).
       ENDIF.
+      IF mo_plain_packet IS BOUND.
+        mo_plain_packet->clear_secrets( ).
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
