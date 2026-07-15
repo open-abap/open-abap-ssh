@@ -36,6 +36,17 @@ different `zif_oassh_random` implementation for another runtime.
 for production connections. Likewise, do not use an accept-all host verifier
 outside an isolated test environment.
 
+### Performance
+
+Expect modest throughput on SAP. The APC TCP frame is defined as one fixed byte,
+so the adapter both receives and sends one byte per APC message and the SSH core
+reassembles the stream. Every outbound SSH packet is therefore emitted as many
+single-byte messages, and a full handshake plus transfer exchanges a large
+number of tiny frames. This is a correctness-over-speed trade-off in the APC
+socket adapter, not a protocol limitation, so it is best suited to command
+execution and small-to-moderate file transfers rather than high-volume data
+movement.
+
 ## ABAP usage
 
 Pass a host-verification implementation to `zcl_oassh=>connect`, then execute a
