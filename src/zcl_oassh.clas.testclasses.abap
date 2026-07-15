@@ -28,6 +28,8 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS encrypted_message_recognition FOR TESTING RAISING cx_static_check.
     METHODS plain_unknown_unimplemented FOR TESTING RAISING cx_static_check.
     METHODS execute_timeout FOR TESTING RAISING cx_static_check.
+    METHODS exec_stream_session FOR TESTING RAISING cx_static_check.
+    METHODS exec_stream_guards FOR TESTING RAISING cx_static_check.
     METHODS sftp_api_state FOR TESTING RAISING cx_static_check.
     METHODS empty_command_state FOR TESTING RAISING cx_static_check.
     METHODS execute_early_failure FOR TESTING RAISING cx_static_check.
@@ -271,6 +273,121 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = '001' ).
+  ENDMETHOD.
+
+
+  METHOD exec_stream_session.
+* Drive the channel directly like execute_returns_result: the interactive
+* exec surface is exercised without a transport handshake. The open
+* confirmation advertises a zero remote window so queued stdin is retained
+* instead of requiring an encrypted send.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_data TYPE xstring.
+    DATA lv_reason TYPE symsgno.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_operation_started = abap_true.
+    lo_ssh->mv_operation = zcl_oassh=>gc_operation-exec_stream.
+    lo_ssh->mo_channel = NEW #( ).
+    lo_ssh->mo_channel->open( ).
+    lo_ssh->mo_channel->receive( '5B00000000000000070000000000008000' ).
+    lo_ssh->mo_channel->exec( 'git-upload-pack repo' ).
+    lo_ssh->mo_channel->receive( '6300000000' ).
+
+    " stdin queues while the remote window is exhausted
+    lo_ssh->exec_write( 'AABB' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_exec_outbound
+      exp = 'AABB' ).
+
+    " a half-close would drop the queued stdin, so it is rejected
+    TRY.
+        lo_ssh->exec_eof( ).
+        cl_abap_unit_assert=>fail( 'EOF with queued stdin accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " buffered CHANNEL_DATA is returned without a socket read
+    lo_ssh->mo_channel->receive( '5E000000000000000368690A' ).
+    lv_data = lo_ssh->exec_read( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_data
+      exp = '68690A' ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->exec_is_closed( ) ).
+
+    " CHANNEL_EOF ends the stream: empty read result plus exec_is_closed
+    lo_ssh->mo_channel->receive( '6000000000' ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->exec_is_closed( ) ).
+    lv_data = lo_ssh->exec_read( ).
+    cl_abap_unit_assert=>assert_initial( lv_data ).
+
+    " the peer's CLOSE completes the operation without another exchange
+    lo_ssh->mo_channel->receive( '6100000000' ).
+    lo_ssh->exec_close( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-closed ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->exec_is_closed( ) ).
+  ENDMETHOD.
+
+
+  METHOD exec_stream_guards.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE symsgno.
+
+    " read and write require an interactive exec operation
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->exec_read( ).
+        cl_abap_unit_assert=>fail( 'exec_read without exec_open accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->exec_write( 'AA' ).
+        cl_abap_unit_assert=>fail( 'exec_write without exec_open accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " exec_open without server bytes is a timeout
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->exec_open(
+          iv_command         = 'true'
+          iv_timeout_seconds = 1 ).
+        cl_abap_unit_assert=>fail( 'exec_open without server accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '001' ).
+
+    " one operation per connection, as for all other operations
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->exec_open( 'true' ).
+        cl_abap_unit_assert=>fail( 'second operation accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
   ENDMETHOD.
 
 

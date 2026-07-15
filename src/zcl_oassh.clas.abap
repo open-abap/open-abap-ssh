@@ -46,6 +46,39 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output)   TYPE xstring
       RAISING
         zcx_oassh_error.
+* Interactive exec: exec_open starts a command and returns while the channel
+* stays open, so the caller can interleave binary stdin and stdout, for
+* example to speak a request/response protocol such as git-upload-pack.
+* The conversation ends with exec_close. See docs/interactive-exec.md.
+    METHODS exec_open
+      IMPORTING
+        iv_command         TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_write
+      IMPORTING
+        iv_data TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_read
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rv_data)     TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_eof
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_close
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_is_closed
+      RETURNING
+        VALUE(rv_closed) TYPE abap_bool.
     METHODS sftp_upload
       IMPORTING
         iv_path            TYPE string
@@ -148,6 +181,7 @@ CLASS zcl_oassh DEFINITION
         sftp_rename   TYPE i VALUE 10,
         sftp_realpath TYPE i VALUE 11,
         shell         TYPE i VALUE 12,
+        exec_stream   TYPE i VALUE 13,
       END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -177,6 +211,7 @@ CLASS zcl_oassh DEFINITION
     DATA mv_sftp_path2 TYPE string.
     DATA mv_sftp_upload_data TYPE xstring.
     DATA mv_sftp_outbound TYPE xstring.
+    DATA mv_exec_outbound TYPE xstring.
     DATA mv_operation TYPE i.
     DATA mv_operation_started TYPE abap_bool.
     DATA mv_operation_done TYPE abap_bool.
@@ -239,6 +274,9 @@ CLASS zcl_oassh DEFINITION
       RAISING
         zcx_oassh_error.
     METHODS flush_shell_input
+      RAISING
+        zcx_oassh_error.
+    METHODS flush_exec_output
       RAISING
         zcx_oassh_error.
     METHODS sftp_attributes
@@ -384,6 +422,150 @@ CLASS zcl_oassh IMPLEMENTATION.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
     rv_output = mo_channel->get_stdout( ).
+  ENDMETHOD.
+
+
+  METHOD exec_open.
+* Interactive variant of execute( ): authenticate, open the session channel
+* and start the command, then return control to the caller while the channel
+* stays open for exec_write( ) / exec_read( ) exchanges.
+    DATA lv_data TYPE xstring.
+    IF mv_operation_started = abap_true.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-exec_stream.
+    mv_command = iv_command.
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+* pump( ) runs until the whole operation completes; this operation must stop
+* as soon as the exec request is accepted, so drive the socket directly.
+    WHILE mv_operation_done = abap_false
+        AND ( mo_channel IS NOT BOUND
+          OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running ).
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        mi_socket->close( ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+    ENDWHILE.
+* A disconnect or socket close before the command is running makes the
+* interactive operation impossible.
+    IF mv_operation_done = abap_true
+        OR mo_channel IS NOT BOUND
+        OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD exec_write.
+* Queue stdin bytes for the running command and send what the remote window
+* allows. Bytes that do not fit are sent when WINDOW_ADJUST arrives during a
+* later exec_read( ) or exec_close( ).
+    IF mv_operation <> gc_operation-exec_stream
+        OR mo_channel IS NOT BOUND
+        OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF iv_data IS INITIAL.
+      RETURN.
+    ENDIF.
+    CONCATENATE mv_exec_outbound iv_data INTO mv_exec_outbound IN BYTE MODE.
+    flush_exec_output( ).
+  ENDMETHOD.
+
+
+  METHOD exec_read.
+* Returns the stdout bytes buffered since the previous call and reads from
+* the socket only when nothing is buffered. Mirrors zif_oassh_socket~read:
+* an empty result is a timeout while exec_is_closed( ) is abap_false,
+* otherwise the command's output stream has ended.
+    DATA lv_data TYPE xstring.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mv_operation <> gc_operation-exec_stream OR mo_channel IS NOT BOUND.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    rv_data = mo_channel->drain_stdout( ).
+    WHILE rv_data IS INITIAL AND exec_is_closed( ) = abap_false.
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+        rv_data = mo_channel->drain_stdout( ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        RETURN.
+      ENDIF.
+    ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD exec_eof.
+* Half-close: signal end of stdin while the command's output continues.
+* Stdin still queued behind a closed window would be silently dropped by the
+* half-close, so flushing must have completed first.
+    IF mv_operation <> gc_operation-exec_stream
+        OR mo_channel IS NOT BOUND
+        OR mv_exec_outbound IS NOT INITIAL.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    send_encrypted( mo_channel->eof( ) ).
+  ENDMETHOD.
+
+
+  METHOD exec_close.
+* End the conversation: send CHANNEL_CLOSE and wait for the peer's CLOSE.
+* The exit status is available through get_exit_status( ) afterwards.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mv_operation <> gc_operation-exec_stream OR mo_channel IS NOT BOUND.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
+      mv_operation_done = abap_true.
+    ELSEIF mv_operation_done = abap_false
+        AND mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-close_sent.
+      send_encrypted( mo_channel->close( ) ).
+    ENDIF.
+    pump( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD exec_is_closed.
+* No further stdout can arrive: the SSH connection ended, or the peer sent
+* CHANNEL_EOF/CLOSE for the session channel.
+    IF mv_operation_done = abap_true.
+      rv_closed = abap_true.
+      RETURN.
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    CASE mo_channel->get_state( ).
+      WHEN zcl_oassh_channel=>c_state-eof_received
+          OR zcl_oassh_channel=>c_state-close_sent
+          OR zcl_oassh_channel=>c_state-closed.
+        rv_closed = abap_true.
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -1072,7 +1254,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     CASE mo_channel->get_state( ).
       WHEN zcl_oassh_channel=>c_state-open.
         CASE mv_operation.
-          WHEN gc_operation-execute.
+          WHEN gc_operation-execute OR gc_operation-exec_stream.
             lv_reply = mo_channel->exec( mv_command ).
           WHEN gc_operation-shell.
             lv_reply = mo_channel->pty(
@@ -1098,6 +1280,10 @@ CLASS zcl_oassh IMPLEMENTATION.
         CASE mv_operation.
           WHEN gc_operation-shell.
             flush_shell_input( ).
+          WHEN gc_operation-exec_stream.
+* Stdout stays buffered in the channel until the caller's next exec_read( );
+* only stdin blocked on window credit is progressed here.
+            flush_exec_output( ).
           WHEN gc_operation-sftp_download OR gc_operation-sftp_upload
               OR gc_operation-sftp_stat OR gc_operation-sftp_lstat
               OR gc_operation-sftp_list OR gc_operation-sftp_mkdir
@@ -1187,6 +1373,37 @@ CLASS zcl_oassh IMPLEMENTATION.
       ELSE.
         lv_remainder = mv_sftp_outbound+lv_send_length.
         mv_sftp_outbound = lv_remainder.
+      ENDIF.
+      lv_reply = mo_channel->data( lv_payload ).
+      send_encrypted( lv_reply ).
+      lv_capacity = mo_channel->get_send_capacity( ).
+    ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD flush_exec_output.
+* Same window discipline as flush_sftp_output, for the interactive exec
+* stdin queue. WINDOW_ADJUST callbacks re-enter this method through
+* advance_channel while the channel is running.
+    DATA lv_capacity TYPE i.
+    DATA lv_pending_length TYPE i.
+    DATA lv_send_length TYPE i.
+    DATA lv_payload TYPE xstring.
+    DATA lv_remainder TYPE xstring.
+    DATA lv_reply TYPE xstring.
+    lv_capacity = mo_channel->get_send_capacity( ).
+    WHILE mv_exec_outbound IS NOT INITIAL AND lv_capacity > 0.
+      lv_pending_length = xstrlen( mv_exec_outbound ).
+      lv_send_length = lv_pending_length.
+      IF lv_send_length > lv_capacity.
+        lv_send_length = lv_capacity.
+      ENDIF.
+      lv_payload = mv_exec_outbound(lv_send_length).
+      IF lv_send_length = lv_pending_length.
+        CLEAR mv_exec_outbound.
+      ELSE.
+        lv_remainder = mv_exec_outbound+lv_send_length.
+        mv_exec_outbound = lv_remainder.
       ENDIF.
       lv_reply = mo_channel->data( lv_payload ).
       send_encrypted( lv_reply ).
