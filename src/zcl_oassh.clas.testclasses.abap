@@ -28,6 +28,10 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS encrypted_message_recognition FOR TESTING RAISING cx_static_check.
     METHODS plain_unknown_unimplemented FOR TESTING RAISING cx_static_check.
     METHODS execute_timeout FOR TESTING RAISING cx_static_check.
+    METHODS exec_stream_session FOR TESTING RAISING cx_static_check.
+    METHODS exec_stream_guards FOR TESTING RAISING cx_static_check.
+    METHODS sftp_session_dispatch FOR TESTING RAISING cx_static_check.
+    METHODS sftp_session_guards FOR TESTING RAISING cx_static_check.
     METHODS sftp_api_state FOR TESTING RAISING cx_static_check.
     METHODS empty_command_state FOR TESTING RAISING cx_static_check.
     METHODS execute_early_failure FOR TESTING RAISING cx_static_check.
@@ -39,6 +43,7 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS sftp_stat_recorded_session FOR TESTING RAISING cx_static_check.
     METHODS sftp_list_recorded_session FOR TESTING RAISING cx_static_check.
     METHODS sftp_mutation_recorded_session FOR TESTING RAISING cx_static_check.
+    METHODS sftp_session_recorded_session FOR TESTING RAISING cx_static_check.
     METHODS sftp_mutation_recorded_in_a
       RETURNING VALUE(rv_data) TYPE xstring.
     METHODS sftp_mutation_recorded_in_b
@@ -70,6 +75,22 @@ CLASS ltcl_test DEFINITION FOR TESTING DURATION SHORT RISK LEVEL HARMLESS FINAL.
     METHODS sftp_list_recorded_in_b
       RETURNING VALUE(rv_data) TYPE xstring.
     METHODS sftp_list_recorded_outbound
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_open
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_list
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_download
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_stat
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_rename1
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_rename2
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_close
+      RETURNING VALUE(rv_data) TYPE xstring.
+    METHODS session_recorded_outbound
       RETURNING VALUE(rv_data) TYPE xstring.
     METHODS build_ssh RETURNING VALUE(ro_ssh) TYPE REF TO zcl_oassh.
 ENDCLASS.
@@ -271,6 +292,121 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lv_reason
       exp = '001' ).
+  ENDMETHOD.
+
+
+  METHOD exec_stream_session.
+* Drive the channel directly like execute_returns_result: the interactive
+* exec surface is exercised without a transport handshake. The open
+* confirmation advertises a zero remote window so queued stdin is retained
+* instead of requiring an encrypted send.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_data TYPE xstring.
+    DATA lv_reason TYPE symsgno.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_operation_started = abap_true.
+    lo_ssh->mv_operation = zcl_oassh=>gc_operation-exec_stream.
+    lo_ssh->mo_channel = NEW #( ).
+    lo_ssh->mo_channel->open( ).
+    lo_ssh->mo_channel->receive( '5B00000000000000070000000000008000' ).
+    lo_ssh->mo_channel->exec( 'git-upload-pack repo' ).
+    lo_ssh->mo_channel->receive( '6300000000' ).
+
+    " stdin queues while the remote window is exhausted
+    lo_ssh->exec_write( 'AABB' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_exec_outbound
+      exp = 'AABB' ).
+
+    " a half-close would drop the queued stdin, so it is rejected
+    TRY.
+        lo_ssh->exec_eof( ).
+        cl_abap_unit_assert=>fail( 'EOF with queued stdin accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " buffered CHANNEL_DATA is returned without a socket read
+    lo_ssh->mo_channel->receive( '5E000000000000000368690A' ).
+    lv_data = lo_ssh->exec_read( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_data
+      exp = '68690A' ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->exec_is_closed( ) ).
+
+    " CHANNEL_EOF ends the stream: empty read result plus exec_is_closed
+    lo_ssh->mo_channel->receive( '6000000000' ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->exec_is_closed( ) ).
+    lv_data = lo_ssh->exec_read( ).
+    cl_abap_unit_assert=>assert_initial( lv_data ).
+
+    " the peer's CLOSE completes the operation without another exchange
+    lo_ssh->mo_channel->receive( '6100000000' ).
+    lo_ssh->exec_close( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-closed ).
+    cl_abap_unit_assert=>assert_true( lo_ssh->exec_is_closed( ) ).
+  ENDMETHOD.
+
+
+  METHOD exec_stream_guards.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE symsgno.
+
+    " read and write require an interactive exec operation
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->exec_read( ).
+        cl_abap_unit_assert=>fail( 'exec_read without exec_open accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->exec_write( 'AA' ).
+        cl_abap_unit_assert=>fail( 'exec_write without exec_open accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " exec_open without server bytes is a timeout
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->exec_open(
+          iv_command         = 'true'
+          iv_timeout_seconds = 1 ).
+        cl_abap_unit_assert=>fail( 'exec_open without server accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '001' ).
+
+    " one operation per connection, as for all other operations
+    CLEAR lv_reason.
+    TRY.
+        lo_ssh->exec_open( 'true' ).
+        cl_abap_unit_assert=>fail( 'second operation accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
   ENDMETHOD.
 
 
@@ -547,6 +683,129 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lo_ssh->mv_operation
       exp = zcl_oassh=>gc_operation-shell ).
+  ENDMETHOD.
+
+
+  METHOD sftp_session_dispatch.
+* Drive the channel directly like exec_stream_session: the session surface is
+* exercised without a transport handshake. The open confirmation advertises a
+* zero remote window so the queued SFTP output is retained rather than
+* requiring an encrypted send. This checks the advance_channel session case:
+* subsystem-running bring-up (INIT) and VERSION handling, plus sftp_close.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_operation_started = abap_true.
+    lo_ssh->mv_operation = zcl_oassh=>gc_operation-sftp_session.
+    lo_ssh->mo_sftp = NEW #( ).
+    lo_ssh->mo_channel = NEW #( ).
+    lo_ssh->mo_channel->open( ).
+    lo_ssh->mo_channel->receive( '5B00000000000000070000000000008000' ).
+    lo_ssh->mo_channel->subsystem( 'sftp' ).
+
+    " CHANNEL_SUCCESS moves the channel to running and triggers the INIT
+    " bring-up; the zero window keeps it queued instead of sending it.
+    lo_ssh->advance_channel( '6300000000' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-version_pending ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mv_sftp_outbound
+      exp = '000000050100000003' ).
+
+    " CHANNEL_DATA carrying VERSION completes the handshake: session ready,
+    " no operation dispatched (mo_sftp has no selected operation yet).
+    lo_ssh->advance_channel( '5E0000000000000009000000050200000003' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_sftp->get_state( )
+      exp = zcl_oassh_sftp=>c_state-ready ).
+
+    " sftp_close over an already-closed channel completes without a send.
+    lo_ssh->mv_sftp_session = abap_true.
+    lo_ssh->mo_channel->close( ).
+    lo_ssh->mo_channel->receive( '6100000000' ).
+    lo_ssh->sftp_close( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_channel->get_state( )
+      exp = zcl_oassh_channel=>c_state-closed ).
+    cl_abap_unit_assert=>assert_false( lo_ssh->mv_sftp_session ).
+  ENDMETHOD.
+
+
+  METHOD sftp_session_guards.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA lx_error TYPE REF TO zcx_oassh_error.
+    DATA lv_reason TYPE symsgno.
+
+    " sftp_open is one operation per connection like every other kind
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_operation_started = abap_true.
+    TRY.
+        lo_ssh->sftp_open( ).
+        cl_abap_unit_assert=>fail( 'sftp_open after another operation accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " a non-positive timeout is rejected before any channel work
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->sftp_open( 0 ).
+        cl_abap_unit_assert=>fail( 'sftp_open with zero timeout accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '001' ).
+
+    " sftp_close without an open session is invalid
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    TRY.
+        lo_ssh->sftp_close( ).
+        cl_abap_unit_assert=>fail( 'sftp_close without a session accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " a broken session refuses further operations but not close
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_sftp_session = abap_true.
+    lo_ssh->mv_sftp_session_broken = abap_true.
+    TRY.
+        lo_ssh->sftp_list( '/tmp' ).
+        cl_abap_unit_assert=>fail( 'operation on a broken session accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '010' ).
+
+    " a non-positive timeout on an in-session operation is a timeout error
+    CLEAR lv_reason.
+    lo_ssh = build_ssh( ).
+    lo_ssh->mv_sftp_session = abap_true.
+    lo_ssh->mo_sftp = NEW #( ).
+    TRY.
+        lo_ssh->sftp_stat(
+          iv_path            = '/tmp'
+          iv_timeout_seconds = 0 ).
+        cl_abap_unit_assert=>fail( 'in-session operation with zero timeout accepted' ).
+      CATCH zcx_oassh_error INTO lx_error.
+        lv_reason = lx_error->if_t100_message~t100key-msgno.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_reason
+      exp = '001' ).
   ENDMETHOD.
 
 
@@ -1873,5 +2132,265 @@ CLASS ltcl_test IMPLEMENTATION.
     rv_data = rv_data && '9A3F5D56603E32C2ECA759AC7042'.
   ENDMETHOD.
 
+
+  METHOD sftp_session_recorded_session.
+* Captured from the pinned OpenSSH 10.3 container with fixed AB randomness.
+* One connection runs list + download + stat + rename + rename over a single
+* SFTP session. The mock hands each phase its inbound in turn, mirroring the
+* interactive request/response cadence, and the single accumulated outbound
+* is verified byte-exact at the end.
+    DATA lo_mock TYPE REF TO zcl_oassh_socket_mock.
+    DATA lo_ssh TYPE REF TO zcl_oassh.
+    DATA li_socket TYPE REF TO zif_oassh_socket.
+    DATA li_random TYPE REF TO zif_oassh_random.
+    DATA li_verifier TYPE REF TO zif_oassh_host_verifier.
+    DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+    DATA lv_data TYPE xstring.
+    DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+
+    lo_mock = NEW #( ).
+    li_socket = lo_mock.
+    li_random = NEW zcl_oassh_random_fixed( iv_pattern = 'AB' ).
+    li_verifier = NEW lcl_host_verifier( ).
+    lo_ssh = NEW #(
+      ii_socket        = li_socket
+      ii_random        = li_random
+      ii_host_verifier = li_verifier
+      iv_user          = 'test'
+      iv_password      = 'test' ).
+    li_socket->connect( ).
+    lo_ssh->send_version( ).
+
+    lo_mock->set_replay( session_recorded_open( ) ).
+    lo_ssh->sftp_open( ).
+
+    lo_mock->set_replay( session_recorded_list( ) ).
+    lt_names = lo_ssh->sftp_list( '/config/oassh-list' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( lt_names )
+      exp = 4 ).
+    READ TABLE lt_names WITH KEY filename = '612E62696E' TRANSPORTING NO FIELDS.
+    cl_abap_unit_assert=>assert_subrc( ).
+
+    lo_mock->set_replay( session_recorded_download( ) ).
+    lv_data = lo_ssh->sftp_download( '/config/oassh-list/a.bin' ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_data
+      exp = '61' ).
+
+    lo_mock->set_replay( session_recorded_stat( ) ).
+    ls_attrs = lo_ssh->sftp_stat( '/config/oassh-list/a.bin' ).
+    cl_abap_unit_assert=>assert_true( ls_attrs-has_size ).
+
+    lo_mock->set_replay( session_recorded_rename1( ) ).
+    lo_ssh->sftp_rename(
+      iv_old_path = '/config/oassh-session/source.bin'
+      iv_new_path = '/config/oassh-session/renamed.bin' ).
+
+    lo_mock->set_replay( session_recorded_rename2( ) ).
+    lo_ssh->sftp_rename(
+      iv_old_path = '/config/oassh-session/renamed.bin'
+      iv_new_path = '/config/oassh-session/source.bin' ).
+
+    lo_mock->set_replay( session_recorded_close( ) ).
+    lo_ssh->sftp_close( ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_ssh->mo_stream->get_length( )
+      exp = 0 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lo_mock->get_sent( )
+      exp = session_recorded_outbound( ) ).
+    lo_ssh->close( ).
+  ENDMETHOD.
+
+
+  METHOD session_recorded_open.
+    rv_data = rv_data && '5353482D322E302D4F70656E5353485F31302E330D0A000002740814BFEA8A542469DDCF37F16084'.
+    rv_data = rv_data && '16A8877500000039637572766532353531392D7368613235362C6578742D696E666F2D732C6B6578'.
+    rv_data = rv_data && '2D7374726963742D732D763030406F70656E7373682E636F6D0000000C7273612D736861322D3235'.
+    rv_data = rv_data && '360000000A6165733132382D6374720000000A6165733132382D637472000000D5756D61632D3634'.
+    rv_data = rv_data && '2D65746D406F70656E7373682E636F6D2C756D61632D3132382D65746D406F70656E7373682E636F'.
+    rv_data = rv_data && '6D2C686D61632D736861322D3235362D65746D406F70656E7373682E636F6D2C686D61632D736861'.
+    rv_data = rv_data && '322D3531322D65746D406F70656E7373682E636F6D2C686D61632D736861312D65746D406F70656E'.
+    rv_data = rv_data && '7373682E636F6D2C756D61632D3634406F70656E7373682E636F6D2C756D61632D313238406F7065'.
+    rv_data = rv_data && '6E7373682E636F6D2C686D61632D736861322D3235362C686D61632D736861322D3531322C686D61'.
+    rv_data = rv_data && '632D73686131000000D5756D61632D36342D65746D406F70656E7373682E636F6D2C756D61632D31'.
+    rv_data = rv_data && '32382D65746D406F70656E7373682E636F6D2C686D61632D736861322D3235362D65746D406F7065'.
+    rv_data = rv_data && '6E7373682E636F6D2C686D61632D736861322D3531322D65746D406F70656E7373682E636F6D2C68'.
+    rv_data = rv_data && '6D61632D736861312D65746D406F70656E7373682E636F6D2C756D61632D3634406F70656E737368'.
+    rv_data = rv_data && '2E636F6D2C756D61632D313238406F70656E7373682E636F6D2C686D61632D736861322D3235362C'.
+    rv_data = rv_data && '686D61632D736861322D3531322C686D61632D73686131000000156E6F6E652C7A6C6962406F7065'.
+    rv_data = rv_data && '6E7373682E636F6D000000156E6F6E652C7A6C6962406F70656E7373682E636F6D00000000000000'.
+    rv_data = rv_data && '0000000000000000000000000000000003640B1F00000197000000077373682D7273610000000301'.
+    rv_data = rv_data && '00010000018100AF07297A07CA360A752FA941B533B1980E28F38D4F55A32A8D0A56E8A9669F7D20'.
+    rv_data = rv_data && '6C67F87AD3B0DCB20DB620779C9AAA0B22F2B49840A069BCA46D017DAFC8B33A212C80A133E90210'.
+    rv_data = rv_data && '510DF8BFF9069D352AF924AB8E429C29E3D9F6B56F9CD27DC89A02DE62EAF5CDA132E195713CDAF4'.
+    rv_data = rv_data && '6E04866CC031BA404CF605B9331DF04BBF9709BC5EFC224D5DC72B65CDD6ECA5FEFC8C771B70C7A1'.
+    rv_data = rv_data && 'D77D0BE8C3FFCE350E82A07399E4A84DFDC81269D2215556D3AA07A4160094999F7DDE5D6DA3CC46'.
+    rv_data = rv_data && 'AE2443F53E7FF70E1C1AA93014A37505F8B51C7444EA9E82ADFBF43543B74DAAD3956186DB181FB1'.
+    rv_data = rv_data && 'F650105BC42A6B73FB469A12B3DC74C448921B5CB58FA814F90807823D7691FF4F2E8E9522630B28'.
+    rv_data = rv_data && '669F6F5EE3006C51BF5A4DB9A3C2B7D1D28982DA55DB72B5D581EE8CF399EDE6334DD6BD96252E5C'.
+    rv_data = rv_data && 'FB40B1BAFFC972E190EFF0748B0344E73EFEF8274199F45DFBFD103F7F87751ADA5251F7AEFF1E34'.
+    rv_data = rv_data && 'D3330776226BDCB4BB6A663BCE4F20B9E068F7AAA2ADF7B81756BE98B0E633000000209F2E14F0EB'.
+    rv_data = rv_data && 'EC580F5C7D7879DBCE173A65B51448E0F241ED9DB3C55B6EDBD407000001940000000C7273612D73'.
+    rv_data = rv_data && '6861322D32353600000180352493F130493A1B150C1176E1760B02B93693794342BB778101D9BEE6'.
+    rv_data = rv_data && '1163E327F36357F23F8F4958A0C5CD99FAA8D1C67CE28F7CA54B16DBEF80F3899919F8E833E2A817'.
+    rv_data = rv_data && 'F127A0C604465F41B06F557A05010101942C853D14DE38F6945DAB2B771F2A91C62462D7D5D36463'.
+    rv_data = rv_data && '8DB50070B24786FE546153AE679F1181F26B3EB3DA9B48B09A208BCB35356A33CDF497D00FF9F2F3'.
+    rv_data = rv_data && '487F683BD1E88C8DDD5085115540F0AEAAF2565CD9D0718FECD058A717E8D1E1100DBFF3DDE88CF5'.
+    rv_data = rv_data && 'F31D0ED23C59579BE73313C46D256D3808BF8475C6497C0CBC720C7CD6230CD4D91347D1F5A0568A'.
+    rv_data = rv_data && '752540BB06606450A163291A9BC3FDC9E066DB3F973CD676BC7547294F1DBCAD1A6222DA25EBFFE1'.
+    rv_data = rv_data && '97C7AB168AAF9735540BF63D699C4F7816A4C0BCDC6EE0D6B835098224BD1CED0FD90B8B0A70BCA1'.
+    rv_data = rv_data && 'F4B96DB25C7B0F423500B0AFBD9629A912178B04D39E065BD2CB142E070BCD683DE03A8471D733B9'.
+    rv_data = rv_data && '2481E474AA02527F8433570463B7F3AE516B03AE0C742EDAFE4ADBA74C09C26AFF015E0000000000'.
+    rv_data = rv_data && '0000000000000000000C0A15000000000000000000004227624962D419BC548CBF9BFD53CBC26B84'.
+    rv_data = rv_data && 'ACB75C9F20D6D62A034A3EF66D75856A728F10B6E467B763EDB2BB873D5156456558BD11E7F78C76'.
+    rv_data = rv_data && '306A5CB102EC53DD6E3D6B9ACBB48AFD7A565D5197AA7EFF3D2C899F6FFDF96DC4FC14C063D1A9A9'.
+    rv_data = rv_data && '9525B1CCEAEB3F4EF99C5131BDC915FA0A2AC9B49AFAA5264C734A526982CF0EFA990761429CDA9A'.
+    rv_data = rv_data && '2927659913EAA2AF660B48825F59FB6136905B870EC1065525452BE624220634E3C87E9A682BB07C'.
+    rv_data = rv_data && '4C74240FC2530CC06B9A92FAD66ADEEC613A3356E46594F2654838FD0E057334C985DDEEEEFFB346'.
+    rv_data = rv_data && '7CECDDF5035763C7A0707695F2789FDEA82AC93F28883F35F4D1A0CD076461EB6D65EB8A37E8619D'.
+    rv_data = rv_data && '255D0BA89ACE6EBF7533779B12ECE60A2E2A125EDB7A24BF66BC47B860C7F1D536BBC91A20022B1E'.
+    rv_data = rv_data && '837A265E6498075B9BA86641F97C3F3134B061351455F0EDEE0CE3EB9B1B00A81DA771171D58FBD9'.
+    rv_data = rv_data && '33F8063A5178D5FD0FCD1AB13D69EDD9FCF3761245548EB99D0F43A862297F343E37A6B6A2D11174'.
+    rv_data = rv_data && 'A6048849A5C93DEA07BB1CFFD0B49C042A2562F0FADCFE08BFF3D8E720F29B8D36BB22DDA5398979'.
+    rv_data = rv_data && '82B101A4D5C2E5D2F34567E88C61BE7686717142CE8283BE08F3CB60FA5B7D8FEBE11B5052AB4F5A'.
+    rv_data = rv_data && 'F3AA05FBCE7046A33F738E0ACB46262ED0BD819F33A8E4C244B3AB5DE68B4E2E8369339EB62E8F7A'.
+    rv_data = rv_data && '4A28F9E98E7E30EE330F4FD44CE6A24C374D19F367707F61F0625BB16E473D5BE508AAFF3B744C13'.
+    rv_data = rv_data && '94AFDD11074DE2D58A4E81EF0E6C90050786EC52ABF8833A4FEC91797203C8AA78344F0B39AA19AE'.
+    rv_data = rv_data && '8EB36713D8E9325F475F5F8EBB48097912F94315F9B030A6612F1D382B6E1B83E76802B2A701AA55'.
+    rv_data = rv_data && 'EDCE6678237195640C04F84599C049544E63D06ABC202E792F05DA7AB410E912D48862277C0D13B2'.
+    rv_data = rv_data && 'E765AF8EEFC7CE4865F0D778E2CFB3D00C7A88B96317407E10106A0AE34DF1F8D6B1A8A67D8A2E57'.
+    rv_data = rv_data && 'ED02E0763D49C45D50303496DE5F1EC562E0608912C344E3AEF8786984F982ECA4587779D6D935F8'.
+    rv_data = rv_data && '9E1F3E43DDB484B8EBE3954A0EDA87AC7039CF8609CF8B49722F09DF4D19D3AA11E365911674D5D3'.
+    rv_data = rv_data && '662DE76C685CDA3F97110754FE61BE2F8AE1969D4DAD2596F3184A021FEEC4FB0CF8EE60FFA3DF2B'.
+    rv_data = rv_data && 'EF22D0A970908E84A2B6202C0B08E7652FF0C2A89E36442C341F2CC283EE8231172550B6CDD11997'.
+    rv_data = rv_data && '9086422FEC0E9F46D22AE75C5969AE0E2C41F3B5221C387A734701E0DC953BC5745877DE3894FFEA'.
+    rv_data = rv_data && '349A802A8869B7095C1E9C2DE52C7A7D0B6654C3DDAAF6531CA7CCEB7162A0EE3D2FA434CE9E7A51'.
+    rv_data = rv_data && 'BF91F617F6928E83ABEDA39042054E98BDF7CC4E5FF6D4132CFA556F4C49625495C444BF556A0B62'.
+    rv_data = rv_data && '89CAC2D90F85CF7ACB32973ECC15B04675155161ECC5E584A48CF1B7A6E802CE7B88DD747CC95F79'.
+    rv_data = rv_data && '4692E7EF778BA7053B7F67C593D4240A14E903884DAECDBECC22FD248E506B1B7B3B323FFA7EC0C2'.
+    rv_data = rv_data && 'DF1A1EC227B15015467EEF2BFA76030654BD3431FB3E092E02BC391F2C3DC8BD76BBBDE9AE44E8A8'.
+    rv_data = rv_data && '0D0B545DE8C60001B6B309F050AFF5AD4F282A31DD7725ECE27EDAB7D801E5ECED19F297CBAE1A88'.
+    rv_data = rv_data && '56B2CF4874170D40B7501B4C714BFFAB3B6C2527814E058C7413AD290DAC59DF571EA4D5AC46DCA7'.
+    rv_data = rv_data && 'DBB2EC89CBD14B42B03E42A9794430B18EF357B873B6F56F135D9B1FAAF16ECC9E9416E95D537CBF'.
+    rv_data = rv_data && '7C1CD9DC3BDE2F28E928942330F407DAF15EF7333FA11A303C0760F3F318DB829EB6CA910483488C'.
+    rv_data = rv_data && 'E2E2E42C2C8AB3F6F756DBB56BCAE3877217944908C22B2E21A9A3D60F288D9F63ACFBC6588C05DA'.
+    rv_data = rv_data && 'A90E9B32B413550379F3D27E73EF94C930E7019E1CEEF38A81B91FF2FAF6'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_list.
+    rv_data = rv_data && 'DBCDE4B71F7D4CBF2CBA53F753CEEA0C68F00E852D93B201051B1B5ADBE48B9A7E24B9D227B996E6'.
+    rv_data = rv_data && '36BE9B71F46F385B765944741E26C8815BD6C235C59E1FF3ED2ADC67F1BF155054CA5347F777B831'.
+    rv_data = rv_data && 'A4E8FD421F2445B2B854ED6EE60942AD1DF783BA69DC879248783A8ED541B61EB27B97E48D3FE8B5'.
+    rv_data = rv_data && 'DF3580C619A7ACF17CF539894630218B4FDDD39581A0570D3D81A0274A3FCF06CAA514248EDCBC51'.
+    rv_data = rv_data && '63F25EC19D5D4C5CEC41B824539AFDCF255B43A84F0E2478F7E7E4FA9C3C96C904875AF00419592C'.
+    rv_data = rv_data && 'A18A4AE6469D65BD35333CE2FD43CF749903BDED6F61625DB336D96549185C5F2DE88890F7A52990'.
+    rv_data = rv_data && '11A5CEBDAB6E417A260466058F6A517D893C86055CC33C3164C442A1EEE24D69620E5012D559B550'.
+    rv_data = rv_data && 'BD3D27BEBFAA4F25D10873B1EC9C082B41E312CEEBF151FF59D10591B93685A624F6D86D345BB934'.
+    rv_data = rv_data && '58C520A476D02984B2A3D5ADD7245FC7D079E60E358E33C9650BC2FD88860CB12B4EBE954EF9BF57'.
+    rv_data = rv_data && 'A128A7BA5EE1970300BAB58460746A0A673B8224A965EE8AF62FD449BAF671E48598C97D8F81606D'.
+    rv_data = rv_data && '4107BFA933754F7B12CD4EF1052D0099FDD030CBB50A2165495F6D5756A9D42B3C1483FAC7A8AA28'.
+    rv_data = rv_data && '9E033118C689D7395FFA34903494D2C4C61180A267C345D0C95478ACABE58BAB34A5D11D937B097E'.
+    rv_data = rv_data && 'F85324339F56487F1AD3A0CB00F26C23A0B686117915710E31B877164A02E71DBDBA03A7B705FA0F'.
+    rv_data = rv_data && '6361FEE3DEF396915832666F6BC22601712E6F1B607C3A2B999B21CE4E4D7D8521CFCDE4934E0763'.
+    rv_data = rv_data && 'EEE5D6E7152C2E84B25E756252F24DDFD4BCDE8F9542305C7F6B31095A3744558D92D409D2A82A68'.
+    rv_data = rv_data && '6EBACDA2F7B1C6957121F1EE2B8C49F3FBD3C1EB606E5FF8025D61CAB9752F8047031E9F1B2D152C'.
+    rv_data = rv_data && '5EB94304FDAA7AFD44124532E4BC89209D6C129FB562A4665216FACAF741958148A2B7B4E8519131'.
+    rv_data = rv_data && 'FD9E9F065DE5F5AD5A7682C8AB91DFEA57A0C6C57F7B0D7055B09B37268D3526675E86E1AEF123FA'.
+    rv_data = rv_data && 'DC7767E43D02620661BDCCEBA39EF5CF'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_download.
+    rv_data = rv_data && '62B7A80FFC204BAE185BCF8C12640687F853144F46077F018E916ABF310266870FC17015E9D42F5C'.
+    rv_data = rv_data && '2EFB415116CCB2BA5360A4633093B204574E9FFA0830967CF4CB80925D0DF5BA3D1B35554FC08645'.
+    rv_data = rv_data && 'A6C0FB70952402270CFF3CEE0B89B8FB606ECA0276F84E9A8C35A30A5581C9B027AB82295FAB337A'.
+    rv_data = rv_data && '06FD0299A5BFE789A458420C4D6A3DCC418BE034155E470DCF1CE66B5FF9A74427F6475189E7052F'.
+    rv_data = rv_data && '06E49A8B9C7343DC66FF29BE19F438257BBAE4E7048AFC0F485F24D458CC7C1D501891B0EEC74C6D'.
+    rv_data = rv_data && '278C76A3B2F83F853A9357A41A47776645B90DEF29BE4F33176A85D77DD3188BDE498310D8E5D2BC'.
+    rv_data = rv_data && '7A987FFB51F1F566978FA5BF447D946B9783A9DBE59553595327340AFB3930792F642F5280AEA232'.
+    rv_data = rv_data && '727B7D0C9D3C96C55F52943D2F017EEE47874953A27FD0631B87DB244881B5ACFF4EE52B555879CC'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_stat.
+    rv_data = rv_data && '11E2700E97CFDBD3F85FEE960857C5F34C85DC82D72B474C855B3A5CF3A77E472502DE1EFE9AC367'.
+    rv_data = rv_data && 'B02C23D6E03B92D5E7F2867478A641D9ADDE2C19022D78731BE4D414605FC893E85B084D463EA60E'.
+    rv_data = rv_data && '1DB3F0291B4EB48CDD9C094619BD574C'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_rename1.
+    rv_data = rv_data && '8C1E90D3D7A514BA38F0A90BE86697B50B08E3F75BA5D3911C0E0D1EAA3DD1A290D4E133EF9738FA'.
+    rv_data = rv_data && 'F203BF783056BB2D9199A921170AE1EBD7CD6C587AB0266B6869B65EA34EDDF92229E27D0FBA49B6'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_rename2.
+    rv_data = rv_data && '5C1549C35C7D58AD840440EB40A9B7D08983320BE3EACB6146662F2079329000A50F0E446BAC850F'.
+    rv_data = rv_data && '94A0A122A177507637BBC49260C95294E3B06D6D75EAEE4433E0F9A5062B716013FD7CD5835B30E7'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_close.
+    rv_data = rv_data && '873003136FC51112AC273D86C04A457C8DAA33101BF3EE736E9A56BC2115A111BDDC8891CC0FE0EC'.
+    rv_data = rv_data && '0C8A72A2823D438ED2D94BBD8F5838A5FE4A36BDB0234B12652A44520B26E08326E72C7E8EFF3096'.
+    rv_data = rv_data && 'EB1B3F1652020AC171343BE9A8CCC4C11F127B0A1ED5E8E4DEE1945909CCB4CB269D3AB6F95917CE'.
+    rv_data = rv_data && 'D0FDDEC9617A1DE7'.
+  ENDMETHOD.
+
+
+  METHOD session_recorded_outbound.
+    rv_data = rv_data && '5353482D322E302D616261700D0A0000012C0A14ABABABABABABABABABABABABABABABAB00000059'.
+    rv_data = rv_data && '637572766532353531392D7368613235362C6469666669652D68656C6C6D616E2D67726F75703134'.
+    rv_data = rv_data && '2D7368613235362C6B65782D7374726963742D632C6B65782D7374726963742D632D763030406F70'.
+    rv_data = rv_data && '656E7373682E636F6D000000187273612D736861322D3235362C7373682D65643235353139000000'.
+    rv_data = rv_data && '286165733132382D6374722C63686163686132302D706F6C7931333035406F70656E7373682E636F'.
+    rv_data = rv_data && '6D000000286165733132382D6374722C63686163686132302D706F6C7931333035406F70656E7373'.
+    rv_data = rv_data && '682E636F6D0000000D686D61632D736861322D3235360000000D686D61632D736861322D32353600'.
+    rv_data = rv_data && '0000046E6F6E65000000046E6F6E6500000000000000000000000000ABABABABABABABABABAB0000'.
+    rv_data = rv_data && '002C061E00000020E3712D851A0E5D79B831C5E34AB22B41A198171DE209B8B8FACA23A11C624859'.
+    rv_data = rv_data && 'ABABABABABAB0000000C0A15ABABABABABABABABABAB860C058AB621F5EECFF6E44048EEB59272AF'.
+    rv_data = rv_data && '0128791C494F921716EB32BC9DC1B0A90C4D8B4AD1E45AE09160BF0B6D0384FB784E03F636543EC5'.
+    rv_data = rv_data && '7ECC29378A8E5F3B6F16FD1174A42B3D5A2B778639504041136D2B8BA2B315C790A0B0047DA6B0BD'.
+    rv_data = rv_data && '79D439E0540662D66783988192375F2AE7ED00D0767951ED61509053E04B0BD02B835236243A6694'.
+    rv_data = rv_data && 'F592AB5A3DCE4EAAE43740109C77E43E6E23231EF8A002C06DC7C4C9FE71CF0A7B9905C258F7E067'.
+    rv_data = rv_data && '4B61A2ECAABD0D9383507AE6B16C3C3E5ACAD8ECAD9EBD0F0828316025133FD1E76707823F0680DC'.
+    rv_data = rv_data && '5DB1AA75ED14558722621547B7936FD3EE2AFF9C7A79602315A4A9BCF79DCCA71EEB6DDBF9738E77'.
+    rv_data = rv_data && '538E4C1CF9ECF2136F8C8C63384D690CE5CA1395B12C6F345432EC84CCDBF9EE681C7CD2F368231D'.
+    rv_data = rv_data && '1702E4F17129D1E7A130EE96339EF686FD4EC10E360EF2946B9C5D01133D1AE751283F978A7DDABF'.
+    rv_data = rv_data && 'FCACFE61864089106896E04CFC784943DA14855C4601280E011F8235FC5BE24993FB3CB830AA0632'.
+    rv_data = rv_data && '3570399F1C1EEFA2F93A4A861BF8D79774C001E698752AEFE819CE1FDE87768A70CB66B63F4F8476'.
+    rv_data = rv_data && '78F8649F320D723CD2AF051A0912089D9EE0BDF91B6810D5DF535132C468CE5FF940D2AB1F0D09F4'.
+    rv_data = rv_data && 'C0D56DC54338554B73AD6993904F017FACD562BAF01A7172925A348E4098C20CE73EB04EB44F35C8'.
+    rv_data = rv_data && '1F17FC08528155107AF10226EB4F7C88A278C5669A5A3DB06BAFDA684172D5BCDFF9D7650F37DE1E'.
+    rv_data = rv_data && '2B278381BAE69FAFD14071EA00F1E0890D18C042613820A7B4C8400B7213E42B4A1941F5D7E3A827'.
+    rv_data = rv_data && '10CF30181520974D0DF3A3BAFA9079BD79D0116F863F83539F9DB2888158D350D78E0A007E26F044'.
+    rv_data = rv_data && '2139F5ED4DA35171AC7730BDF50DC0714936C5A200967D1D3BB854278417096154308EFF7EF84FE8'.
+    rv_data = rv_data && 'AFA761FBE16FF29D1BFD09EBDCB6E537239E7F902EA24F85F34645018944C04AFF4039DD25F7BA3D'.
+    rv_data = rv_data && 'EC371948CBDF1CC9D361B5180AFEC1FFB221DE95A37A0DE5F6AE53B2CB1C0EE2D49A49F4E68358D6'.
+    rv_data = rv_data && 'FE834A4B5F4A7EDF54A9F609BCF1E00B6F53EEF8669334E4F14008144C8FDFE713A9F15663C04C1D'.
+    rv_data = rv_data && 'BB2BE589438816898F3B12FF6A2BE2BB1FE2AEEA5EA3F71B959C5C31396DB85A195A9930DE141665'.
+    rv_data = rv_data && '6F8EC073E51FD0B175F55F6ED17898AC5C5B32E003AA9337A84F4AEB9BED6B113C9EFD03E83510CD'.
+    rv_data = rv_data && '87EDF39F98CB433D6CE59639A46F1BA69C7A2D354C99CD3105B8F365D2A742164516682856A91D6A'.
+    rv_data = rv_data && '35DA6D42E981678C033E7669551AA82C84C760EDB045CE002989F34252D0BBA95635C80348302C3D'.
+    rv_data = rv_data && '79668B45D086CA8032772DB472E905C0162D0E9E06EA75E2171594E203AA3CD9A501B17838EC3012'.
+    rv_data = rv_data && 'B786600ED6C929188DF316989DA02A61C70D0C391A6021C461B826B3985D176D493DA4D087F43328'.
+    rv_data = rv_data && 'A4DA918179A7178589C7BF34E44865625C630810F8BC6C681C7DA3DB5530266F6F09CCEFD0CCEDBF'.
+    rv_data = rv_data && '0019BDB89FC4C84A2F19CF0A9E7BFFF795C7B19865F2AC9055462E12D8FCD6E3FBC36BE0521FCFE0'.
+    rv_data = rv_data && 'E55643EF1741C231CD10E1D7C2A091575DC80C5CC3A89B8FB959C14D91A0AE07D8C898E602A26EC3'.
+    rv_data = rv_data && '203CEAAF47B072A53BBDA4FD299C5942D73EAF3CCCE5C2B8AB89B072CA96AB2F467B0D0A8FFBDB5C'.
+    rv_data = rv_data && '0BD9E827384E727B8890830E2B62AEF7FEA4D416ABC4D3A83D9A6601D5D685A43E5D3F5ED05D773A'.
+    rv_data = rv_data && 'C2C6C18EBBD04F8CF376495B3E0685CF6C53700EADD81DA98A655A8B95C7F08BABBA8193386081FC'.
+    rv_data = rv_data && '14113F62BD82B96754455BCD80CBF64C3A769236CDCF45DF13296CEB46C355219FC3444126D76774'.
+    rv_data = rv_data && 'A77995981D5912A97FE263708CC0EDEAE1BEA7822497769EBA791A0CC91BF69A2441E4108CA4C64B'.
+    rv_data = rv_data && '2F51F4E531F18DBDDBF40D01CB85723FF23AE9647E58558D3A1CBC2CA07B47A2D3FA74CCE5CE9BAE'.
+    rv_data = rv_data && '6891DB549C0420815648277574814A98B18970FF4A61286B21CE1D6365A2F5772392FD4C3B6DAB02'.
+    rv_data = rv_data && 'F577F6A07342132D5F4A14C5923A36114FB579C8B0F281236CD3EB327A41F0681F04970D62B1BB22'.
+    rv_data = rv_data && '2DA1D191A3B34EB31377A8482385DE3E911C26AE65CE83663479A6A409F3'.
+  ENDMETHOD.
 
 ENDCLASS.

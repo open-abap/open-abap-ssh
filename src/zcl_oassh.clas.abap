@@ -27,6 +27,21 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output)   TYPE string
       RAISING
         zcx_oassh_error.
+* Multi-operation SFTP session: sftp_open( ) performs the channel, subsystem
+* and INIT/VERSION handshake once, then the sftp_* methods below run inside
+* that single session until sftp_close( ). Without sftp_open( ) each sftp_*
+* method is one-shot (its own connection lifecycle), exactly as before.
+* See docs/sftp-sessions.md.
+    METHODS sftp_open
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
+    METHODS sftp_close
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
     METHODS sftp_download
       IMPORTING
         iv_path            TYPE string
@@ -46,6 +61,39 @@ CLASS zcl_oassh DEFINITION
         VALUE(rv_output)   TYPE xstring
       RAISING
         zcx_oassh_error.
+* Interactive exec: exec_open starts a command and returns while the channel
+* stays open, so the caller can interleave binary stdin and stdout, for
+* example to speak a request/response protocol such as git-upload-pack.
+* The conversation ends with exec_close. See docs/interactive-exec.md.
+    METHODS exec_open
+      IMPORTING
+        iv_command         TYPE string
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_write
+      IMPORTING
+        iv_data TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_read
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RETURNING
+        VALUE(rv_data)     TYPE xstring
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_eof
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_close
+      IMPORTING
+        iv_timeout_seconds TYPE i DEFAULT 300
+      RAISING
+        zcx_oassh_error.
+    METHODS exec_is_closed
+      RETURNING
+        VALUE(rv_closed) TYPE abap_bool.
     METHODS sftp_upload
       IMPORTING
         iv_path            TYPE string
@@ -148,6 +196,8 @@ CLASS zcl_oassh DEFINITION
         sftp_rename   TYPE i VALUE 10,
         sftp_realpath TYPE i VALUE 11,
         shell         TYPE i VALUE 12,
+        exec_stream   TYPE i VALUE 13,
+        sftp_session  TYPE i VALUE 14,
       END OF gc_operation.
     DATA mi_socket TYPE REF TO zif_oassh_socket.
     DATA mi_random TYPE REF TO zif_oassh_random.
@@ -177,9 +227,12 @@ CLASS zcl_oassh DEFINITION
     DATA mv_sftp_path2 TYPE string.
     DATA mv_sftp_upload_data TYPE xstring.
     DATA mv_sftp_outbound TYPE xstring.
+    DATA mv_exec_outbound TYPE xstring.
     DATA mv_operation TYPE i.
     DATA mv_operation_started TYPE abap_bool.
     DATA mv_operation_done TYPE abap_bool.
+    DATA mv_sftp_session TYPE abap_bool.
+    DATA mv_sftp_session_broken TYPE abap_bool.
     DATA mv_disconnected TYPE abap_bool.
     DATA mv_disconnect_reason TYPE i.
 
@@ -197,6 +250,17 @@ CLASS zcl_oassh DEFINITION
         zcx_oassh_error.
     METHODS pump
       IMPORTING
+        iv_timeout_seconds TYPE i
+      RAISING
+        zcx_oassh_error.
+    METHODS pump_sftp_session
+      IMPORTING
+        iv_timeout_seconds TYPE i
+      RAISING
+        zcx_oassh_error.
+    METHODS sftp_session_run
+      IMPORTING
+        iv_request         TYPE xstring
         iv_timeout_seconds TYPE i
       RAISING
         zcx_oassh_error.
@@ -239,6 +303,9 @@ CLASS zcl_oassh DEFINITION
       RAISING
         zcx_oassh_error.
     METHODS flush_shell_input
+      RAISING
+        zcx_oassh_error.
+    METHODS flush_exec_output
       RAISING
         zcx_oassh_error.
     METHODS sftp_attributes
@@ -387,11 +454,285 @@ CLASS zcl_oassh IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD exec_open.
+* Interactive variant of execute( ): authenticate, open the session channel
+* and start the command, then return control to the caller while the channel
+* stays open for exec_write( ) / exec_read( ) exchanges.
+    DATA lv_data TYPE xstring.
+    IF mv_operation_started = abap_true.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-exec_stream.
+    mv_command = iv_command.
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+* pump( ) runs until the whole operation completes; this operation must stop
+* as soon as the exec request is accepted, so drive the socket directly.
+    WHILE mv_operation_done = abap_false
+        AND ( mo_channel IS NOT BOUND
+          OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running ).
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        mi_socket->close( ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+    ENDWHILE.
+* A disconnect or socket close before the command is running makes the
+* interactive operation impossible.
+    IF mv_operation_done = abap_true
+        OR mo_channel IS NOT BOUND
+        OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD exec_write.
+* Queue stdin bytes for the running command and send what the remote window
+* allows. Bytes that do not fit are sent when WINDOW_ADJUST arrives during a
+* later exec_read( ) or exec_close( ).
+    IF mv_operation <> gc_operation-exec_stream
+        OR mo_channel IS NOT BOUND
+        OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF iv_data IS INITIAL.
+      RETURN.
+    ENDIF.
+    CONCATENATE mv_exec_outbound iv_data INTO mv_exec_outbound IN BYTE MODE.
+    flush_exec_output( ).
+  ENDMETHOD.
+
+
+  METHOD exec_read.
+* Returns the stdout bytes buffered since the previous call and reads from
+* the socket only when nothing is buffered. Mirrors zif_oassh_socket~read:
+* an empty result is a timeout while exec_is_closed( ) is abap_false,
+* otherwise the command's output stream has ended.
+    DATA lv_data TYPE xstring.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mv_operation <> gc_operation-exec_stream OR mo_channel IS NOT BOUND.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    rv_data = mo_channel->drain_stdout( ).
+    WHILE rv_data IS INITIAL AND exec_is_closed( ) = abap_false.
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+        rv_data = mo_channel->drain_stdout( ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        RETURN.
+      ENDIF.
+    ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD exec_eof.
+* Half-close: signal end of stdin while the command's output continues.
+* Stdin still queued behind a closed window would be silently dropped by the
+* half-close, so flushing must have completed first.
+    IF mv_operation <> gc_operation-exec_stream
+        OR mo_channel IS NOT BOUND
+        OR mv_exec_outbound IS NOT INITIAL.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    send_encrypted( mo_channel->eof( ) ).
+  ENDMETHOD.
+
+
+  METHOD exec_close.
+* End the conversation: send CHANNEL_CLOSE and wait for the peer's CLOSE.
+* The exit status is available through get_exit_status( ) afterwards.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mv_operation <> gc_operation-exec_stream OR mo_channel IS NOT BOUND.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
+      mv_operation_done = abap_true.
+    ELSEIF mv_operation_done = abap_false
+        AND mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-close_sent.
+      send_encrypted( mo_channel->close( ) ).
+    ENDIF.
+    pump( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD exec_is_closed.
+* No further stdout can arrive: the SSH connection ended, or the peer sent
+* CHANNEL_EOF/CLOSE for the session channel.
+    IF mv_operation_done = abap_true.
+      rv_closed = abap_true.
+      RETURN.
+    ENDIF.
+    IF mo_channel IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    CASE mo_channel->get_state( ).
+      WHEN zcl_oassh_channel=>c_state-eof_received
+          OR zcl_oassh_channel=>c_state-close_sent
+          OR zcl_oassh_channel=>c_state-closed.
+        rv_closed = abap_true.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD sftp_open.
+* Bring up a reusable SFTP session: authenticate, open the session channel,
+* start the sftp subsystem and complete the INIT/VERSION handshake, then
+* return with the channel held open. advance_channel drives the session case
+* and never auto-closes the channel. Mirrors exec_open( )'s drive loop shape.
+    DATA lv_data TYPE xstring.
+    IF mv_operation_started = abap_true.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    mv_operation_started = abap_true.
+    mv_operation = gc_operation-sftp_session.
+    mo_sftp = NEW #( ).
+    IF mo_transport->get_auth_state( ) = zcl_oassh_transport=>c_auth_state-authenticated.
+      start_channel( ).
+    ENDIF.
+    WHILE mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-ready
+        AND mv_operation_done = abap_false.
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        mi_socket->close( ).
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+    ENDWHILE.
+* A disconnect or socket close before VERSION makes the session impossible.
+    IF mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-ready
+        OR mo_channel IS NOT BOUND
+        OR mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-running.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    mv_sftp_session = abap_true.
+  ENDMETHOD.
+
+
+  METHOD sftp_close.
+* End the SFTP session: send CHANNEL_CLOSE and wait for the peer's CLOSE, the
+* same handshake as exec_close( ). close( ) on the socket stays separate.
+    IF iv_timeout_seconds <= 0.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mv_sftp_session = abap_false OR mo_channel IS NOT BOUND.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    mv_sftp_session = abap_false.
+    IF mo_channel->get_state( ) = zcl_oassh_channel=>c_state-closed.
+      mv_operation_done = abap_true.
+    ELSEIF mv_operation_done = abap_false
+        AND mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-close_sent.
+      send_encrypted( mo_channel->close( ) ).
+    ENDIF.
+    pump( iv_timeout_seconds ).
+    IF mv_operation_done <> abap_true.
+      mi_socket->close( ).
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+    ENDIF.
+    IF mo_channel->get_state( ) <> zcl_oassh_channel=>c_state-closed.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD pump_sftp_session.
+* Drive the socket until the current SFTP operation reaches finished. Unlike
+* pump( ), the session channel stays open across operations, so completion is
+* the SFTP protocol finishing, not the SSH channel closing. A read timeout
+* leaves mo_sftp unfinished and returns so the caller reports it.
+    DATA lv_data TYPE xstring.
+    WHILE mo_sftp->get_state( ) <> zcl_oassh_sftp=>c_state-finished
+        AND mv_operation_done = abap_false.
+      lv_data = mi_socket->read( iv_timeout_seconds ).
+      IF lv_data IS NOT INITIAL.
+        process_inbound( lv_data ).
+      ELSEIF mi_socket->is_closed( ) = abap_true.
+        mv_operation_done = abap_true.
+      ELSE.
+        RETURN.
+      ENDIF.
+    ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD sftp_session_run.
+* Run one operation inside an open session: send its first request, pump until
+* the SFTP layer finishes, then validate the transport position. A clean
+* finish (including an SFTP status error) leaves the session usable. A timeout
+* or transport/protocol error leaves the protocol position undefined, so the
+* session is marked broken and only close( ) remains valid afterwards.
+    queue_sftp_output( iv_request ).
+    flush_sftp_output( ).
+    pump_sftp_session( iv_timeout_seconds ).
+    IF mo_channel IS BOUND
+        AND mo_channel->get_state( ) = zcl_oassh_channel=>c_state-running
+        AND mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-finished.
+      RETURN.
+    ENDIF.
+    mv_sftp_session_broken = abap_true.
+    IF mv_operation_done = abap_true.
+      RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+    ENDIF.
+    RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+  ENDMETHOD.
+
+
   METHOD sftp_download.
 * The public operation remains binary-safe end to end. Authentication and
 * channel setup share the execute callback flow; only the channel operation
 * selected after open differs.
     DATA lv_status TYPE i.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      sftp_session_run(
+        iv_request         = mo_sftp->start_download( iv_path )
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      rv_data = mo_sftp->get_data( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -432,6 +773,28 @@ CLASS zcl_oassh IMPLEMENTATION.
 * Upload completion means every WRITE was acknowledged and the remote handle
 * and SSH channel both completed their close handshakes.
     DATA lv_status TYPE i.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      sftp_session_run(
+        iv_request         = mo_sftp->start_upload(
+                               iv_path = iv_path
+                               iv_data = iv_data )
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -486,6 +849,29 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD sftp_attributes.
     DATA lv_status TYPE i.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      sftp_session_run(
+        iv_request         = mo_sftp->start_stat(
+                               iv_path  = iv_path
+                               iv_lstat = iv_lstat )
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      rs_attrs = mo_sftp->get_attrs( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -528,6 +914,27 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD sftp_list.
     DATA lv_status TYPE i.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      sftp_session_run(
+        iv_request         = mo_sftp->start_list( iv_path )
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      rt_names = mo_sftp->get_names( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -599,6 +1006,41 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD sftp_mutation.
     DATA lv_status TYPE i.
+    DATA lv_request TYPE xstring.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      CASE iv_operation.
+        WHEN gc_operation-sftp_mkdir.
+          lv_request = mo_sftp->start_mkdir( iv_path ).
+        WHEN gc_operation-sftp_rmdir.
+          lv_request = mo_sftp->start_rmdir( iv_path ).
+        WHEN gc_operation-sftp_remove.
+          lv_request = mo_sftp->start_remove( iv_path ).
+        WHEN gc_operation-sftp_rename.
+          lv_request = mo_sftp->start_rename(
+            iv_old_path = iv_path
+            iv_new_path = iv_path2 ).
+        WHEN OTHERS.
+          RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDCASE.
+      sftp_session_run(
+        iv_request         = lv_request
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -637,6 +1079,27 @@ CLASS zcl_oassh IMPLEMENTATION.
 
   METHOD sftp_realpath.
     DATA lv_status TYPE i.
+    IF mv_sftp_session = abap_true.
+      IF mv_sftp_session_broken = abap_true.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
+      ENDIF.
+      IF iv_timeout_seconds <= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e001(zoassh).
+      ENDIF.
+      sftp_session_run(
+        iv_request         = mo_sftp->start_realpath( iv_path )
+        iv_timeout_seconds = iv_timeout_seconds ).
+      lv_status = mo_sftp->get_error_status( ).
+      rs_name = mo_sftp->get_realpath( ).
+      mo_sftp->continue_session( ).
+      IF lv_status >= 0.
+        RAISE EXCEPTION TYPE zcx_oassh_error
+          MESSAGE e012(zoassh) WITH |{ lv_status }|
+          EXPORTING
+            iv_sftp_status = lv_status.
+      ENDIF.
+      RETURN.
+    ENDIF.
     IF mv_operation_started = abap_true.
       RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
     ENDIF.
@@ -1072,7 +1535,7 @@ CLASS zcl_oassh IMPLEMENTATION.
     CASE mo_channel->get_state( ).
       WHEN zcl_oassh_channel=>c_state-open.
         CASE mv_operation.
-          WHEN gc_operation-execute.
+          WHEN gc_operation-execute OR gc_operation-exec_stream.
             lv_reply = mo_channel->exec( mv_command ).
           WHEN gc_operation-shell.
             lv_reply = mo_channel->pty(
@@ -1083,7 +1546,8 @@ CLASS zcl_oassh IMPLEMENTATION.
               OR gc_operation-sftp_stat OR gc_operation-sftp_lstat
               OR gc_operation-sftp_list OR gc_operation-sftp_mkdir
               OR gc_operation-sftp_rmdir OR gc_operation-sftp_remove
-              OR gc_operation-sftp_rename OR gc_operation-sftp_realpath.
+              OR gc_operation-sftp_rename OR gc_operation-sftp_realpath
+              OR gc_operation-sftp_session.
             lv_reply = mo_channel->subsystem( 'sftp' ).
           WHEN OTHERS.
             RAISE EXCEPTION TYPE zcx_oassh_error MESSAGE e010(zoassh).
@@ -1098,6 +1562,10 @@ CLASS zcl_oassh IMPLEMENTATION.
         CASE mv_operation.
           WHEN gc_operation-shell.
             flush_shell_input( ).
+          WHEN gc_operation-exec_stream.
+* Stdout stays buffered in the channel until the caller's next exec_read( );
+* only stdin blocked on window credit is progressed here.
+            flush_exec_output( ).
           WHEN gc_operation-sftp_download OR gc_operation-sftp_upload
               OR gc_operation-sftp_stat OR gc_operation-sftp_lstat
               OR gc_operation-sftp_list OR gc_operation-sftp_mkdir
@@ -1146,6 +1614,23 @@ CLASS zcl_oassh IMPLEMENTATION.
               lv_reply = mo_channel->close( ).
               send_encrypted( lv_reply ).
             ENDIF.
+          WHEN gc_operation-sftp_session.
+* Multi-operation session: send INIT once the subsystem is running, then feed
+* every CHANNEL_DATA batch to the shared mo_sftp and flush its replies. The
+* channel is never auto-closed here; sftp_close( ) ends the session.
+            flush_sftp_output( ).
+            IF mo_sftp->get_state( ) = zcl_oassh_sftp=>c_state-created.
+              lv_sftp_output = mo_sftp->start( ).
+            ELSE.
+              lv_sftp_input = mo_channel->drain_stdout( ).
+              IF lv_sftp_input IS NOT INITIAL.
+                lv_sftp_output = mo_sftp->receive( lv_sftp_input ).
+              ENDIF.
+            ENDIF.
+            IF lv_sftp_output IS NOT INITIAL.
+              queue_sftp_output( lv_sftp_output ).
+              flush_sftp_output( ).
+            ENDIF.
         ENDCASE.
       WHEN zcl_oassh_channel=>c_state-closed.
         mv_operation_done = abap_true.
@@ -1187,6 +1672,37 @@ CLASS zcl_oassh IMPLEMENTATION.
       ELSE.
         lv_remainder = mv_sftp_outbound+lv_send_length.
         mv_sftp_outbound = lv_remainder.
+      ENDIF.
+      lv_reply = mo_channel->data( lv_payload ).
+      send_encrypted( lv_reply ).
+      lv_capacity = mo_channel->get_send_capacity( ).
+    ENDWHILE.
+  ENDMETHOD.
+
+
+  METHOD flush_exec_output.
+* Same window discipline as flush_sftp_output, for the interactive exec
+* stdin queue. WINDOW_ADJUST callbacks re-enter this method through
+* advance_channel while the channel is running.
+    DATA lv_capacity TYPE i.
+    DATA lv_pending_length TYPE i.
+    DATA lv_send_length TYPE i.
+    DATA lv_payload TYPE xstring.
+    DATA lv_remainder TYPE xstring.
+    DATA lv_reply TYPE xstring.
+    lv_capacity = mo_channel->get_send_capacity( ).
+    WHILE mv_exec_outbound IS NOT INITIAL AND lv_capacity > 0.
+      lv_pending_length = xstrlen( mv_exec_outbound ).
+      lv_send_length = lv_pending_length.
+      IF lv_send_length > lv_capacity.
+        lv_send_length = lv_capacity.
+      ENDIF.
+      lv_payload = mv_exec_outbound(lv_send_length).
+      IF lv_send_length = lv_pending_length.
+        CLEAR mv_exec_outbound.
+      ELSE.
+        lv_remainder = mv_exec_outbound+lv_send_length.
+        mv_exec_outbound = lv_remainder.
       ENDIF.
       lv_reply = mo_channel->data( lv_payload ).
       send_encrypted( lv_reply ).

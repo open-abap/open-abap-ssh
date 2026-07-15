@@ -34,16 +34,7 @@
     "allowed_object_naming": true,
     "allowed_object_types": false,
     "ambiguous_statement": true,
-    "avoid_use": {
-      "define": true,
-      "statics": true,
-      "exportToDatabase": true,
-      "exportToMemory": true,
-      "defaultKey": true,
-      "break": false,   // todo
-      "testSeams": true,
-      "describeLines": true
-    },
+    "avoid_use": true,
     "begin_end_names": true,
     "begin_single_include": true,
     "call_transaction_authority_check": true,
@@ -61,11 +52,7 @@
     "cloud_types": true,
     "colon_missing_space": true,
     "commented_code": true,
-    "constant_classes": {
-      "exclude": [],
-      "severity": "Error",
-      "mapping": []
-    },
+    "constant_classes": true,
     "constructor_visibility_public": true,
     "contains_tab": true,
     "cyclic_oo": true,
@@ -82,27 +69,12 @@
     "exit_or_check": true,
     "exporting": true,
     "forbidden_identifier": true,
-    "forbidden_pseudo_and_pragma": {
-      "exclude": [],
-      "severity": "Error",
-      "pseudo": [],
-      "pragmas": [],
-      "ignoreGlobalClassDefinition": false,
-      "ignoreGlobalInterface": false
-    },
-    "forbidden_void_type": {
-      "exclude": [],
-      "severity": "Error",
-      "check": []
-    },
+    "forbidden_pseudo_and_pragma": true,
+    "forbidden_void_type": true,
     "form_tables_obsolete": true,
     "fully_type_constants": true,
     "function_module_recommendations": true,
-    "functional_writing": {
-      "exclude": [],
-      "severity": "Error",
-      "ignoreExceptions": true
-    },
+    "functional_writing": true,
     "global_class": true,
     "identical_conditions": true,
     "identical_contents": true,
@@ -118,36 +90,10 @@
     "keyword_case": true,
     "line_break_multiple_parameters": true,
     "line_break_style": false,
-    "line_length": {
-      "exclude": [],
-      "severity": "Error",
-      "length": 120
-    },
-    "line_only_punc": {
-      "exclude": [],
-      "severity": "Error",
-      "ignoreExceptions": true
-    },
-    "local_class_naming": {
-      "exclude": [],
-      "severity": "Error",
-      "patternKind": "required",
-      "ignoreNames": [],
-      "ignorePatterns": [],
-      "local": "^LCL_.+$",
-      "exception": "^LCX_.+$",
-      "test": "^LTCL_.+$"
-    },
-    "local_variable_names": {
-      "exclude": [],
-      "severity": "Error",
-      "patternKind": "required",
-      "ignoreNames": [],
-      "ignorePatterns": [],
-      "expectedData": "^L._.+$",
-      "expectedConstant": "^LC_.+$",
-      "expectedFS": "^<L._.+>$"
-    },
+    "line_length": true,
+    "line_only_punc": true,
+    "local_class_naming": true,
+    "local_variable_names": true,
     "main_file_contents": true,
     "many_parentheses": true,
     "max_one_method_parameter_per_line": true,
@@ -167,19 +113,15 @@
     "newline_between_methods": true,
     "no_aliases": true,
     "no_chained_assignment": true,
-    "no_yoda_conditions": {
-      "exclude": [],
-      "severity": "Error",
-      "onlyConstants": false
-    },
+    "no_yoda_conditions": true,
     "object_naming": {
       "exclude": [],
       "severity": "Error",
       "patternKind": "required",
       "ignoreNames": [],
       "ignorePatterns": [],
-      "clas": "^ZC(L|X)",
-      "intf": "^ZIF",
+      "clas": "^ZC(L|X)_OASSH",
+      "intf": "^ZIF_OASSH_",
       "prog": "^Z",
       "fugr": "^Z",
       "tabl": "^Z",
