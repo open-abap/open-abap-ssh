@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  OPENSSH_IMAGE: lscr.io/linuxserver/openssh-server@sha256:deec9e402eb9a656de1749c3ea93e99478a565cf187ecfb051f8446d93b12483
+  OPENSSH_IMAGE: ghcr.io/linuxserver/openssh-server@sha256:deec9e402eb9a656de1749c3ea93e99478a565cf187ecfb051f8446d93b12483
 
 jobs:
   test:
