@@ -18,10 +18,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Derive cache key from image digest
+    - name: Derive cache key from image registry and digest
       id: image
       shell: bash
-      run: echo "digest=${IMAGE##*@sha256:}" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "registry=${IMAGE%%/*}" >> "$GITHUB_OUTPUT"
+        echo "digest=${IMAGE##*@sha256:}" >> "$GITHUB_OUTPUT"
       env:
         IMAGE: ${{ inputs.image }}
 
@@ -30,7 +32,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: /tmp/openssh-image.tar
-        key: openssh-image-${{ steps.image.outputs.digest }}
+        key: openssh-image-${{ steps.image.outputs.registry }}-${{ steps.image.outputs.digest }}
 
     - name: Load cached image
       if: steps.cache.outputs.cache-hit == 'true'

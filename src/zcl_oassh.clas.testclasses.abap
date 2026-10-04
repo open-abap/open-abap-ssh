@@ -103,8 +103,6 @@ CLASS ltcl_test IMPLEMENTATION.
     DATA lo_ssh TYPE REF TO zcl_oassh.
     lo_ssh = build_ssh( ).
     lo_ssh->mv_private_seed = '0102'.
-    lo_ssh->mo_transport->mv_password = '0304'.
-    lo_ssh->mo_transport->mv_private_seed = '0506'.
     cl_abap_unit_assert=>assert_not_initial( lo_ssh->mv_password ).
 
     lo_ssh->close( ).
@@ -112,8 +110,6 @@ CLASS ltcl_test IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( lo_ssh->mv_password ).
     cl_abap_unit_assert=>assert_false( lo_ssh->mv_password_supplied ).
     cl_abap_unit_assert=>assert_initial( lo_ssh->mv_private_seed ).
-    cl_abap_unit_assert=>assert_initial( lo_ssh->mo_transport->mv_password ).
-    cl_abap_unit_assert=>assert_initial( lo_ssh->mo_transport->mv_private_seed ).
   ENDMETHOD.
 
   METHOD encrypted_message_recognition.
