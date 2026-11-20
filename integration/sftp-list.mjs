@@ -13,7 +13,7 @@ const session = await createClient({host, port, user, password, debug});
 const {client} = session;
 await connectClient(session);
 
-const names = await client.sftp_list({iv_path: new abap.types.String().set(path)});
+const names = await client.zif_oassh_sftp_one_shot$sftp_list({iv_path: new abap.types.String().set(path)});
 await client.close();
 
 const actual = names.array()

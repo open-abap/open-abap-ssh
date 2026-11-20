@@ -150,14 +150,15 @@ host-verified connection for another session.
 
 ### SFTP
 
-Called directly on a fresh connection, each SFTP method is one-shot: it opens
-its own channel and subsystem, runs the single operation, and closes. Downloads
-and uploads use `xstring` end to end:
+Use `zif_oassh_sftp_one_shot` on a fresh connection for one operation. It opens
+its own channel and subsystem, runs the operation, and closes the channel.
+Downloads and uploads use `xstring` end to end:
 
 ```abap
 DATA lv_file TYPE xstring.
+DATA li_sftp TYPE REF TO zif_oassh_sftp_one_shot.
 
-lo_ssh = zcl_oassh=>connect(
+li_sftp = zcl_oassh=>connect(
   iv_host          = 'ssh.example.com'
   iv_port          = '22'
   iv_user          = 'deploy'
@@ -165,13 +166,13 @@ lo_ssh = zcl_oassh=>connect(
   ii_host_verifier = lo_host_verifier ).
 
 TRY.
-    lv_file = lo_ssh->sftp_download(
+    lv_file = li_sftp->sftp_download(
       iv_path            = '/incoming/data.bin'
       iv_timeout_seconds = 60 ).
   CLEANUP.
-    lo_ssh->close( ).
+    li_sftp->close( ).
 ENDTRY.
-lo_ssh->close( ).
+li_sftp->close( ).
 ```
 
 The public SFTP methods are:
@@ -190,24 +191,26 @@ file.
 
 #### Multi-operation SFTP sessions
 
-To run several SFTP operations over a single authenticated connection, call
-`sftp_open` first. It performs the channel, subsystem, and INIT/VERSION
+To run several SFTP operations over a single authenticated connection, use
+`zif_oassh_sftp_session` and call `sftp_open` first. It performs the channel,
+subsystem, and INIT/VERSION
 handshake once; the same `sftp_*` methods then run inside that session until
 `sftp_close`. This avoids repeating the full SSH handshake — and, on APC, the
 one-byte-per-frame cost of every handshake — for each operation:
 
 ```abap
-lo_ssh = zcl_oassh=>connect( ... ).
+DATA li_sftp TYPE REF TO zif_oassh_sftp_session.
+li_sftp = zcl_oassh=>connect( ... ).
 TRY.
-    lo_ssh->sftp_open( ).
-    lt_names = lo_ssh->sftp_list( '/incoming' ).
-    lv_file  = lo_ssh->sftp_download( '/incoming/data.bin' ).
-    ls_attrs = lo_ssh->sftp_stat( '/incoming/data.bin' ).
-    lo_ssh->sftp_close( ).
+    li_sftp->sftp_open( ).
+    lt_names = li_sftp->sftp_list( '/incoming' ).
+    lv_file  = li_sftp->sftp_download( '/incoming/data.bin' ).
+    ls_attrs = li_sftp->sftp_stat( '/incoming/data.bin' ).
+    li_sftp->sftp_close( ).
   CLEANUP.
-    lo_ssh->close( ).
+    li_sftp->close( ).
 ENDTRY.
-lo_ssh->close( ).
+li_sftp->close( ).
 ```
 
 One SFTP operation runs at a time, and the session is not reused across

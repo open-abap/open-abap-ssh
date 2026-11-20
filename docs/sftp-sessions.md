@@ -1,8 +1,8 @@
 # Multi-operation SFTP sessions
 
-Each `sftp_*` method on `zcl_oassh` is one-shot by default: it authenticates,
-opens a session channel, starts the `sftp` subsystem, runs a single operation,
-and closes the channel. Every operation therefore pays for a full SSH handshake
+Each method on `zif_oassh_sftp_one_shot` authenticates, opens a session channel,
+starts the `sftp` subsystem, runs a single operation, and closes the channel.
+Every operation therefore pays for a full SSH handshake
 and a fresh subsystem — expensive when a caller needs several operations in a
 row, and especially so on APC, where each handshake is exchanged one byte per
 frame.
@@ -12,12 +12,12 @@ the channel, subsystem, and INIT/VERSION handshake once; the same `sftp_*`
 methods then run inside that single subsystem channel until `sftp_close`.
 
 ```abap
-DATA lo_ssh TYPE REF TO zcl_oassh.
-DATA lt_names TYPE zcl_oassh_sftp=>ty_names.
+DATA li_sftp TYPE REF TO zif_oassh_sftp_session.
+DATA lt_names TYPE zif_oassh_sftp_one_shot=>ty_names.
 DATA lv_data TYPE xstring.
-DATA ls_attrs TYPE zcl_oassh_sftp=>ty_attrs.
+DATA ls_attrs TYPE zif_oassh_sftp_one_shot=>ty_attrs.
 
-lo_ssh = zcl_oassh=>connect(
+li_sftp = zcl_oassh=>connect(
   iv_host          = 'ssh.example.com'
   iv_port          = '22'
   iv_user          = 'deploy'
@@ -25,18 +25,18 @@ lo_ssh = zcl_oassh=>connect(
   ii_host_verifier = lo_host_verifier ).
 
 TRY.
-    lo_ssh->sftp_open( ).                       " channel + subsystem + INIT/VERSION
-    lt_names = lo_ssh->sftp_list( '/incoming' ).
-    lv_data  = lo_ssh->sftp_download( '/incoming/data.bin' ).
-    ls_attrs = lo_ssh->sftp_stat( '/incoming/data.bin' ).
-    lo_ssh->sftp_rename(
+    li_sftp->sftp_open( ).                       " channel + subsystem + INIT/VERSION
+    lt_names = li_sftp->sftp_list( '/incoming' ).
+    lv_data  = li_sftp->sftp_download( '/incoming/data.bin' ).
+    ls_attrs = li_sftp->sftp_stat( '/incoming/data.bin' ).
+    li_sftp->sftp_rename(
       iv_old_path = '/incoming/data.bin'
       iv_new_path = '/incoming/data.bin.done' ).
-    lo_ssh->sftp_close( ).                       " channel close handshake
+    li_sftp->sftp_close( ).                       " channel close handshake
   CLEANUP.
-    lo_ssh->close( ).
+    li_sftp->close( ).
 ENDTRY.
-lo_ssh->close( ).
+li_sftp->close( ).
 ```
 
 ## API
@@ -52,8 +52,9 @@ lo_ssh->close( ).
 usual typed error, and a session is never reused across those other kinds or a
 second channel.
 
-Without `sftp_open`, every `sftp_*` method behaves exactly as before — one-shot,
-one connection per operation — so existing callers are unaffected.
+Use `zif_oassh_sftp_one_shot` when no reusable session is needed. The concrete
+SFTP methods on `zcl_oassh` are implementation details; callers select one of
+the two SFTP interfaces explicitly.
 
 ## Semantics
 

@@ -4,6 +4,9 @@ import test from "node:test";
 
 const publicSources = [
   "../src/zcl_oassh.clas.abap",
+  "../src/zif_oassh_interactive_exec.intf.abap",
+  "../src/zif_oassh_sftp_one_shot.intf.abap",
+  "../src/zif_oassh_sftp_session.intf.abap",
   "../src/platform/zif_oassh_socket.intf.abap",
 ];
 

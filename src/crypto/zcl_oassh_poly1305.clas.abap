@@ -170,7 +170,6 @@ CLASS zcl_oassh_poly1305 IMPLEMENTATION.
 * Propagate carries over the full convolution first so every limb drops
 * below the base; folding a raw convolution limb (up to 10 * 2^14 * 2^13)
 * by 5 would overflow the signed 32-bit range.
-    CLEAR lv_carry.
     DO lines( rt_result ) TIMES.
       lv_index = sy-index.
       lv_value = rt_result[ lv_index ] + lv_carry.

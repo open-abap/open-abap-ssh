@@ -13,7 +13,7 @@ const session = await createClient({host, port, user, password, debug});
 const {client} = session;
 await connectClient(session);
 
-const outputValue = await client.sftp_download({
+const outputValue = await client.zif_oassh_sftp_one_shot$sftp_download({
   iv_path: new abap.types.String().set(path),
 });
 const output = outputValue.get().toUpperCase();

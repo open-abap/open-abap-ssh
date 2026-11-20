@@ -7,8 +7,8 @@ response, decide, and write the next request while the command keeps
 running. The canonical example is `git-upload-pack`, which GitHub exposes
 to deploy keys: ref advertisement down, `want`/`done` up, packfile down.
 
-The interactive exec API keeps the session channel open and hands the
-byte streams to the caller:
+The `zif_oassh_interactive_exec` interface keeps the session channel open and
+hands the byte streams to the caller:
 
 | Method | Purpose |
 | --- | --- |
@@ -31,18 +31,20 @@ command's output stream has ended (the peer sent `CHANNEL_EOF` or the
 connection closed). Callers therefore loop:
 
 ```abap
-DATA(lo_ssh) = zcl_oassh=>connect(
+DATA li_exec TYPE REF TO zif_oassh_interactive_exec.
+
+li_exec = zcl_oassh=>connect(
   iv_host          = 'github.com'
   iv_port          = '22'
   iv_user          = 'git'
   iv_private_seed  = lv_ed25519_seed   " the deploy key
   ii_host_verifier = li_verifier ).
 
-lo_ssh->exec_open( |git-upload-pack 'owner/repo.git'| ).
+li_exec->exec_open( |git-upload-pack 'owner/repo.git'| ).
 
 DATA(lv_advertisement) = VALUE xstring( ).
-WHILE lo_ssh->exec_is_closed( ) = abap_false.
-  DATA(lv_chunk) = lo_ssh->exec_read( ).
+WHILE li_exec->exec_is_closed( ) = abap_false.
+  DATA(lv_chunk) = li_exec->exec_read( ).
   IF lv_chunk IS INITIAL.
     EXIT. " timeout: decide whether the protocol layer has a complete unit
   ENDIF.
@@ -50,9 +52,10 @@ WHILE lo_ssh->exec_is_closed( ) = abap_false.
   " ... hand to a pkt-line parser, stop when it has the full advertisement
 ENDWHILE.
 
-lo_ssh->exec_write( lv_want_request ). " pkt-lines: want, deepen, flush, done
+li_exec->exec_write( lv_want_request ). " pkt-lines: want, deepen, flush, done
 " ... read the packfile with the same exec_read loop
-lo_ssh->exec_close( ).
+li_exec->exec_close( ).
+li_exec->close( ).
 ```
 
 ## Flow control
@@ -63,8 +66,8 @@ that do not fit are queued and sent automatically when the server's
 `exec_eof( )` refuses to half-close while stdin is still queued, because
 those bytes could never be delivered afterwards.
 
-Like every other operation on `zcl_oassh`, an interactive exec is the one
-operation of its connection object: `exec_open( )` on a connection that
+Like every other workflow, an interactive exec is the one operation of its
+connection object: `exec_open( )` on a connection that
 already ran an operation raises the usual typed error.
 
 ## Scope

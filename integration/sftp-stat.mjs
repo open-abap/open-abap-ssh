@@ -14,7 +14,7 @@ const session = await createClient({host, port, user, password, debug});
 const {client} = session;
 await connectClient(session);
 
-const statMethod = useLstat ? client.sftp_lstat.bind(client) : client.sftp_stat.bind(client);
+const statMethod = useLstat ? client.zif_oassh_sftp_one_shot$sftp_lstat.bind(client) : client.zif_oassh_sftp_one_shot$sftp_stat.bind(client);
 const attrs = await statMethod({iv_path: new abap.types.String().set(path)});
 await client.close();
 
