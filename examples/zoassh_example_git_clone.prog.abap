@@ -1,4 +1,4 @@
-REPORT zoassh_example_git_clone.
+REPORT zoassh_example_git_clone LINE-SIZE 255.
 
 * -----------------------------------------------------------------------------
 * open-abap-ssh example: fetch a GitHub repository over SSH with a deploy key,
@@ -13,8 +13,10 @@ REPORT zoassh_example_git_clone.
 * such as the one in abapGit to obtain commits, trees, and blobs.
 *
 * Copy this report into a system that has open-abap-ssh installed, activate it,
-* and run it. The SAP system must permit outbound TCP to github.com:22 (or
-* ssh.github.com:443) through ABAP Push Channels (APC).
+* and run it. The SAP system must permit outbound TCP to ssh.github.com:443
+* through ABAP Push Channels (APC). Port 443 is the default because outbound
+* port 22 is often blocked; set p_host = github.com and p_port = 22 where it is
+* open.
 *
 * Creating the deploy key:
 *   1. ssh-keygen -t ed25519 -N "" -C "open-abap-ssh" -f deploy_key
@@ -31,12 +33,12 @@ REPORT zoassh_example_git_clone.
 * connection to anything that is not GitHub is rejected.
 * -----------------------------------------------------------------------------
 
-PARAMETERS p_repo  TYPE string LOWER CASE OBLIGATORY DEFAULT 'owner/repo.git'.
+PARAMETERS p_repo  TYPE string LOWER CASE OBLIGATORY DEFAULT 'open-abap/open-abap-ssh.git'.
 PARAMETERS p_ref   TYPE string LOWER CASE DEFAULT 'HEAD'.
 PARAMETERS p_depth TYPE i DEFAULT 1.
 PARAMETERS p_seed  TYPE string LOWER CASE OBLIGATORY.
-PARAMETERS p_host  TYPE string LOWER CASE OBLIGATORY DEFAULT 'github.com'.
-PARAMETERS p_port  TYPE string DEFAULT '22'.
+PARAMETERS p_host  TYPE string LOWER CASE OBLIGATORY DEFAULT 'ssh.github.com'.
+PARAMETERS p_port  TYPE string DEFAULT '443'.
 PARAMETERS p_tmout TYPE i DEFAULT 120.
 
 CLASS lcx_git DEFINITION INHERITING FROM cx_static_check FINAL.
