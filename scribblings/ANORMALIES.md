@@ -4,6 +4,21 @@ Behaviours where the `@abaplint` transpiler / open-abap runtime diverge from
 standard ABAP (or bit us in a surprising way). Recorded while implementing the
 checklist so we can work around them and, where relevant, report upstream.
 
+## Obsolete SHA-512 runtime patch breaks the build
+
+**Found in:** `npm test` after the open-abap-core library update
+
+**Reproduction:** transpile with `abap_transpile.json`, then run
+`node scripts/enable-sha512-runtime.mjs`. The legacy adapter throws
+"open-abap digest runtime shape changed; SHA-512 adapter was not applied"
+because its SHA-256 assertion match is absent from the generated digest class.
+The library now registers SHA-512 directly, including its 64-byte digest length.
+
+**Resolution:** remove the obsolete adapter and its build step. Use the existing
+SHA-512 NIST vectors and Ed25519 ABAP Unit tests to validate the library support.
+The build command also names the root `abap_transpile.json` explicitly instead
+of the nonexistent `test/abap_transpile.json`.
+
 ## Numeric `MESSAGE ... WITH` values retain type-width padding
 
 **Found in:** public T100-based SSH exceptions
