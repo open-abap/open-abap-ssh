@@ -2089,7 +2089,7 @@ CLASS zcl_oassh IMPLEMENTATION.
 * https://datatracker.ietf.org/doc/html/rfc4253#section-4.2
 
     DATA lv_xstr TYPE xstring.
-    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ). "#EC NOTEXT
+    mv_client_version = zcl_oassh_ascii=>to_xstring( 'SSH-2.0-abap' ) ##NO_TEXT.
     lv_xstr = mv_client_version && zcl_oassh_ascii=>c_cr_lf.
 
     mi_socket->send( lv_xstr ).
