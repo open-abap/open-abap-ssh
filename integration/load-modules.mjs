@@ -37,5 +37,5 @@ for (const module of [
   "zcl_oassh_transport.clas.mjs",
   "zcl_oassh.clas.mjs",
 ]) {
-  await import(`../output/${module}`);
+  await import(`../output/project/${module}`);
 }
