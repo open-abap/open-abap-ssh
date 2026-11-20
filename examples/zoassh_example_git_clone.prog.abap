@@ -580,7 +580,8 @@ FORM run.
       LOOP AT lo_git->get_capabilities( ) INTO DATA(lv_capability) WHERE table_line CP 'symref=*'.
         WRITE: / 'symref:', lv_capability+7.
       ENDLOOP.
-      WRITE: / 'refs advertised:', lines( lo_git->get_refs( ) ).
+      DATA(int) = lines( lo_git->get_refs( ) ).
+      WRITE: / 'refs advertised:', int.
       WRITE: / 'fetched:', ls_want-name, ls_want-sha1.
       LOOP AT lo_git->get_shallow( ) INTO DATA(lv_shallow).
         WRITE / lv_shallow.
