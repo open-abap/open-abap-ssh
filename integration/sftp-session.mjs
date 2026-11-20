@@ -23,10 +23,10 @@ const session = await createClient({host, port, user, password, debug});
 const {client} = session;
 await connectClient(session);
 
-await client.sftp_open({});
+await client.zif_oassh_sftp_session$sftp_open({});
 
 // LIST
-const names = await client.sftp_list({iv_path: text(listPath)});
+const names = await client.zif_oassh_sftp_session$sftp_list({iv_path: text(listPath)});
 const listed = names.array()
   .map(row => Buffer.from(row.get().filename.get(), "hex").toString("utf8"))
   .filter(name => name !== "." && name !== "..")
@@ -36,7 +36,7 @@ if (listed.length === 0) {
 }
 
 // DOWNLOAD
-const data = await client.sftp_download({iv_path: text(filePath)});
+const data = await client.zif_oassh_sftp_session$sftp_download({iv_path: text(filePath)});
 const downloadedBuffer = Buffer.from(data.get(), "hex");
 if (fileBytes !== undefined) {
   if (downloadedBuffer.length !== fileBytes) {
@@ -48,17 +48,17 @@ if (fileBytes !== undefined) {
 const downloaded = fileBytes !== undefined ? `${downloadedBuffer.length} bytes` : downloadedBuffer.toString("utf8");
 
 // STAT
-const attrs = await client.sftp_stat({iv_path: text(filePath)});
+const attrs = await client.zif_oassh_sftp_session$sftp_stat({iv_path: text(filePath)});
 if (attrs.get().has_size.get() !== "X") {
   throw new Error(`Expected STAT of ${filePath} to report a size`);
 }
 
 // RENAME (source.bin -> renamed.bin) then restore the fixture for reruns
-await client.sftp_rename({
+await client.zif_oassh_sftp_session$sftp_rename({
   iv_old_path: text(`${renameBase}/source.bin`),
   iv_new_path: text(`${renameBase}/renamed.bin`),
 });
-await client.sftp_rename({
+await client.zif_oassh_sftp_session$sftp_rename({
   iv_old_path: text(`${renameBase}/renamed.bin`),
   iv_new_path: text(`${renameBase}/source.bin`),
 });
@@ -79,7 +79,7 @@ if (requireRekey && Number(rekeyCount) < 1) {
   throw new Error("Expected at least one rekey during the session");
 }
 
-await client.sftp_close({});
+await client.zif_oassh_sftp_session$sftp_close({});
 if (channel.FRIENDS_ACCESS_INSTANCE.mv_state.get() !== 7) {
   throw new Error("SFTP session channel did not complete the close handshake");
 }

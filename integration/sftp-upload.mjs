@@ -13,7 +13,7 @@ const payload = Buffer.concat([Buffer.alloc(32768, 0x5A), Buffer.from([0x00, 0xF
 // download runs through a second connection.
 const upload = await createClient({host, port, user, password, debug});
 await connectClient(upload);
-await upload.client.sftp_upload({
+await upload.client.zif_oassh_sftp_one_shot$sftp_upload({
   iv_path: new abap.types.String().set(path),
   iv_data: new abap.types.XString().set(payload.toString("hex").toUpperCase()),
 });
@@ -21,7 +21,7 @@ await upload.client.close();
 
 const download = await createClient({host, port, user, password, debug});
 await connectClient(download);
-const downloaded = await download.client.sftp_download({
+const downloaded = await download.client.zif_oassh_sftp_one_shot$sftp_download({
   iv_path: new abap.types.String().set(path),
 });
 await download.client.close();
