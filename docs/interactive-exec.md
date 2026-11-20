@@ -58,6 +58,13 @@ li_exec->exec_close( ).
 li_exec->close( ).
 ```
 
+[examples/zoassh_example_git_clone.prog.abap](../examples/zoassh_example_git_clone.prog.abap)
+is a complete, runnable version of this conversation. It authenticates to
+GitHub with an Ed25519 deploy key, pins GitHub's published host keys, does
+the pkt-line and side-band-64k framing, requests a shallow fetch of one ref,
+and checks the received packfile's header and SHA-1 trailer. It does not
+decode the objects inside the pack.
+
 ## Flow control
 
 `exec_write( )` respects the remote window (RFC 4254 section 5.2): bytes
