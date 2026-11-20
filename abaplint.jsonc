@@ -10,7 +10,10 @@
     }
   ],
   "syntax": {
-    "version": "open-abap",
+    "version": {
+      "language": "Normal",
+      "release": "open-abap"
+    },
     "errorNamespace": "."
   },
   "rules": {
