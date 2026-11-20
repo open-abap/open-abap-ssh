@@ -522,6 +522,7 @@ FORM run.
   DATA ls_info      TYPE lcl_pack_check=>ty_info.
   DATA lv_exit      TYPE i.
   DATA lx_error     TYPE REF TO cx_static_check.
+  DATA lx_previous  TYPE REF TO cx_root.
 
   lv_seed_hex = to_upper( condense( p_seed ) ).
   IF strlen( lv_seed_hex ) <> 64 OR lv_seed_hex CN '0123456789ABCDEF'.
@@ -596,6 +597,14 @@ FORM run.
 
     CATCH cx_static_check INTO lx_error.
       WRITE: / 'git clone error:', lx_error->get_text( ).
+* T100 message variables hold 50 characters, so the library's own text can cut
+* off the cause; the original exception (for example the APC connect error)
+* is kept as PREVIOUS with its full text.
+      lx_previous = lx_error->previous.
+      WHILE lx_previous IS BOUND.
+        WRITE: / 'caused by:', lx_previous->get_text( ).
+        lx_previous = lx_previous->previous.
+      ENDWHILE.
   ENDTRY.
 
 ENDFORM.
